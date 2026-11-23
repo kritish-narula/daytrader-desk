@@ -196,11 +196,29 @@
     if (o[i] < l[i - 1] * 0.99 && c[i] < o[i] && volx > 1.5) add({ n: 'Gap-down and go', k: 'GAP', b: -1, q: 60 + (rngPos < 0.25 ? 8 : 0) + (!uptrend ? 6 : 0), note: `Gapped below yesterday's low and kept falling on ${volx.toFixed(1)}× volume.`, entry: R(px), stop: R(l[i - 1] + 0.2 * at), target: R(px - 2 * (l[i - 1] + 0.2 * at - px)) });
     // --- oversold in uptrend ---
     if (I.rsi[i] < 32 && c[i] > I.e200[i] && I.e50[i] > I.e200[i]) add({ n: 'Oversold dip in long-term uptrend', k: 'MR', b: 1, q: 58 + (c[i] > o[i] ? 8 : 0), note: `RSI ${I.rsi[i] | 0} while above the 200 EMA: mean-reversion bounce setup.`, entry: R(h[i]), stop: R(l[i] - 0.5 * at), target: R(I.e20[i]) });
-    return out.sort((a, b) => b.q - a.q);
+    for (const s of out) { const e = E.setupEdge(s.n); if (e) s.ev = e; }
+    return out.sort((a, b) => (b.ev && b.ev.edge ? 1 : 0) - (a.ev && a.ev.edge ? 1 : 0) || b.q - a.q);
+  };
+  // Measured on real data (tools/validate.js: 40 NSE large caps, 5 years daily, walk-forward, target vs stop within 30 days).
+  // [signals, target-first %, avg reward:risk]. Expectancy = p·RR − (1 − p) in R units.
+  E.SETUP_STATS = {
+    'SMC: Retest of bullish fair value gap': [1366, 54, 1.53], 'Pullback to 20 EMA in uptrend': [1352, 27, 4.32], 'SMC: Retest of bearish fair value gap': [1097, 40, 1.62],
+    'Double bottom': [781, 76, 1.51], 'Double top': [780, 47, 4.83], 'Pocket pivot': [772, 35, 2.0], 'SMC: Liquidity sweep above highs': [626, 31, 2.94],
+    'Rally into 20 EMA in downtrend': [603, 17, 3.66], 'SMC: Liquidity sweep below lows': [555, 39, 2.81], 'SMC: Break of structure (bullish)': [423, 28, 2.0],
+    'Head & shoulders': [414, 36, 9.68], 'Inverse head & shoulders': [383, 73, 2.26], 'SMC: Change of character (bullish)': [372, 39, 2.0],
+    'SMC: Change of character (bearish)': [355, 22, 2.0], 'Bull flag': [328, 22, 4.27], 'SMC: Break of structure (bearish)': [309, 23, 2.0], 'Bear flag': [269, 8, 5.05],
+    'Clean volume breakout': [244, 33, 2.0], 'VCP (volatility contraction) forming': [103, 19, 4.61], 'Gap-down and go': [80, 30, 2.0], 'Gap-up and go': [67, 41, 2.0],
+    'Oversold dip in long-term uptrend': [58, 38, 3.18], 'Ascending triangle': [47, 49, 2.08], 'Descending triangle': [28, 50, 1.94], 'Symmetrical triangle': [24, 0, 5.57],
+  };
+  E.setupEdge = function (name) {
+    const s = E.SETUP_STATS[name]; if (!s || s[0] < 40) return null;
+    const p = s[1] / 100, ev = p * Math.min(s[2], 3) - (1 - p); // cap RR so rare huge targets don't dominate
+    return { n: s[0], hit: s[1], rr: s[2], ev: Math.round(ev * 100) / 100, edge: ev > 0.1 };
   };
   function setupScore(I, i) {
     const s = E.setups(I, i, 1e-9); if (!s.length) return NaN;
-    const bull = Math.max(0, ...s.filter(x => x.b > 0).map(x => x.q)), bear = Math.max(0, ...s.filter(x => x.b < 0).map(x => x.q));
+    const w = x => { const e = E.setupEdge(x.n); return e ? (e.edge ? Math.min(1, 0.5 + e.ev / 2) : 0) : 0.5; }; // untested setups count half, no-edge ones count zero
+    const bull = Math.max(0, ...s.filter(x => x.b > 0).map(x => x.q * w(x))), bear = Math.max(0, ...s.filter(x => x.b < 0).map(x => x.q * w(x)));
     return (bull - bear) / 85;
   }
 
@@ -536,6 +554,7 @@
     // one pattern per stretch of chart: drop weaker patterns that mostly overlap a stronger one
     const span = p => { const xs = p.lines.flatMap(L => L.pts.map(q => q[0])); return [Math.min(...xs), Math.max(...xs)]; };
     const kept = [];
+    for (const p of out) { const e = E.setupEdge && E.setupEdge(p.n); if (e) p.ev = e; }
     for (const p of out.filter(p => p.q >= 60).sort((a, b) => b.q - a.q)) {
       const [a1, a2] = span(p);
       if (kept.some(k => { const [b1, b2] = span(k), ov = Math.min(a2, b2) - Math.max(a1, b1); return ov > 0.6 * Math.min(a2 - a1, b2 - b1); })) continue;
@@ -684,5 +703,6 @@
     return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
   };
 
+  E._factors = (I, i, hz) => factors(I, i, hz, {});
   if (typeof module !== 'undefined' && module.exports) module.exports = E; else root.Engine = E;
 })(typeof self !== 'undefined' ? self : this);
