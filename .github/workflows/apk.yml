@@ -15,6 +15,10 @@ jobs:
       - name: Live data smoke test
         continue-on-error: true
         run: node tools/livetest.js
+      - name: Algorithm validation on real data
+        continue-on-error: true
+        timeout-minutes: 12
+        run: node tools/validate.js
       - name: Build web assets
         run: python3 build.py && rm www/desk_template.html www/tsla.json
       - name: Build APK

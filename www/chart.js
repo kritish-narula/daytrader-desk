@@ -6,7 +6,7 @@
   ];
   const IND = [
     ['e9', 'EMA 9', '#f472b6'], ['e10', 'EMA 10', '#22d3ee'], ['e20', 'EMA 20', '#4c9aff'], ['e50', 'EMA 50', '#f5b301'], ['e100', 'EMA 100', '#a3e635'], ['e200', 'EMA 200', '#c084fc'],
-    ['vwap', 'VWAP', '#fb923c'], ['bb', 'Bollinger', '#64748b'], ['st', 'Supertrend', '#10b981'], ['vol', 'Volume'], ['rsi', 'RSI'], ['macd', 'MACD'], ['lv', 'SL / Targets'],
+    ['pat', 'Patterns', '#e879f9'], ['sr', 'S/R levels', '#94a3b8'], ['vwap', 'VWAP', '#fb923c'], ['bb', 'Bollinger', '#64748b'], ['st', 'Supertrend', '#10b981'], ['vol', 'Volume'], ['rsi', 'RSI'], ['macd', 'MACD'], ['lv', 'SL / Targets'],
   ];
   const store = { get(k, d) { try { const v = localStorage.getItem('dtd2_ch_' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('dtd2_ch_' + k, JSON.stringify(v)); } catch (e) {} } };
   const ema = (a, n) => { const o = [], k = 2 / (n + 1); let p = NaN, s = 0; a.forEach((x, i) => { if (i < n) { s += x; if (i === n - 1) p = s / n; } else p = x * k + p * (1 - k); o.push(i >= n - 1 ? p : NaN); }); return o; };
@@ -85,16 +85,17 @@
 
   function open(opts) { // {sym, mkt, name, levels, iv}
     if (V) close();
-    const on = store.get('ind', { e20: 1, e50: 1, e200: 1, vol: 1, lv: 1 }), iv = opts.iv || store.get('iv', '1D');
+    const on = Object.assign({ pat: 1, sr: 1 }, store.get('ind', { e20: 1, e50: 1, e200: 1, vol: 1, lv: 1 })), iv = opts.iv || store.get('iv', '1D');
     const root = document.createElement('div'); root.className = 'cfull';
     root.innerHTML = `<div class="ctop"><button class="cbtn" data-a="x">✕</button><div class="cttl"><b>${opts.sym}</b><span id="cpx"></span></div><button class="cbtn" data-a="fit" title="Reset view">⟲</button><button class="cbtn" data-a="mode" id="cmode"></button></div>
       <div class="cchips" id="civ">${IV.map(([k]) => `<button data-iv="${k}" class="${k === iv ? 'on' : ''}">${k}</button>`).join('')}</div>
       <div class="cchips sm" id="cind">${IND.map(([k, n, col]) => `<button data-ind="${k}" class="${on[k] ? 'on' : ''}">${col ? `<i style="background:${col}"></i>` : ''}${n}</button>`).join('')}</div>
+      <div class="cchips sm" id="cpat" style="display:none"></div>
       <div class="cwrap"><div id="cmain" class="cmain"></div><div id="crsi" class="csub"></div><div id="cmacd" class="csub"></div><div class="cload" id="cload"><span class="spin"></span></div></div>
       <div class="cfoot" id="cfoot"></div>`;
     document.body.appendChild(root); document.body.style.overflow = 'hidden';
     history.pushState({ chart: 1 }, '');
-    V = { root, opts, on, iv, free: store.get('free', true), series: {}, B: [] };
+    V = { root, opts, on, iv, free: store.get('free', true), series: {}, B: [], hidden: new Set(), patSeries: [] };
     root.querySelector('[data-a=x]').onclick = close;
     root.querySelector('[data-a=fit]').onclick = () => { V.main.timeScale().fitContent(); V.main.priceScale('right').applyOptions({ autoScale: true }); V.main.timeScale().scrollToRealTime(); };
     root.querySelector('[data-a=mode]').onclick = () => { V.free = !V.free; store.set('free', V.free); applyMode(); };
@@ -140,6 +141,7 @@
     const all = [V.main, ...subs]; let lock = false;
     all.forEach(ch => ch.timeScale().subscribeVisibleLogicalRangeChange(rg => { if (lock || !rg) return; lock = true; all.forEach(o => o !== ch && o.timeScale().setVisibleLogicalRange(rg)); lock = false; }));
     applyMode();
+    V.patSeries = []; V.patLines = [];
     if (V.B.length) draw(true);
   }
   async function loadIv() {
@@ -153,6 +155,38 @@
     } catch (e) { r.querySelector('#cfoot').innerHTML = `<span class="dn">Could not load ${V.iv} data: ${e.message}</span>`; }
     if (V) r.querySelector('#cload').style.display = 'none';
   }
+  function findPatterns() {
+    const B = V.B; if (!window.Engine || B.length < 60) { V.pats = []; V.levels = []; return; }
+    const D = { t: B.map(b => b.time), o: B.map(b => b.open), h: B.map(b => b.high), l: B.map(b => b.low), c: B.map(b => b.close), v: B.map(b => b.volume || 0) };
+    try { const I = Engine.indicators(D); V.pats = Engine.chartPatterns(I, V.opts.mkt === 'IN' ? 0.05 : 0.01); V.levels = Engine.levels(I); } catch (e) { V.pats = []; V.levels = []; }
+  }
+  function drawPatterns() {
+    const S = V.series, B = V.B;
+    V.patSeries.forEach(s => { try { V.main.removeSeries(s); } catch (e) {} }); V.patSeries = [];
+    (V.patLines || []).forEach(l => { try { S.c.removePriceLine(l); } catch (e) {} }); V.patLines = [];
+    const marks = [], bar = { CE: 1 };
+    const box = V.root.querySelector('#cpat');
+    if (V.on.pat && V.pats && V.pats.length) {
+      box.style.display = ''; box.innerHTML = '<span class="cplab">Patterns:</span>' + V.pats.map(p => `<button data-pat="${p.id}" class="${V.hidden.has(p.id) ? '' : 'on'}"><i style="background:${p.b > 0 ? '#22c55e' : p.b < 0 ? '#ef4444' : '#f5b301'}"></i>${p.n} · ${p.status}</button>`).join('');
+      box.querySelectorAll('[data-pat]').forEach(b => b.onclick = () => { const id = b.dataset.pat; V.hidden.has(id) ? V.hidden.delete(id) : V.hidden.add(id); drawPatterns(); });
+      for (const p of V.pats) {
+        if (V.hidden.has(p.id)) continue;
+        for (const L of p.lines) {
+          const pts = []; let last = -1;
+          for (const [ix, val] of L.pts) { const k = Math.max(0, Math.min(B.length - 1, Math.round(ix))); if (k <= last || !isFinite(val)) continue; last = k; pts.push({ time: B[k].time, value: val }); }
+          if (pts.length < 2) continue;
+          const s = V.main.addLineSeries({ color: L.color, lineWidth: L.w || 2, lineStyle: L.dash ? 2 : 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
+          s.setData(pts); V.patSeries.push(s);
+        }
+        for (const m of p.marks) { const k = Math.max(0, Math.min(B.length - 1, m.i)); marks.push({ time: B[k].time, position: m.pos === 'above' ? 'aboveBar' : 'belowBar', color: p.b > 0 ? '#22c55e' : p.b < 0 ? '#ef4444' : '#f5b301', shape: 'circle', text: m.t }); }
+        const end = Math.max(...p.lines.flatMap(L => L.pts.map(q => q[0]))), k = Math.max(0, Math.min(B.length - 1, Math.round(end)));
+        marks.push({ time: B[k].time, position: p.b < 0 ? 'aboveBar' : 'belowBar', color: '#e879f9', shape: p.b > 0 ? 'arrowUp' : p.b < 0 ? 'arrowDown' : 'square', text: p.n });
+        if (p.target) V.patLines.push(S.c.createPriceLine({ price: p.target, color: '#e879f9', lineStyle: 3, lineWidth: 1, title: ({ 'Head & shoulders': 'H&S', 'Inverse head & shoulders': 'Inv H&S', 'Double top': 'Dbl top', 'Double bottom': 'Dbl bottom', 'Bull flag': 'Flag', 'Bear flag': 'Flag' }[p.n] || p.n.split(' ')[0]) + ' target' }));
+      }
+    } else box.style.display = 'none';
+    if (V.on.sr) for (const z of V.levels || []) V.patLines.push(S.c.createPriceLine({ price: z.p, color: z.kind === 'R' ? 'rgba(239,68,68,.55)' : 'rgba(34,197,94,.55)', lineStyle: 1, lineWidth: 1, title: `${z.kind === 'R' ? 'Resistance' : 'Support'} ×${z.n}` }));
+    marks.sort((a, b) => a.time - b.time); S.c.setMarkers(marks);
+  }
   function draw(fit) {
     const B = V.B, S = V.series, R = calc(B);
     S.c.setData(B.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
@@ -162,8 +196,9 @@
     if (S.rsi) S.rsi.setData(pts(B, R.rsi));
     if (S.mh) { S.mh.setData(B.map((b, i) => isFinite(R.macdH[i]) ? { time: b.time, value: R.macdH[i], color: R.macdH[i] >= 0 ? 'rgba(34,197,94,.6)' : 'rgba(239,68,68,.6)' } : null).filter(Boolean)); S.ml.setData(pts(B, R.macd)); S.ms.setData(pts(B, R.macdSig)); }
     if (fit) {
+      findPatterns(); drawPatterns();
       (V.lines || []).forEach(l => S.c.removePriceLine(l)); V.lines = [];
-      const L = V.opts.levels; if (V.on.lv && L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2'], [L.entry, '#8a97a6', 'Entry']].forEach(([p, color, title]) => p && V.lines.push(S.c.createPriceLine({ price: p, color, lineStyle: 2, lineWidth: 1, title })));
+      const L = V.opts.levels; if (V.on.lv && L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2'], [L.entry, '#8a97a6', 'Entry']].forEach(([p, color, title]) => p && V.lines.push(S.c.createPriceLine({ price: p, color, lineStyle: 2, lineWidth: 1, title: V.opts.hz ? `${title} · ${V.opts.hz}` : title })));
       const n = B.length, show = Math.min(n, /m$|h$/.test(V.iv) ? 120 : 150);
       V.main.timeScale().setVisibleLogicalRange({ from: n - show, to: n + 4 });
       if (!V.free) V.main.priceScale('right').applyOptions({ autoScale: true });

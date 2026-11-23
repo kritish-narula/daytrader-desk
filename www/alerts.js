@@ -30,6 +30,7 @@
   }
   // q: {sym, mkt, price, rating, action, setups[], cross[], news:{s,n,top}}, watched: bool
   function evaluate(q, watched) {
+    q = Object.assign({}, q, { setups: [...(q.setups || []), ...((q.chartPats || []).filter(p => p.status !== 'forming').map(p => ({ n: `${p.n} ${p.status}`, b: p.b, q: p.q })))] });
     const key = q.mkt + ':' + q.sym, prev = snap[key], cur = { r: q.rating, set: (q.setups || []).filter(s => s.q >= 70).map(s => s.n), x: (q.cross || []).filter(c => !c.days).map(c => c.name + c.dir), ns: q.news ? q.news.s : 0, t: Date.now() };
     const name = q.sym, cur$ = q.mkt === 'IN' ? '₹' : '$';
     if (prev) {

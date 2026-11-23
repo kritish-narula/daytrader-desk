@@ -64,7 +64,7 @@ select{background:var(--pn);color:var(--tx);border:1px solid var(--ln);border-ra
 .rk{width:18px;text-align:center;font-size:12px;color:var(--mu);font-weight:700;flex:none}
 .chips.sticky{position:sticky;top:96px;z-index:5;background:var(--bg);padding:6px 0;margin:0 -12px 8px;padding-left:12px;padding-right:12px}
 .btn.sm{padding:7px 11px;font-size:13px;border-radius:9px}
-.pvhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}.pvhead b{font-size:15px}.pvhead .note{flex:1}
+.pvhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}.pvhead b{font-size:15px}
 .pv{height:230px;border-radius:10px;overflow:hidden;cursor:zoom-in}
 .setup{padding:10px 0;border-bottom:1px solid var(--ln)}.setup:last-child{border:0}
 .setup .sh{display:flex;align-items:center;gap:6px}.setup .sh b{flex:1;font-size:14px}.setup .q{font-weight:800;font-size:16px}
@@ -130,3 +130,8 @@ h3 .note{text-transform:none;letter-spacing:0;font-weight:500}
 .sh-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.sh-h b{font-size:17px}.sh-b{font-size:14.5px;line-height:1.55;margin-bottom:14px}
 .ipod{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:8px}.ipod>div{background:var(--pn2);border-radius:9px;padding:6px 5px;text-align:center}.ipod span{display:block;font-size:9.5px;color:var(--mu);font-weight:700;text-transform:uppercase}.ipod b{font-size:12px}
 .ipow{font-size:12.5px;font-weight:700;color:var(--ac);margin-top:6px}
+.pvtg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mu);flex:1;justify-content:flex-end;margin-right:6px}.tg.sm{width:36px;height:21px}.tg.sm:after{width:15px;height:15px}.tg.sm:checked:after{left:18px}
+.cplab{font-size:11px;color:var(--mu);align-self:center;flex:none}
+
+.bell[data-n]:not([data-n=""]):after{min-width:19px;height:19px;line-height:19px;font-size:11px;top:-7px;right:-7px;box-shadow:0 0 0 2px #0a0e13}
+.bell.pop{animation:bellpop .7s ease}@keyframes bellpop{0%{transform:scale(1)}25%{transform:scale(1.25) rotate(-12deg)}50%{transform:scale(1.15) rotate(10deg)}75%{transform:rotate(-6deg)}100%{transform:none}}

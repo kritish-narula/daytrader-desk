@@ -96,7 +96,7 @@
     const hi = [], lo = [];
     for (let j = Math.max(i0, k); j <= i1 - k; j++) {
       let H1 = true, L1 = true;
-      for (let m = j - k; m <= j + k; m++) { if (D.h[m] > D.h[j]) H1 = false; if (D.l[m] < D.l[j]) L1 = false; }
+      for (let m = j - k; m <= j + k; m++) { if (m < j ? D.h[m] >= D.h[j] : D.h[m] > D.h[j]) H1 = false; if (m < j ? D.l[m] <= D.l[j] : D.l[m] < D.l[j]) L1 = false; }
       if (H1) hi.push(j); if (L1) lo.push(j);
     }
     return { hi, lo };
@@ -354,7 +354,7 @@
     const hi = [], lo = [];
     for (let i = i0 + k; i <= i1 - k; i++) {
       let H1 = true, L1 = true;
-      for (let j = i - k; j <= i + k; j++) { if (D.h[j] > D.h[i]) H1 = false; if (D.l[j] < D.l[i]) L1 = false; }
+      for (let j = i - k; j <= i + k; j++) { if (j < i ? D.h[j] >= D.h[i] : D.h[j] > D.h[i]) H1 = false; if (j < i ? D.l[j] <= D.l[i] : D.l[j] < D.l[i]) L1 = false; }
       if (H1) hi.push(i); if (L1) lo.push(i);
     }
     return { hi, lo };
@@ -416,6 +416,143 @@
     return P;
   };
 
+  // ---------- geometric chart patterns with drawable lines ----------
+  // Returns [{id, n, b, q, status, note, target, stop, lines:[{pts:[[i,p],[i,p]...], color, dash}], marks:[{i, p, t, pos}]}]
+  // Strict rules: only well-formed, recent patterns are returned.
+  function fitLine(xs, ys) { const n = xs.length, mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n; let sxy = 0, sxx = 0; for (let k = 0; k < n; k++) { sxy += (xs[k] - mx) * (ys[k] - my); sxx += (xs[k] - mx) ** 2; } const m = sxx ? sxy / sxx : 0; return { m, b: my - m * mx, at: x => my + m * (x - mx) }; }
+  E.chartPatterns = function (I, tick = 0.05) {
+    const D = I.D, n = I.n, i = n - 1, h = D.h, l = D.l, c = D.c, out = [];
+    if (n < 60) return out;
+    const R = x => roundTick(x, tick), at = I.atr[i] || (h[i] - l[i]);
+    const GREEN = '#22c55e', RED = '#ef4444', BLUE = '#4c9aff', GOLD = '#f5b301';
+    const pv = pivotsUpTo(D, Math.max(0, n - 160), i, 4), PH = pv.hi, PL = pv.lo;
+    // ---- head & shoulders (top) and inverse ----
+    const hs = (P, V, top) => {
+      const val = top ? h : l, opp = top ? l : h, sg = top ? 1 : -1;
+      for (let k = P.length - 1; k >= 2; k--) {
+        const ls = P[k - 2], hd = P[k - 1], rs = P[k];
+        if (i - rs > 40) break;
+        const H = val[hd], LS = val[ls], RS = val[rs];
+        if (sg * (H - LS) < 1.5 * at || sg * (H - RS) < 1.5 * at) continue;            // head clearly beyond both shoulders
+        if (Math.abs(LS - RS) / H > 0.05) continue;                                      // shoulders roughly level
+        const w1 = hd - ls, w2 = rs - hd; if (w1 < 5 || w2 < 5 || w2 / w1 > 2.2 || w1 / w2 > 2.2) continue; // time symmetry
+        const t1 = V.filter(j => j > ls && j < hd), t2 = V.filter(j => j > hd && j < rs); if (!t1.length || !t2.length) continue;
+        const n1 = t1.reduce((a, j) => (sg * opp[j] < sg * opp[a] ? j : a), t1[0]), n2 = t2.reduce((a, j) => (sg * opp[j] < sg * opp[a] ? j : a), t2[0]);
+        const neck = fitLine([n1, n2], [opp[n1], opp[n2]]);
+        if (Math.abs(neck.m) * (n2 - n1) > 0.6 * Math.abs(H - neck.at(hd))) continue;   // neckline not too steep
+        // prior trend into the pattern
+        const pre = Math.max(0, ls - 20); if (sg * (val[ls] - c[pre]) < 0) continue;
+        const depth = Math.abs(H - neck.at(hd)), nk = neck.at(i);
+        let broke = -1; for (let j = rs + 1; j <= i; j++) if (sg * (c[j] - neck.at(j)) < 0) { broke = j; break; }
+        if (broke < 0 && sg * (c[i] - val[rs]) > 0) continue;                             // price back above right shoulder: invalid
+        const status = broke >= 0 ? 'confirmed' : 'forming', tgt = nk - sg * depth;
+        const q = 64 + (broke >= 0 ? 12 : 0) + (Math.abs(LS - RS) / H < 0.025 ? 6 : 0) + (I.v20[rs] && D.v[rs] < I.v20[rs] ? 4 : 0);
+        out.push({ id: (top ? 'hs' : 'ihs') + hd, n: top ? 'Head & shoulders' : 'Inverse head & shoulders', b: -sg, q, status,
+          note: `${status === 'confirmed' ? 'Neckline broken' : 'Neckline ' + R(nk) + ': a close ' + (top ? 'below' : 'above') + ' confirms'}. Pattern target ${R(tgt)}.`,
+          target: R(tgt), stop: R(val[rs] + sg * 0.2 * at),
+          lines: [{ pts: [[ls, LS], [n1, opp[n1]], [hd, H], [n2, opp[n2]], [rs, RS]], color: top ? RED : GREEN, w: 2 },
+                  { pts: [[Math.max(0, n1 - 5), neck.at(Math.max(0, n1 - 5))], [i, nk]], color: GOLD, dash: 1, label: 'Neckline' }],
+          marks: [{ i: ls, p: LS, t: 'LS', pos: top ? 'above' : 'below' }, { i: hd, p: H, t: 'H', pos: top ? 'above' : 'below' }, { i: rs, p: RS, t: 'RS', pos: top ? 'above' : 'below' }] });
+        return;
+      }
+    };
+    hs(PH, PL, true); hs(PL, PH, false);
+    // ---- double top / bottom ----
+    const dbl = (P, V, top) => {
+      const val = top ? h : l, opp = top ? l : h, sg = top ? 1 : -1;
+      if (P.length < 2) return; const a = P[P.length - 2], b2 = P[P.length - 1];
+      if (b2 - a < 10 || i - b2 > 30 || Math.abs(val[a] - val[b2]) / val[a] > 0.03) return;
+      const mid = V.filter(j => j > a && j < b2); if (!mid.length) return;
+      const nkI = mid.reduce((x, j) => (sg * opp[j] < sg * opp[x] ? j : x), mid[0]), nk = opp[nkI], depth = Math.abs((val[a] + val[b2]) / 2 - nk);
+      if (depth < 2 * at) return;
+      let broke = false; for (let j = b2 + 1; j <= i; j++) if (sg * (c[j] - nk) < 0) broke = true;
+      if (!broke && sg * (c[i] - Math.max(sg * val[a], sg * val[b2]) * sg) > 0) return;
+      out.push({ id: (top ? 'dt' : 'db') + a, n: top ? 'Double top' : 'Double bottom', b: -sg, q: 60 + (broke ? 12 : 0) + (b2 - a >= 20 ? 4 : 0), status: broke ? 'confirmed' : 'forming',
+        note: `Two ${top ? 'peaks' : 'troughs'} near ${R((val[a] + val[b2]) / 2)}; neckline ${R(nk)}. Target ${R(nk - sg * depth)}.`, target: R(nk - sg * depth), stop: R((top ? Math.max : Math.min)(val[a], val[b2]) + sg * 0.2 * at),
+        lines: [{ pts: [[a, val[a]], [nkI, nk], [b2, val[b2]]], color: top ? RED : GREEN, w: 2 }, { pts: [[a, nk], [i, nk]], color: GOLD, dash: 1, label: 'Neckline' }],
+        marks: [{ i: a, p: val[a], t: top ? 'Top 1' : 'Bottom 1', pos: top ? 'above' : 'below' }, { i: b2, p: val[b2], t: top ? 'Top 2' : 'Bottom 2', pos: top ? 'above' : 'below' }] });
+    };
+    dbl(PH, PL, true); dbl(PL, PH, false);
+    // ---- flag with pole (bull and bear) ----
+    for (let fl = 4; fl <= 15; fl++) {
+      const pe = i - fl, ps = pe - 12; if (ps < 0) break;
+      let lo = ps; for (let j = ps; j <= pe; j++) if (l[j] < l[lo]) lo = j;
+      let hi = lo; for (let j = lo; j <= pe; j++) if (h[j] > h[hi]) hi = j;
+      const poleUp = h[hi] - l[lo];
+      if (hi >= lo + 3 && hi >= pe - 2 && poleUp / l[lo] > 0.08 && poleUp > 4 * at) {
+        const xs = [], hs2 = [], ls2 = []; for (let j = hi; j <= i; j++) { xs.push(j); hs2.push(h[j]); ls2.push(l[j]); }
+        if (xs.length < 4) continue;
+        const up = fitLine(xs, hs2), dn = fitLine(xs, ls2), flagH = Math.max(...hs2) - Math.min(...ls2);
+        const parallel = Math.abs(up.m - dn.m) * xs.length < 0.6 * flagH, retr = (h[hi] - Math.min(...ls2)) / poleUp;
+        if (up.m <= at * 0.15 && parallel && retr < 0.5 && flagH < 0.6 * poleUp) {
+          const brk = c[i] > up.at(i), tgt = (brk ? up.at(i) : h[hi]) + poleUp;
+          out.push({ id: 'bf' + hi, n: 'Bull flag', b: 1, q: 64 + (brk ? 12 : 0) + (retr < 0.35 ? 6 : 0) + (I.v20[i] && D.v.slice(hi, i + 1).reduce((a2, b3) => a2 + b3, 0) / xs.length < I.v20[i] ? 4 : 0), status: brk ? 'breaking out' : 'forming',
+            note: `Pole +${(poleUp / l[lo] * 100).toFixed(1)}%, ${xs.length}-bar flag retracing ${(retr * 100).toFixed(0)}%. ${brk ? 'Broke the flag top.' : 'Buy on a close above ' + R(up.at(i)) + '.'} Target ${R(tgt)}.`,
+            target: R(tgt), stop: R(dn.at(i) - 0.2 * at),
+            lines: [{ pts: [[lo, l[lo]], [hi, h[hi]]], color: GREEN, w: 3, label: 'Pole' }, { pts: [[hi, up.at(hi)], [i, up.at(i)]], color: BLUE }, { pts: [[hi, dn.at(hi)], [i, dn.at(i)]], color: BLUE }],
+            marks: [{ i: hi, p: h[hi], t: 'Flag', pos: 'above' }] });
+          break;
+        }
+      }
+      let hiB = ps; for (let j = ps; j <= pe; j++) if (h[j] > h[hiB]) hiB = j;
+      let loB = hiB; for (let j = hiB; j <= pe; j++) if (l[j] < l[loB]) loB = j;
+      const poleDn = h[hiB] - l[loB];
+      if (loB >= hiB + 3 && loB >= pe - 2 && poleDn / h[hiB] > 0.08 && poleDn > 4 * at) {
+        const xs = [], hs2 = [], ls2 = []; for (let j = loB; j <= i; j++) { xs.push(j); hs2.push(h[j]); ls2.push(l[j]); }
+        if (xs.length < 4) continue;
+        const up = fitLine(xs, hs2), dn = fitLine(xs, ls2), flagH = Math.max(...hs2) - Math.min(...ls2);
+        const parallel = Math.abs(up.m - dn.m) * xs.length < 0.6 * flagH, retr = (Math.max(...hs2) - l[loB]) / poleDn;
+        if (dn.m >= -at * 0.15 && parallel && retr < 0.5 && flagH < 0.6 * poleDn) {
+          const brk = c[i] < dn.at(i), tgt = (brk ? dn.at(i) : l[loB]) - poleDn;
+          out.push({ id: 'brf' + loB, n: 'Bear flag', b: -1, q: 64 + (brk ? 12 : 0) + (retr < 0.35 ? 6 : 0), status: brk ? 'breaking down' : 'forming',
+            note: `Pole −${(poleDn / h[hiB] * 100).toFixed(1)}%, ${xs.length}-bar flag. ${brk ? 'Broke the flag bottom.' : 'Sell on a close below ' + R(dn.at(i)) + '.'} Target ${R(tgt)}.`,
+            target: R(tgt), stop: R(up.at(i) + 0.2 * at),
+            lines: [{ pts: [[hiB, h[hiB]], [loB, l[loB]]], color: RED, w: 3, label: 'Pole' }, { pts: [[loB, up.at(loB)], [i, up.at(i)]], color: BLUE }, { pts: [[loB, dn.at(loB)], [i, dn.at(i)]], color: BLUE }],
+            marks: [{ i: loB, p: l[loB], t: 'Flag', pos: 'below' }] });
+          break;
+        }
+      }
+    }
+    // ---- triangles (ascending / descending / symmetrical) ----
+    const rH = PH.filter(j => j >= i - 90), rL = PL.filter(j => j >= i - 90);
+    if (rH.length >= 2 && rL.length >= 2) {
+      const tH = rH.slice(-3), tL = rL.slice(-3), up = fitLine(tH, tH.map(j => h[j])), dn = fitLine(tL, tL.map(j => l[j]));
+      const x0 = Math.min(tH[0], tL[0]), span = i - x0, w0 = up.at(x0) - dn.at(x0), wi = up.at(i) - dn.at(i);
+      const flat = m => Math.abs(m) * span < 0.8 * at, rising = m => m * span > 1.2 * at, falling = m => m * span < -1.2 * at;
+      let viol = 0; for (let j = x0; j <= i - 1; j++) if (c[j] > up.at(j) + 0.3 * at || c[j] < dn.at(j) - 0.3 * at) viol++;
+      const touchesOk = tH.every(j => Math.abs(h[j] - up.at(j)) < 0.6 * at) && tL.every(j => Math.abs(l[j] - dn.at(j)) < 0.6 * at);
+      const mono = (xs, v, s) => xs.every((x, k) => !k || s * (v[x] - v[xs[k - 1]]) > 0);
+      let kind = null; if (!(flat(up.m) || mono(tH, h, -1)) || !(flat(dn.m) || mono(tL, l, 1))) kind = null; else if (flat(up.m) && rising(dn.m)) kind = ['Ascending triangle', 1]; else if (falling(up.m) && flat(dn.m)) kind = ['Descending triangle', -1]; else if (falling(up.m) && rising(dn.m)) kind = ['Symmetrical triangle', 0];
+      if (kind && span >= 15 && w0 > 3 * at && wi > 0 && wi < 0.75 * w0 && viol <= 2 && touchesOk) {
+        const bu = c[i] > up.at(i), bd = c[i] < dn.at(i), dir = bu ? 1 : bd ? -1 : kind[1];
+        const tgt = dir >= 0 ? up.at(i) + w0 : dn.at(i) - w0;
+        out.push({ id: 'tri' + x0, n: kind[0], b: dir, q: 60 + (bu || bd ? 14 : 0) + (tH.length + tL.length >= 5 ? 6 : 0), status: bu ? 'breaking out' : bd ? 'breaking down' : 'forming',
+          note: `${tH.length} touches on top, ${tL.length} on the bottom. ${bu ? 'Broke out above ' + R(up.at(i)) : bd ? 'Broke down below ' + R(dn.at(i)) : 'Watch ' + R(up.at(i)) + ' (up) / ' + R(dn.at(i)) + ' (down)'}. Target ${R(tgt)}.`,
+          target: R(tgt), stop: R(dir >= 0 ? dn.at(i) - 0.2 * at : up.at(i) + 0.2 * at),
+          lines: [{ pts: [[x0, up.at(x0)], [i, up.at(i)]], color: RED, label: 'Resistance' }, { pts: [[x0, dn.at(x0)], [i, dn.at(i)]], color: GREEN, label: 'Support' }],
+          marks: [] });
+      }
+    }
+    // one pattern per stretch of chart: drop weaker patterns that mostly overlap a stronger one
+    const span = p => { const xs = p.lines.flatMap(L => L.pts.map(q => q[0])); return [Math.min(...xs), Math.max(...xs)]; };
+    const kept = [];
+    for (const p of out.filter(p => p.q >= 60).sort((a, b) => b.q - a.q)) {
+      const [a1, a2] = span(p);
+      if (kept.some(k => { const [b1, b2] = span(k), ov = Math.min(a2, b2) - Math.max(a1, b1); return ov > 0.6 * Math.min(a2 - a1, b2 - b1); })) continue;
+      kept.push(p);
+    }
+    return kept;
+  };
+  // horizontal support / resistance: price zones touched 3+ times (pivot clusters), nearest above and below
+  E.levels = function (I) {
+    const D = I.D, i = I.n - 1, at = I.atr[i] || 1, pv = pivotsUpTo(D, Math.max(0, i - 250), i, 3);
+    const pts = [...pv.hi.map(j => D.h[j]), ...pv.lo.map(j => D.l[j])].sort((a, b) => a - b), Z = [];
+    for (const p of pts) { const z = Z.find(z => Math.abs(z.p - p) < 0.5 * at); if (z) { z.p = (z.p * z.n + p) / (z.n + 1); z.n++; } else Z.push({ p, n: 1 }); }
+    const c = D.c[i], strong = Z.filter(z => z.n >= 3);
+    const above = strong.filter(z => z.p > c).sort((a, b) => a.p - b.p).slice(0, 2), below = strong.filter(z => z.p < c).sort((a, b) => b.p - a.p).slice(0, 2);
+    return [...above.map(z => ({ p: z.p, n: z.n, kind: 'R' })), ...below.map(z => ({ p: z.p, n: z.n, kind: 'S' }))];
+  };
+
   // ---------- EMA cross forecast ----------
   E.emaCross = function (I) {
     const i = I.n - 1, out = [];
@@ -465,7 +602,7 @@
     const hi52 = maxIn(D.h, i - 251, i), lo52 = minIn(D.l, i - 251, i);
     const res = {
       price, prev: D.c[i - 1], chg: (price / D.c[i - 1] - 1) * 100, overall, overallAction: action(overall, 'swing', opts.canShort).a,
-      horizons: hz, patterns: pats, cross, setups: sets,
+      horizons: hz, patterns: pats, cross, setups: sets, chartPats: E.chartPatterns(I, tick), srLevels: E.levels(I),
       stats: { ret63: I.n > 63 ? (D.c[i] / D.c[i - 63] - 1) * 100 : NaN, ret126: I.n > 126 ? (D.c[i] / D.c[i - 126] - 1) * 100 : NaN, turnover: (() => { let s = 0, m = 0; for (let j = Math.max(0, i - 19); j <= i; j++) { s += D.c[j] * (D.v[j] || 0); m++; } return s / m; })(), rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
       I,
     };
@@ -544,7 +681,7 @@
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
     const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt } : h;
-    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
+    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = E; else root.Engine = E;
