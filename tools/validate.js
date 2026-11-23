@@ -31,7 +31,7 @@ async function run(SYMS, label, doPatterns) {
       }
       if (i % 6 === 0) {
         const f10 = (D.c[i + 10] / D.c[i] - 1) * 100, f20 = (D.c[i + 20] / D.c[i] - 1) * 100;
-        for (const hz of ['swing', 'short']) for (const f of E._factors(I, k, hz)) { const key = hz + ': ' + f[2]; const X = ic[key] = ic[key] || { x: [], y: [] }; X.x.push(f[1]); X.y.push(hz === 'swing' ? f10 : f20); }
+        for (const hz of ['swing', 'short']) for (const f of E._factors(I, k, hz)) { const key = hz + ': ' + String(f[2]).replace(/[-+]?\d+(\.\d+)?×?%?/g, '#'); const X = ic[key] = ic[key] || { x: [], y: [] }; X.x.push(f[1]); X.y.push(hz === 'swing' ? f10 : f20); }
         const A = E.analyze(W, { backtest: false }); if (A.err) continue;
         const add = (o, r, f) => (o[bk(r)] = o[bk(r)] || []).push(f);
         add(B.rating, E.rating(A).rating, f10); add(B.swing, A.horizons.swing.score, f10); add(B.short, A.horizons.short.score, f20);

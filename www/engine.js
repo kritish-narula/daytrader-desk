@@ -201,19 +201,38 @@
   };
   // Measured on real data (tools/validate.js: 40 NSE large caps, 5 years daily, walk-forward, target vs stop within 30 days).
   // [signals, target-first %, avg reward:risk]. Expectancy = p·RR − (1 − p) in R units.
+  // [signals, target-first %, avg reward:risk, edge in BOTH train (40 large caps) and out-of-sample test (40 other stocks)]
   E.SETUP_STATS = {
-    'SMC: Retest of bullish fair value gap': [1366, 54, 1.53], 'Pullback to 20 EMA in uptrend': [1352, 27, 4.32], 'SMC: Retest of bearish fair value gap': [1097, 40, 1.62],
-    'Double bottom': [781, 76, 1.51], 'Double top': [780, 47, 4.83], 'Pocket pivot': [772, 35, 2.0], 'SMC: Liquidity sweep above highs': [626, 31, 2.94],
-    'Rally into 20 EMA in downtrend': [603, 17, 3.66], 'SMC: Liquidity sweep below lows': [555, 39, 2.81], 'SMC: Break of structure (bullish)': [423, 28, 2.0],
-    'Head & shoulders': [414, 36, 9.68], 'Inverse head & shoulders': [383, 73, 2.26], 'SMC: Change of character (bullish)': [372, 39, 2.0],
-    'SMC: Change of character (bearish)': [355, 22, 2.0], 'Bull flag': [328, 22, 4.27], 'SMC: Break of structure (bearish)': [309, 23, 2.0], 'Bear flag': [269, 8, 5.05],
-    'Clean volume breakout': [244, 33, 2.0], 'VCP (volatility contraction) forming': [103, 19, 4.61], 'Gap-down and go': [80, 30, 2.0], 'Gap-up and go': [67, 41, 2.0],
-    'Oversold dip in long-term uptrend': [58, 38, 3.18], 'Ascending triangle': [47, 49, 2.08], 'Descending triangle': [28, 50, 1.94], 'Symmetrical triangle': [24, 0, 5.57],
+    'SMC: Retest of bullish fair value gap': [2728, 51, 1.52, 1],
+    'Pullback to 20 EMA in uptrend': [2609, 27, 4.23, 1],
+    'SMC: Retest of bearish fair value gap': [2179, 40, 1.67, 1],
+    'Double top': [1497, 47, 3.71, 1],
+    'Double bottom': [1456, 73, 1.92, 1],
+    'Pocket pivot': [1392, 35, 2.0, 1],
+    'SMC: Liquidity sweep above highs': [1235, 32, 2.95, 1],
+    'Rally into 20 EMA in downtrend': [1326, 19, 3.71, 0],
+    'SMC: Liquidity sweep below lows': [1138, 40, 2.65, 1],
+    'SMC: Break of structure (bullish)': [807, 32, 2.0, 0],
+    'Head & shoulders': [746, 41, 8.44, 1],
+    'Inverse head & shoulders': [755, 69, 2.99, 1],
+    'SMC: Change of character (bullish)': [732, 37, 2.0, 1],
+    'SMC: Change of character (bearish)': [705, 23, 2.0, 0],
+    'Bull flag': [670, 24, 4.39, 1],
+    'SMC: Break of structure (bearish)': [669, 20, 2.0, 0],
+    'Bear flag': [575, 8, 4.81, 0],
+    'Clean volume breakout': [519, 37, 2.0, 0],
+    'VCP (volatility contraction) forming': [205, 20, 5.64, 1],
+    'Gap-down and go': [148, 26, 2.0, 0],
+    'Gap-up and go': [153, 42, 2.0, 1],
+    'Oversold dip in long-term uptrend': [124, 28, 3.29, 0],
+    'Ascending triangle': [82, 45, 2.2, 1],
+    'Descending triangle': [74, 34, 1.88, 0],
+    'Symmetrical triangle': [52, 0, 4.61, 0],
   };
   E.setupEdge = function (name) {
-    const s = E.SETUP_STATS[name]; if (!s || s[0] < 40) return null;
+    const s = E.SETUP_STATS[name]; if (!s || s[0] < 60) return null;
     const p = s[1] / 100, ev = p * Math.min(s[2], 3) - (1 - p); // cap RR so rare huge targets don't dominate
-    return { n: s[0], hit: s[1], rr: s[2], ev: Math.round(ev * 100) / 100, edge: ev > 0.1 };
+    return { n: s[0], hit: s[1], rr: s[2], ev: Math.round(ev * 100) / 100, edge: !!s[3] && ev > 0.05, be: Math.round(100 / (1 + s[2])) };
   };
   function setupScore(I, i) {
     const s = E.setups(I, i, 1e-9); if (!s.length) return NaN;
@@ -246,27 +265,23 @@
     const trendStrong = I.adx[i] > 20;
     if (hz === 'swing') {
       add(2, sgn(I.e9[i] - I.e21[i]), 'EMA 9 above EMA 21', 'EMA 9 below EMA 21');
-      add(1.5, sgn(c - I.e20[i]), 'Price above 20 EMA', 'Price below 20 EMA');
-      add(1.5, mh > 0 ? (mh > mp ? 1 : 0.3) : (mh > mp ? -0.3 : -1), 'MACD momentum rising', 'MACD momentum falling');
+      add(0.75, sgn(c - I.e20[i]), 'Price above 20 EMA', 'Price below 20 EMA');
+      add(0.25, mh > 0 ? (mh > mp ? 1 : 0.3) : (mh > mp ? -0.3 : -1), 'MACD momentum rising', 'MACD momentum falling'); // IC < 0 in both test sets: near-zero weight
       add(1.5, r > 78 ? -0.5 : r > 68 ? 0.3 : r >= 50 ? 1 : r >= 40 ? -0.3 : r >= 30 ? -0.7 : 0.2, `RSI ${r | 0} in bullish zone`, r > 78 ? `RSI ${r | 0} overbought` : `RSI ${r | 0} weak`);
       add(1.5, I.st.dir[i], 'Supertrend bullish', 'Supertrend bearish');
       add(1, volx > 1.5 ? sgn(c - C[i - 1]) : 0, `Volume ${volx.toFixed(1)}× average on an up day`, `Volume ${volx.toFixed(1)}× average on a down day`);
       add(1, c > hi20 ? 1 : c < lo20 ? -1 : 0, 'Closed above 20-day high', 'Closed below 20-day low');
       add(1, sgn(c - I.e50[i]), 'Above 50 EMA (trend support)', 'Below 50 EMA');
-      const ext = (c - I.e20[i]) / I.atr[i];
-      if (Math.abs(ext) > 2.5) f.push([1.75, clamp(-(Math.abs(ext) - 2.5) * Math.sign(ext)), 'Stretched below 20 EMA (snap-back risk for shorts)', `Stretched ${ext.toFixed(1)}× ATR above 20 EMA (chasing risk)`]);
-      const day = (c / C[i - 1] - 1) * 100 / (I.atr[i] / c * 100);
-      if (day > 2) f.push([1, -clamp((day - 2) / 2), '', `Today's move is ${day.toFixed(1)}× a normal day (wait for a pullback)`]);
+      // (a "chasing" penalty for stretched stocks was removed: on real data stretched stocks kept going — IC −0.04 in both test sets)
     } else if (hz === 'short') {
       add(2, sgn(I.e20[i] - I.e50[i]), '20 EMA above 50 EMA', '20 EMA below 50 EMA');
       add(1.5, sgn(c - I.e50[i]), 'Price above 50 EMA', 'Price below 50 EMA');
       add(1.5, trendStrong ? sgn(I.pdi[i] - I.mdi[i]) : 0, `ADX ${I.adx[i] | 0}: strong uptrend`, `ADX ${I.adx[i] | 0}: strong downtrend`);
       add(1.5, roc(20) / 10, `+${roc(20).toFixed(1)}% in 1 month`, `${roc(20).toFixed(1)}% in 1 month`);
-      add(1, sgn(mh), 'MACD above signal', 'MACD below signal');
+      add(0.5, sgn(mh), 'MACD above signal', 'MACD below signal');
       add(1, c > hi20 ? 1 : c < lo20 ? -1 : 0, '20-day breakout', '20-day breakdown');
       add(1, r >= 50 && r <= 72 ? 1 : r > 72 ? 0 : -1, 'RSI supports trend', 'RSI below 50');
-      const ext = (c - I.e50[i]) / I.atr[i];
-      if (ext > 5) f.push([1.5, -clamp((ext - 5) / 3), '', `Extended ${ext.toFixed(1)}× ATR above 50 EMA`]);
+
     } else if (hz === 'medium') {
       add(2, sgn(I.e50[i] - I.e150[i]), '50 EMA above 150 EMA', '50 EMA below 150 EMA');
       add(1.5, sgn(c - I.e150[i]), 'Above 30-week average', 'Below 30-week average');

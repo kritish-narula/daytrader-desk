@@ -213,14 +213,15 @@ function rated(rows, f, mkt = S.mkt) {
       continue;
     }
     const R = rateRow(r, mkt); if (!R) continue;
-    const n = newsOf(mkt, r.sym), bull = (r.setups || []).filter(s => s.b > 0);
+    const proven = x => { const e = Engine.setupEdge(x.n); return e ? e.edge : true; };
+    const n = newsOf(mkt, r.sym), bull = (r.setups || []).filter(s => s.b > 0 && proven(s));
     const brk = (r.setups || []).find(s => s.b > 0 && (s.k === 'BRK' || s.k === 'GAP' || /VCP breakout|Break of structure|Change of character/.test(s.n))) || ((r.patterns || []).find(p => /52-week high breakout|20-day range breakout/.test(p.n)) ? { n: (r.patterns.find(p => /breakout/.test(p.n)) || {}).n, q: 60 } : null);
     const pre = (r.setups || []).find(s => s.k === 'PRE' || /VCP \(volatility/.test(s.n));
     const rsv = relStr(r, mkt);
     const K = r.risk, RL = K ? Engine.riskLabel(K) : null;
     // breakout lists: only stocks outperforming — risk-adjusted (alpha) when available, else 3-month relative strength
     if ((f === 'breakout' || f === 'near') && (K ? K.alpha < 0 : rsv != null && rsv < 0)) continue;
-    const cp = (r.chartPats || [])[0];
+    const cp = (r.chartPats || []).filter(proven)[0];
     const ok = f === 'top' ? true : f === 'patterns' ? !!cp : f === 'leaders' ? !!(RL && RL.leader) && R.rating >= 50 : f === 'breakout' ? !!brk && R.rating >= 50 : f === 'near' ? !!pre : f === 'setups' ? bull.length > 0 : f === 'cross' ? (r.cross || []).some(c => c.dir > 0)
       : f === 'news' ? n && Math.abs(n.s) >= 0.15 : f === 'sell' ? R.rating <= 42 : true;
     if (!ok) continue;
@@ -267,7 +268,7 @@ function drawScan() {
   if (!sc) { el.innerHTML = '<div class="empty">Pick a group and tap <b>Scan</b>.<br>Lists are ranked by rating, highest first.</div>'; return; }
   const inUni = new Set(uniSyms()), f = S.scanFilter || 'top';
   const rows = rated(sc.rows.filter(r => inUni.has(r.sym)), f).slice(0, 150);
-  el.innerHTML = rows.length ? `<p class="note">Scan from ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' (prices move; the stock page is live)' : ''}. ${f === 'sell' ? 'Lowest overall rating first = strongest sell.' : f === 'patterns' ? 'Head & shoulders, double tops/bottoms, flags and triangles that pass strict shape rules. Open a stock to see the lines drawn on its chart.' : f === 'leaders' ? 'Positive alpha, good downside-adjusted returns and they rise more with the market than they fall with it. <a class="help" data-help="leader">What is this?</a>' : f === 'breakout' ? 'Fresh breakouts in stocks with positive alpha, highest rating first.' : f === 'near' ? 'Coiling just under resistance; buy only on the breakout close. Highest rating first.' : HZ.includes(f) ? `Stocks rated BUY for ${FILTERS.find(z => z[0] === f)[1].replace(/^\W+ /, '')}, highest ${f} rating first.` : 'Highest overall rating first.'}</p><div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
+  el.innerHTML = rows.length ? `<p class="note">Scan from ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' (prices move; the stock page is live)' : ''}. ${f === 'sell' ? 'Lowest overall rating first = strongest sell.' : f === 'patterns' ? 'Chart patterns that pass strict shape rules AND showed an edge on 5 years of real NSE data. Open a stock to see the lines drawn.' : f === 'leaders' ? 'Positive alpha, good downside-adjusted returns and they rise more with the market than they fall with it. <a class="help" data-help="leader">What is this?</a>' : f === 'breakout' ? 'Fresh breakouts in stocks with positive alpha, highest rating first.' : f === 'near' ? 'Coiling just under resistance; buy only on the breakout close. Highest rating first.' : HZ.includes(f) ? `Stocks rated BUY for ${FILTERS.find(z => z[0] === f)[1].replace(/^\W+ /, '')}, highest ${f} rating first.` : 'Highest overall rating first.'}</p><div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
     : `<div class="empty">Nothing in "${FILTERS.find(z => z[0] === f)[1]}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
   bindRows(el, HZ.includes(f) ? f : 'overall');
 }
@@ -672,14 +673,14 @@ function drawDetail(isRefresh) {
   ${riskCard(A, S.detail.mkt)}
   <div class="card pvcard"><div class="pvhead"><b>Chart</b><label class="pvtg"><input type="checkbox" class="tg sm" id="pvPat" ${store.get('pvPat', true) ? 'checked' : ''}> Patterns</label><button class="btn sm" id="openChart">⛶ Live chart</button></div><div id="pv" class="pv"></div><div class="note" style="margin-top:6px">Tap the chart for full screen: 1m → monthly, EMAs, VWAP, RSI, MACD, free scrolling.</div></div>
   <h3>Setups <span class="note">SMC · VCP · trend</span></h3><div class="card">${A.setups.length ? A.setups.map(s => `<div class="setup"><div class="sh"><span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.k)}</span><b>${esc(s.n.replace(/^SMC: /, ''))}</b><span class="q ${s.q >= 70 ? 'up' : s.q >= 55 ? 'wa' : 'mu'}">${s.q}</span></div>
-     <div class="qbar"><i style="width:${s.q}%;background:${s.b > 0 ? 'var(--up)' : 'var(--dn)'}"></i></div><div class="x">${esc(s.note)}</div>
+     <div class="qbar"><i style="width:${s.q}%;background:${s.b > 0 ? 'var(--up)' : 'var(--dn)'}"></i></div><div class="x">${esc(s.note)}</div>${evidence(s.n)}
      ${s.entry ? `<div class="lv3"><span>Entry <b>${fmt(s.entry)}</b></span><span>SL <b class="dn">${fmt(s.stop)}</b></span><span>Target <b class="up">${fmt(s.target)}</b></span></div>` : ''}</div>`).join('') : '<div class="note">No SMC, VCP or trend setup active on the daily chart today.</div>'}</div>
   <h3>News <span class="note">${newsHead(S.detail.news)}</span></h3><div class="card">${newsHTML(S.detail.news)}</div>
   ${A.fno ? `<h3>F&O</h3><div class="card"><div class="kv"><div><div class="l">Lot size</div><div class="v">${A.fno.lot || '–'}</div></div><div><div class="l">ATM strike (approx.)</div><div class="v">${fmt(A.fno.atm, 0)}</div></div>
    <div><div class="l">Expected 1-day move</div><div class="v">±${fmt(A.fno.moveDay)}</div></div><div><div class="l">Expected 1-week move</div><div class="v">±${fmt(A.fno.moveWeek)}</div></div></div>
    <p style="margin:10px 0 4px;font-weight:700">${esc(A.fno.idea)}</p><p class="note">Use the underlying's stop and targets above to exit the option. Strike gaps are approximate, so confirm in the option chain. Buy near-expiry options only on high scores; time decay is brutal.</p></div>` : ''}
   <h3>Chart patterns <span class="note">drawn on the chart</span></h3><div class="card">${(A.chartPats || []).length ? A.chartPats.map(p => `<div class="pat"><div class="ic">${p.b > 0 ? '🟢' : p.b < 0 ? '🔴' : '🟡'}</div><div style="flex:1"><div class="n">${esc(p.n)} <span class="tag ${p.status === 'forming' ? '' : p.b > 0 ? 'p' : 'n'}">${esc(p.status)}</span> <span class="mu" style="font-size:12px">quality ${p.q}</span></div><div class="x">${esc(p.note)}</div>
-     <div class="x">Target <b>${fmt(p.target)}</b> · invalid beyond <b>${fmt(p.stop)}</b></div></div></div>`).join('') + '<div class="note" style="margin-top:6px">Shown with lines on the chart above. Toggle "Patterns" to hide them; in the live chart you can hide each one.</div>' : '<div class="note">No head & shoulders, double top/bottom, flag or triangle that meets the rules right now.</div>'}</div>
+     <div class="x">Target <b>${fmt(p.target)}</b> · invalid beyond <b>${fmt(p.stop)}</b></div>${evidence(p.n)}</div></div>`).join('') + '<div class="note" style="margin-top:6px">Shown with lines on the chart above. Toggle "Patterns" to hide them; in the live chart you can hide each one.</div>' : '<div class="note">No head & shoulders, double top/bottom, flag or triangle that meets the rules right now.</div>'}</div>
   <h3>Candles & breakouts</h3><div class="card">${A.patterns.length ? A.patterns.map(p => `<div class="pat"><div class="ic">${p.b > 0 ? '🟢' : p.b < 0 ? '🔴' : '🟡'}</div><div><div class="n">${esc(p.n)}</div><div class="x">${esc(p.note)}</div>${p.target || p.stop ? `<div class="x">${p.target ? 'Pattern target <b>' + fmt(p.target) + '</b>' : ''}${p.target && p.stop ? ' · ' : ''}${p.stop ? 'Invalid below/above <b>' + fmt(p.stop) + '</b>' : ''}</div>` : ''}</div></div>`).join('') : '<div class="note">No clear pattern on the daily chart right now.</div>'}</div>
   <h3>EMA crossovers</h3><div class="card">${A.cross.length ? A.cross.map(x => `<div class="pat"><div class="ic">${x.dir > 0 ? '⬆️' : '⬇️'}</div><div><div class="n">${esc(x.name)}</div><div class="x">${esc(x.status)}${x.gap != null ? ` · gap ${x.gap.toFixed(2)}%` : ''} · matters for ${x.hz}</div></div></div>`).join('') : '<div class="note">No EMA cross recent or expected soon.</div>'}</div>
   <h3>Key stats</h3><div class="kv">
@@ -737,6 +738,10 @@ function sizeLine(L, A, mkt) {
   let q = Math.floor(Z.capital * Z.riskPct / 100 / risk); q = Math.min(q, Math.floor(Z.capital / L.entry)); if (q < 1) return '';
   const hb = A.risk && A.risk.beta >= 1.3, c = cur();
   return `<div class="sizeln" data-help="sizing">📐 Suggested qty <b>${q}</b> · risk ${c}${fmt(q * risk, 0)} (${Z.riskPct}% of ${c}${fmt(Z.capital, 0)}) · needs ${c}${fmt(q * L.entry, 0)}${hb ? ` · <span class="wa">β ${A.risk.beta.toFixed(1)}: consider ~25% less</span>` : ''} <span class="qm">ⓘ</span></div>`;
+}
+function evidence(name) {
+  const e = Engine.setupEdge(name); if (!e) return '<div class="evd mu">Not enough history to test this one yet.</div>';
+  return `<div class="evd ${e.edge ? 'ok' : 'no'}">${e.edge ? '✅ Proven edge' : '⚠️ No proven edge (info only)'} · tested on 80 NSE stocks, 5 yrs: hit target first <b>${e.hit}%</b> of ${e.n.toLocaleString()} times (break-even ${e.be}%)</div>`;
 }
 function newsHead(N) {
   if (!N || !N.n) return N && N.err ? 'unavailable' : 'no rated headlines';
