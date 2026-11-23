@@ -340,13 +340,13 @@
     };
     if (opts.fnoSym) {
       const step = E.strikeStep(opts.fnoSym, price), atm = Math.round(price / step) * step;
-      const pick = hz.intraday.dir || hz.swing.dir;
+      const pick = hz.intraday.dir || hz.swing.dir, src = hz.intraday.dir ? 'Intraday view' : 'Swing view';
       res.fno = {
         step, atm, lot: opts.lot || null,
         moveDay: I.atr[i], moveWeek: I.atr[i] * Math.sqrt(5),
-        idea: pick > 0 ? `Bullish: buy ${atm} CE or a ${atm}/${atm + 2 * step} bull call spread`
+        idea: (pick ? src + ' — ' : '') + (pick > 0 ? `Bullish: buy ${atm} CE or a ${atm}/${atm + 2 * step} bull call spread`
           : pick < 0 ? `Bearish: buy ${atm} PE or a ${atm}/${atm - 2 * step} bear put spread`
-          : `Range-bound: avoid buying options; sellers may prefer a range outside ${Math.round((price - I.atr[i] * 2.2) / step) * step}–${Math.round((price + I.atr[i] * 2.2) / step) * step}`,
+          : `Range-bound: avoid buying options; sellers may prefer a range outside ${Math.round((price - I.atr[i] * 2.2) / step) * step}–${Math.round((price + I.atr[i] * 2.2) / step) * step}`),
       };
     }
     return res;
