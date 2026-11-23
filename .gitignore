@@ -1,3 +1,4 @@
 node_modules/
 android/
-www/index.html
+www/desk.html
+package*.json

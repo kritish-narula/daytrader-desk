@@ -10,11 +10,17 @@ jobs:
         with: {node-version: 20}
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: 21}
-      - run: python3 build.py && rm www/template.html www/tsla.json
-      - run: |
+      - name: Download NSE stock list and F&O lot sizes
+        run: python3 tools/nse_symbols.py
+      - name: Live data smoke test
+        continue-on-error: true
+        run: node tools/livetest.js
+      - name: Build web assets
+        run: python3 build.py && rm www/desk_template.html www/tsla.json
+      - name: Build APK
+        run: |
           npm init -y >/dev/null
           npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
-          npx cap init "DayTrader Desk" com.boomai.daytraderdesk --web-dir www
           npx cap add android
           npx cap sync android
           printf '\nconfigurations.all { exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk7"; exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk8" }\n' >> android/app/build.gradle
@@ -23,4 +29,5 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: DayTrader Desk build ${{ github.run_number }}
+          body: India / Global / F&O analysis app. Install app-debug.apk on Android.
           files: android/app/build/outputs/apk/debug/app-debug.apk

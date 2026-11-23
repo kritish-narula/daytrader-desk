@@ -7,7 +7,7 @@ jobs:
     environment: {name: github-pages, url: "${{ steps.d.outputs.page_url }}"}
     steps:
       - uses: actions/checkout@v4
-      - run: python3 build.py && rm www/template.html www/tsla.json
+      - run: python3 tools/nse_symbols.py; python3 build.py && rm www/desk_template.html www/tsla.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: {path: www}
