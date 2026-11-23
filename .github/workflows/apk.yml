@@ -18,16 +18,27 @@ jobs:
       - name: Build web assets
         run: python3 build.py && rm www/desk_template.html www/tsla.json
       - name: Build APK
+        env:
+          KS_B64: ${{ secrets.KS_B64 }}
+          KS_PASS: ${{ secrets.KS_PASS }}
         run: |
           npm init -y >/dev/null
-          npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
+          npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/app@7
           npx cap add android
           npx cap sync android
-          printf '\nconfigurations.all { exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk7"; exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk8" }\n' >> android/app/build.gradle
-          cd android && chmod +x gradlew && ./gradlew assembleDebug
+          python3 native/patch_android.py
+          cd android && chmod +x gradlew
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > app/release.keystore
+            ./gradlew assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk ../DayTraderDesk.apk
+          else
+            ./gradlew assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk ../DayTraderDesk.apk
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: DayTrader Desk build ${{ github.run_number }}
-          body: India / Global / F&O analysis app. Install app-debug.apk on Android.
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          body: India / Global / F&O analysis app. Install DayTraderDesk.apk on Android.
+          files: DayTraderDesk.apk

@@ -29,7 +29,27 @@ try:
     print('fno stocks', len(fo), 'indices', idx)
 except Exception as e:
     print('fo lots failed:', e)
+# market-cap buckets + industry from NSE index constituent files
+cat = {}
+for code, files in [('L', ['ind_nifty100list.csv']), ('M', ['ind_niftymidcap150list.csv']), ('S', ['ind_niftysmallcap250list.csv']), ('U', ['ind_niftymicrocap250_list.csv', 'ind_niftymicrocap250list.csv'])]:
+    done = False
+    for f in files:
+        for base in ('https://nsearchives.nseindia.com/content/indices/', 'https://www.niftyindices.com/IndexConstituent/', 'https://archives.nseindia.com/content/indices/'):
+            try:
+                rows = list(csv.DictReader(io.StringIO(get(base + f))))
+                n = 0
+                for r in rows:
+                    r = {k.strip().lower(): (v or '').strip() for k, v in r.items() if k}
+                    if r.get('symbol'):
+                        cat.setdefault(r['symbol'], [code, r.get('industry', '')]); n += 1
+                if n:
+                    print('cap', code, f, n, 'from', base); done = True; break
+            except Exception as e:
+                print('cap file failed', base + f, e)
+        if done:
+            break
+print('categorised', len(cat))
 if len(eq) < 500:
     print('keeping existing nse.json / seed'); sys.exit(0)
-OUT.write_text(json.dumps({'eq': eq, 'fo': fo, 'idx': idx, 'updated': datetime.date.today().isoformat()}, separators=(',', ':')))
+OUT.write_text(json.dumps({'eq': eq, 'fo': fo, 'idx': idx, 'cat': cat, 'updated': datetime.date.today().isoformat()}, separators=(',', ':')))
 print('wrote', OUT)

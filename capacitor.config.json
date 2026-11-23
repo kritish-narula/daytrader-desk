@@ -1,1 +1,3 @@
-{"appId":"com.boomai.daytraderdesk","appName":"DayTrader Desk","webDir":"www","plugins":{"CapacitorHttp":{"enabled":true}}}
+{"appId":"com.boomai.daytraderdesk","appName":"DayTrader Desk","webDir":"www",
+ "android":{"adjustMarginsForEdgeToEdge":"force","webContentsDebuggingEnabled":false,"allowMixedContent":false},
+ "plugins":{"CapacitorHttp":{"enabled":true}}}

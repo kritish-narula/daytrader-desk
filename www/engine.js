@@ -214,6 +214,10 @@
       add(1, volx > 1.5 ? sgn(c - C[i - 1]) : 0, `Volume ${volx.toFixed(1)}× average on an up day`, `Volume ${volx.toFixed(1)}× average on a down day`);
       add(1, c > hi20 ? 1 : c < lo20 ? -1 : 0, 'Closed above 20-day high', 'Closed below 20-day low');
       add(1, sgn(c - I.e50[i]), 'Above 50 EMA (trend support)', 'Below 50 EMA');
+      const ext = (c - I.e20[i]) / I.atr[i];
+      if (Math.abs(ext) > 2.5) f.push([1.75, clamp(-(Math.abs(ext) - 2.5) * Math.sign(ext)), 'Stretched below 20 EMA (snap-back risk for shorts)', `Stretched ${ext.toFixed(1)}× ATR above 20 EMA (chasing risk)`]);
+      const day = (c / C[i - 1] - 1) * 100 / (I.atr[i] / c * 100);
+      if (day > 2) f.push([1, -clamp((day - 2) / 2), '', `Today's move is ${day.toFixed(1)}× a normal day (wait for a pullback)`]);
     } else if (hz === 'short') {
       add(2, sgn(I.e20[i] - I.e50[i]), '20 EMA above 50 EMA', '20 EMA below 50 EMA');
       add(1.5, sgn(c - I.e50[i]), 'Price above 50 EMA', 'Price below 50 EMA');
@@ -222,6 +226,8 @@
       add(1, sgn(mh), 'MACD above signal', 'MACD below signal');
       add(1, c > hi20 ? 1 : c < lo20 ? -1 : 0, '20-day breakout', '20-day breakdown');
       add(1, r >= 50 && r <= 72 ? 1 : r > 72 ? 0 : -1, 'RSI supports trend', 'RSI below 50');
+      const ext = (c - I.e50[i]) / I.atr[i];
+      if (ext > 5) f.push([1.5, -clamp((ext - 5) / 3), '', `Extended ${ext.toFixed(1)}× ATR above 50 EMA`]);
     } else if (hz === 'medium') {
       add(2, sgn(I.e50[i] - I.e150[i]), '50 EMA above 150 EMA', '50 EMA below 150 EMA');
       add(1.5, sgn(c - I.e150[i]), 'Above 30-week average', 'Below 30-week average');
@@ -237,7 +243,7 @@
       add(1, (c / hi52 - 0.725) / 0.125, 'Near 52-week high', 'Far below 52-week high');
     }
     if (hz !== 'long' && hz !== 'intraday') { const ss = ex.noSetup ? NaN : setupScore(I, i); if (ok(ss) && ss !== 0) add(hz === 'medium' ? 1 : 1.75, ss, 'Active bullish setup (SMC / VCP / trend)', 'Active bearish setup (SMC / trend)'); }
-    if (ok(ex.news) && ex.news !== 0 && hz !== 'long') add(hz === 'intraday' ? 1.5 : 1, ex.news, 'Positive news flow', 'Negative news flow');
+
     return f;
   }
   function combine(f) {
@@ -247,7 +253,7 @@
   function intradayFactors(I, i, intra, ex) {
     const f = [], add = (w, x, up, dn) => { if (ok(x)) f.push([w, clamp(x), up, dn]); };
     add(1, combine(factors(I, i, 'swing', { noSetup: true })), 'Daily trend supportive', 'Daily trend against');
-    if (ex && ok(ex.news) && ex.news !== 0) add(1.5, ex.news, 'Positive news today', 'Negative news today');
+
     if (!intra || !intra.c.length) { // no 5-min bars (scanner): use today's daily bar
       const D = I.D, rg = D.h[i] - D.l[i], chg = (D.c[i] / D.c[i - 1] - 1) * 100, vx = I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN;
       add(2, rg > 0 ? 2 * (D.c[i] - D.l[i]) / rg - 1 : NaN, 'Closing near the day high', 'Closing near the day low');
@@ -428,7 +434,7 @@
       const why = f.map(x => ({ w: x[0] * x[1], t: x[1] >= 0 ? x[2] : x[3] })).filter(x => Math.abs(x.w) > 0.2).sort((a, b) => Math.abs(b.w) - Math.abs(a.w)).slice(0, 4);
       const lv = act.d ? levels(I, i, k, act.d, tick, price) : null;
       if (lv && k === 'intraday' && ok(f.vwap)) lv.vwap = roundTick(f.vwap, tick);
-      const bt = opts.backtest && k !== 'intraday' && k !== 'long' ? backtest(I, k) : null;
+      const bt = opts.backtest && k !== 'intraday' && k !== 'long' && (opts.backtest !== 'swing' || k === 'swing') ? backtest(I, k) : null;
       hz[k] = { label: H[k].label, dur: H[k].dur, score, action: act.a, dir: act.d, noShort: act.noShort, levels: lv, why, bt };
     }
     const wts = { intraday: 0.15, swing: 0.3, short: 0.25, medium: 0.2, long: 0.1 };
@@ -439,7 +445,7 @@
     const res = {
       price, prev: D.c[i - 1], chg: (price / D.c[i - 1] - 1) * 100, overall, overallAction: action(overall, 'swing', opts.canShort).a,
       horizons: hz, patterns: pats, cross, setups: sets,
-      stats: { rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
+      stats: { turnover: (() => { let s = 0, m = 0; for (let j = Math.max(0, i - 19); j <= i; j++) { s += D.c[j] * (D.v[j] || 0); m++; } return s / m; })(), rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
       I,
     };
     if (opts.fnoSym) {
@@ -456,12 +462,30 @@
     return res;
   };
 
-  // Lightweight scan for many symbols (no backtest, no intraday)
+  // ---------- unified rating (identical in scanner and stock page) ----------
+  // signal = trend/momentum/setup score across swing..long; edge = how this signal actually performed on this stock;
+  // + market regime and news nudges. intraday is excluded so the number doesn't change with 5-min noise.
+  E.rating = function (res, ctx = {}) {
+    const H2 = res.horizons, W = { swing: 0.35, short: 0.3, medium: 0.2, long: 0.15 };
+    let s = 0, w = 0; for (const k in W) if (H2[k] && !H2[k].na) { s += W[k] * H2[k].score; w += W[k]; }
+    const signal = w ? s / w : 50;
+    const bt = H2.swing && H2.swing.bt; let edge = null, ew = 0;
+    if (bt && bt.n >= 6) { const p = (bt.wins + 1) / (bt.n + 2), ev = p * 1.5 - (1 - p); edge = clamp(50 + 40 * ev, 0, 100); ew = Math.min(0.45, bt.n / 60); }
+    let r = edge == null ? 50 + (signal - 50) * 0.85 : (1 - ew) * signal + ew * edge;
+    const reg = ok(ctx.regime) ? ctx.regime : 0, nw = ok(ctx.news) ? ctx.news : 0;
+    const regAdj = Math.round(clamp((reg - 50) / 10, -5, 5)), newsAdj = Math.round(8 * clamp(nw));
+    r = Math.round(clamp(r + regAdj + newsAdj, 0, 100));
+    const a = r >= 70 ? 'STRONG BUY' : r >= 58 ? 'BUY' : r > 42 ? 'HOLD / WAIT' : r > 30 ? 'SELL / AVOID' : 'STRONG SELL';
+    return { rating: r, action: a, signal: Math.round(signal), edge: edge == null ? null : Math.round(edge), regAdj, newsAdj, bt };
+  };
+
+  // Scan: same history + same swing backtest as the stock page, no intraday bars
   E.quick = function (D, opts = {}) {
-    const r = E.analyze(D, Object.assign({}, opts, { backtest: false }));
+    const r = E.analyze(D, Object.assign({}, opts, { backtest: 'swing' }));
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
-    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: H2.swing, short: H2.short, intraday: H2.intraday, long: H2.long, medium: H2.medium, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
+    const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt } : h;
+    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = E; else root.Engine = E;
