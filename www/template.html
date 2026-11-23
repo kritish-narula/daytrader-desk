@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DayTrader Desk</title>
+<style>
+:root{--bg:#0b0f14;--pn:#121821;--ln:#1f2a37;--tx:#e6edf3;--mu:#8b98a5;--up:#26a269;--dn:#e5534b;--ac:#4c9aff;--wa:#d4a72c}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:12px 14px;border-bottom:1px solid var(--ln);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header h1{font-size:16px;margin:0;flex:1}.pill{font-size:11px;padding:2px 8px;border-radius:99px;background:#1d2b1f;color:#7ee2a8;border:1px solid #2c4a33}
+nav{display:flex;overflow-x:auto;border-bottom:1px solid var(--ln);position:sticky;top:0;background:var(--bg);z-index:5}
+nav button{flex:1;min-width:90px;background:none;border:0;color:var(--mu);padding:11px 8px;font:inherit;font-weight:600;border-bottom:2px solid transparent}
+nav button.on{color:var(--tx);border-color:var(--ac)}
+main{max-width:980px;margin:0 auto;padding:12px}.tab{display:none}.tab.on{display:block}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:12px;margin-bottom:12px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);margin:0 0 10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.row>label{flex:1;min-width:120px}
+label{display:block;font-size:12px;color:var(--mu)}input,select{width:100%;margin-top:3px;background:#0d131a;color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:8px;font:inherit}
+button.b{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:inherit;font-weight:600}button.g{background:#26313d}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.k{background:#0d131a;border:1px solid var(--ln);border-radius:10px;padding:8px 10px}.k .l{font-size:11px;color:var(--mu)}.k .v{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.up{color:var(--up)}.dn{color:var(--dn)}.wa{color:var(--wa)}.mu{color:var(--mu)}
+canvas{width:100%;display:block;border-radius:8px;background:#0d131a}
+.verdict{font-size:15px;font-weight:700;padding:10px;border-radius:8px;background:#0d131a;border-left:4px solid var(--ac)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}td,th{padding:6px 4px;border-bottom:1px solid var(--ln);text-align:left;font-size:13px}th{color:var(--mu);font-weight:600}
+.chk td:first-child{width:28px}pre{background:#0d131a;border:1px solid var(--ln);border-radius:8px;padding:10px;overflow:auto;font-size:12px}
+.note{font-size:12px;color:var(--mu)}.bar{display:flex;height:22px;border-radius:6px;overflow:hidden;margin:8px 0}.bar div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;min-width:0}
+</style></head><body>
+<header><h1>📈 DayTrader Desk</h1><span class="pill" id="mode">PAPER</span><span class="note" id="dsName"></span></header>
+<nav><button data-t="t1" class="on">Setup</button><button data-t="t2">Time Machine</button><button data-t="t3">Size &amp; Risk</button><button data-t="t4">Journal</button><button data-t="t5">Data &amp; Rules</button></nav>
+<main>
+<!-- SETUP -->
+<section class="tab on" id="t1">
+ <div class="card"><h2>Session · Opening-range breakout</h2>
+  <div class="row"><label>Session<select id="sess"></select></label><label>OR minutes<input id="orm" type="number" value="15" step="5" min="5"></label>
+  <label>Stop rule<select id="stopRule"><option value="or-mid">OR midpoint</option><option value="or-low">OR low</option><option value="pct">% below entry</option><option value="price">Fixed price</option></select></label>
+  <label id="stopValL" style="display:none">Value<input id="stopVal" type="number" step="0.01" value="1"></label>
+  <label>Target (R)<input id="tR" type="number" value="1" step="0.5" min="0.5"></label></div>
+ </div>
+ <div class="card"><canvas id="cv" height="320"></canvas><div class="note" style="margin-top:6px">Blue band = opening range · ▲ entry (first 5-min close above range) · red/green = stop/target</div></div>
+ <div class="card"><h2>Entry &amp; exit plan</h2><div class="kpis" id="planK"></div><p class="note" id="planNote"></p></div>
+</section>
+<!-- TIME MACHINE -->
+<section class="tab" id="t2">
+ <div class="card"><h2>Replays</h2><div class="row"><label>Replays<input id="nRep" type="number" value="10000" step="1000"></label><label>Seed<input id="seed" type="number" value="19"></label><label>Run until<input id="until" value="15:55"></label><button class="b" id="runTM">Run Time Machine</button></div>
+ <p class="note">Each remaining 5-min bar is drawn from the stock's own bars at the same time of day (±2 bars) across every full past session, scaled to the current price. Stop is checked before target. Simulation, not prediction.</p></div>
+ <div id="tmOut"></div>
+</section>
+<!-- SIZE & RISK -->
+<section class="tab" id="t3">
+ <div class="card"><h2>Position size</h2><div class="kpis" id="sizeK"></div><p class="note" id="sizeNote"></p></div>
+ <div class="card"><h2>Risk gate</h2><table class="chk" id="riskT"></table><div class="verdict" id="riskV" style="margin-top:10px"></div></div>
+ <div class="card"><h2>Bracket order ticket</h2><pre id="ticket"></pre><div class="row"><button class="b" id="logT">Log as paper trade</button><button class="b g" id="copyT">Copy JSON</button></div>
+ <p class="note">Nothing is sent to a broker. Copy the ticket into your broker (or Alpaca paper) yourself after you decide.</p></div>
+</section>
+<!-- JOURNAL -->
+<section class="tab" id="t4"><div class="card"><h2>Paper journal</h2><div class="kpis" id="jK"></div><table id="jT" style="margin-top:10px"></table><div class="row" style="margin-top:10px"><button class="b g" id="jClr">Clear journal</button></div></div></section>
+<!-- DATA & RULES -->
+<section class="tab" id="t5">
+ <div class="card"><h2>Market data</h2>
+  <div class="row"><label>Market<select id="mkt"><option value="US">US · NYSE/Nasdaq (9:30–16:00 ET, $)</option><option value="NSE">India · NSE (9:15–15:30 IST, ₹)</option></select></label></div>
+  <p class="note">Load 60 days of 5-minute bars. Open this in a browser and save the page as a .json file, then upload it:<br><code id="yUrl"></code></p>
+  <div class="row"><label>Ticker for link<input id="yT" value="RELIANCE.NS"></label><label>Upload Yahoo chart JSON or CSV (time,open,high,low,close,volume)<input type="file" id="file" accept=".json,.csv,.txt"></label></div>
+  <div class="row" style="margin-top:8px"><button class="b g" id="demo">Reload TSLA demo (Oct 2026)</button></div><p class="note" id="dataMsg"></p></div>
+ <div class="card"><h2>Rules</h2><div class="row" id="cfgF"></div><p class="note">Defaults mirror the skill pack's config. Values are in the market's currency.</p></div>
+</section>
+<p class="note" style="text-align:center;padding:10px">Built on the MIT <b>day-trader-skill</b> method by Jake Schincariol. Not financial advice — most day traders lose money.</p>
+</main>
+<script>
+const DEMO=__DEMO__;
+const MK={US:{tz:'America/New_York',o:570,c:960,cur:'$',def:{neb:'09:45',nea:'15:30',flat:'15:55'}},NSE:{tz:'Asia/Kolkata',o:555,c:930,cur:'₹',def:{neb:'09:30',nea:'15:00',flat:'15:15'}}};
+const CFG0={budget:5000,cash_buffer_pct:10,max_position_pct:75,max_order:4000,max_loss_per_trade:50,max_daily_loss:150,max_trades_per_day:3,min_reward_risk:1,no_entries_before:'09:45',no_entries_after:'15:30',flat_by:'15:55'};
+const LBL={budget:'Budget',cash_buffer_pct:'Cash buffer %',max_position_pct:'Max position %',max_order:'Max order',max_loss_per_trade:'Max loss / trade',max_daily_loss:'Daily loss limit',max_trades_per_day:'Trades / day',min_reward_risk:'Min reward:risk',no_entries_before:'No entries before',no_entries_after:'No entries after',flat_by:'Flat by'};
+const store={get(k,d){try{const v=localStorage.getItem('dtd_'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('dtd_'+k,JSON.stringify(v))}catch(e){}}};
+let S={mkt:'US',name:'TSLA (demo)',bars:[],sessions:[],cfg:Object.assign({},CFG0,store.get('cfg',{})),plan:null,tm:null,journal:store.get('journal',[])};
+const $=id=>document.getElementById(id);const f2=x=>x==null||isNaN(x)?'–':(+x).toFixed(2);const cur=()=>MK[S.mkt].cur;
+const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');const pm=s=>{const[a,b]=String(s).split(':').map(Number);return a*60+(b||0)};
+const fl=x=>Math.floor(x*100+1e-6)/100,rd=x=>Math.round(x*100)/100;
+// --- data ---
+function localize(rows){const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:MK[S.mkt].tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const out=[];for(const r of rows){const p={};for(const x of fmt.formatToParts(new Date(r[0]*1000)))p[x.type]=x.value;const m=(+p.hour)*60+(+p.minute);const M=MK[S.mkt];if(m<M.o||m>=M.c)continue;out.push({t:r[0],d:`${p.year}-${p.month}-${p.day}`,m,o:r[1],h:r[2],l:r[3],c:r[4],v:r[5]})}return out}
+function build(rows,name){S.bars=localize(rows).sort((a,b)=>a.t-b.t);const by={};for(const b of S.bars)(by[b.d]=by[b.d]||[]).push(b);
+ const nFull=(MK[S.mkt].c-MK[S.mkt].o)/5;S.sessions=Object.keys(by).sort().map(d=>({d,bars:by[d],full:by[d].length===nFull&&by[d][0].m===MK[S.mkt].o}));
+ S.name=name;$('dsName').textContent=`${name} · ${S.sessions.length} sessions`;
+ $('sess').innerHTML=S.sessions.slice().reverse().map(s=>`<option>${s.d}</option>`).join('');S.tm=null;$('tmOut').innerHTML='';refresh()}
+function parseUpload(txt){txt=txt.trim();if(txt[0]==='{'){const j=JSON.parse(txt);const r=j.chart.result[0],q=r.indicators.quote[0];const rows=[];r.timestamp.forEach((t,i)=>{const v=[q.open[i],q.high[i],q.low[i],q.close[i],q.volume[i]||0];if(v.slice(0,4).every(x=>x!=null))rows.push([t,...v])});return{rows,name:(r.meta&&r.meta.symbol)||'Upload'}}
+ const rows=[];for(const ln of txt.split(/\r?\n/)){const c=ln.split(',');if(c.length<5)continue;let t=c[0].trim();let ts=/^\d+$/.test(t)?+t:Date.parse(t.includes('T')||/[+Z]/.test(t)?t:t.replace(' ','T'))/1000;if(ts>1e11)ts/=1000;const v=c.slice(1,6).map(Number);if(isNaN(ts)||v.slice(0,4).some(isNaN))continue;rows.push([ts,...v.slice(0,4),v[4]||0])}return{rows,name:'Upload'}}
+// --- strategy ---
+function plan(sess,opt){const bars=sess.bars,M=MK[S.mkt];const orEnd=M.o+opt.orm;const orb=bars.filter(b=>b.m<orEnd);if(orb.length<opt.orm/5)return{err:'Opening range incomplete'};
+ const H=Math.max(...orb.map(b=>b.h)),L=Math.min(...orb.map(b=>b.l));const neb=pm(S.cfg.no_entries_before),nea=pm(S.cfg.no_entries_after);
+ let ei=-1;for(let i=orb.length;i<bars.length;i++){if(bars[i].c>H){ei=i;break}}
+ const p={sym:S.name,date:sess.d,orH:H,orL:L,orb:orb.length};if(ei<0)return Object.assign(p,{status:'no trigger'});
+ const eb=bars[ei];p.status='triggered';p.ei=ei;p.entry=eb.c;p.em=eb.m+5;p.late=p.em>nea;p.early=p.em<neb;
+ let st;if(opt.rule==='or-mid')st=fl((H+L)/2);else if(opt.rule==='or-low')st=fl(L);else if(opt.rule==='pct')st=fl(p.entry*(1-opt.val/100));else st=+opt.val;
+ p.stop=st;p.risk=rd(p.entry-st);if(!(p.risk>0))return Object.assign(p,{status:'bad stop',err:'Stop is at or above entry'});
+ p.R=opt.R;p.target=rd(p.entry+opt.R*p.risk);
+ // realized outcome on this session
+ const flat=pm(S.cfg.flat_by);let out='open',xp=null,xm=null;for(let i=ei+1;i<bars.length;i++){const b=bars[i];if(b.m>=flat){out='flat';xp=b.o;xm=b.m;break}if(b.l<=p.stop){out='stop';xp=p.stop;xm=b.m;break}if(b.h>=p.target){out='target';xp=p.target;xm=b.m;break}}
+ if(out==='open'){const lb=bars[bars.length-1];out='close';xp=lb.c;xm=lb.m+5}p.out=out;p.xp=xp;p.xm=xm;p.rr=rd((xp-p.entry)/p.risk);return p}
+function opts(){return{orm:+$('orm').value||15,rule:$('stopRule').value,val:+$('stopVal').value,R:+$('tR').value||1}}
+// --- chart ---
+function draw(sess,p){const cv=$('cv'),dpr=devicePixelRatio||1,W=cv.clientWidth,Hh=320;cv.width=W*dpr;cv.height=Hh*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);g.clearRect(0,0,W,Hh);
+ const bs=sess.bars;let hi=Math.max(...bs.map(b=>b.h)),lo=Math.min(...bs.map(b=>b.l));if(p&&p.target){hi=Math.max(hi,p.target);lo=Math.min(lo,p.stop)}const pad=(hi-lo)*.06;hi+=pad;lo-=pad;
+ const n=(MK[S.mkt].c-MK[S.mkt].o)/5,L=8,R=52,T=10,B=22,cw=(W-L-R)/n;const y=v=>T+(hi-v)/(hi-lo)*(Hh-T-B),x=i=>L+i*cw+cw/2;const ix=b=>(b.m-MK[S.mkt].o)/5;
+ g.font='11px system-ui';g.fillStyle='#8b98a5';for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4;g.fillText(v.toFixed(2),W-R+4,y(v)+4);g.strokeStyle='#1f2a37';g.beginPath();g.moveTo(L,y(v));g.lineTo(W-R,y(v));g.stroke()}
+ for(let i=0;i<n;i+=12)g.fillText(hm(MK[S.mkt].o+i*5),x(i)-14,Hh-6);
+ if(p){g.fillStyle='rgba(76,154,255,.13)';g.fillRect(L,y(p.orH),(p.orb)*cw,y(p.orL)-y(p.orH));g.strokeStyle='rgba(76,154,255,.6)';g.setLineDash([4,4]);g.beginPath();g.moveTo(L,y(p.orH));g.lineTo(W-R,y(p.orH));g.stroke();g.setLineDash([])}
+ for(const b of bs){const i=ix(b),u=b.c>=b.o;g.strokeStyle=g.fillStyle=u?'#26a269':'#e5534b';g.beginPath();g.moveTo(x(i),y(b.h));g.lineTo(x(i),y(b.l));g.stroke();const t=Math.min(y(b.o),y(b.c));g.fillRect(x(i)-Math.max(1,cw*.35),t,Math.max(2,cw*.7),Math.max(1,Math.abs(y(b.o)-y(b.c))))}
+ if(p&&p.entry){const ex=x(p.ei);[[p.stop,'#e5534b','SL'],[p.target,'#26a269','TP'],[p.entry,'#4c9aff','EN']].forEach(([v,c,t])=>{g.strokeStyle=c;g.beginPath();g.moveTo(ex,y(v));g.lineTo(W-R,y(v));g.stroke();g.fillStyle=c;g.fillText(t,ex-18,y(v)+4)});
+  g.fillStyle='#4c9aff';g.beginPath();g.moveTo(ex,y(bs[p.ei].l)+6);g.lineTo(ex-6,y(bs[p.ei].l)+16);g.lineTo(ex+6,y(bs[p.ei].l)+16);g.fill()}}
+// --- render setup ---
+const K=(l,v,c='')=>`<div class="k"><div class="l">${l}</div><div class="v ${c}">${v}</div></div>`;
+function refresh(){const s=S.sessions.find(z=>z.d===$('sess').value)||S.sessions[S.sessions.length-1];if(!s)return;const p=plan(s,opts());S.plan=p;draw(s,p);
+ const c=cur();let h=K('Opening range',`${f2(p.orL)}–${f2(p.orH)}`)+K('Status',p.status,p.status==='triggered'?'up':'wa');
+ if(p.entry)h+=K('Entry',`${c}${f2(p.entry)} @ ${hm(p.em)}`)+K('Stop',c+f2(p.stop),'dn')+K('Target',`${c}${f2(p.target)} (${p.R}R)`,'up')+K('Risk / share',c+f2(p.risk))+K('What happened',`${p.out} → ${p.rr>0?'+':''}${p.rr}R`,p.rr>0?'up':'dn');
+ $('planK').innerHTML=h;$('planNote').textContent=p.err||(p.entry?(p.early?'⚠ Trigger is before your entry window. ':'')+(p.late?'⚠ Trigger is after your last-entry time. ':'')+'"What happened" is the real outcome of this plan on this session (stop checked first, flat by '+S.cfg.flat_by+').':'No 5-minute close above the range today — no trade.');
+ sizeRisk()}
+// --- time machine ---
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function runTM(){const p=S.plan;if(!p||!p.entry){$('tmOut').innerHTML='<div class="card">Need a triggered plan on the Setup tab first.</div>';return}
+ const pool=S.sessions.filter(s=>s.full&&s.d<p.date);if(pool.length<20){$('tmOut').innerHTML=`<div class="card">Only ${pool.length} full sessions before ${p.date}; need 20+. Load more history or pick a later session.</div>`;return}
+ const M=MK[S.mkt],n=(M.c-M.o)/5,start=(p.em-M.o)/5,end=Math.min(n,(pm($('until').value)-M.o)/5);
+ const rat=pool.map(s=>s.bars.map((b,i)=>{const pc=i?s.bars[i-1].c:b.o;return[b.h/pc,b.l/pc,b.c/pc]}));
+ const N=Math.min(50000,+$('nRep').value||10000),r=rng(+$('seed').value||19);let tg=0,sl=0,ne=0,gr=0,sumR=0;const fin=[];const steps=end-start;const path=Array.from({length:steps+1},()=>[]);
+ for(let k=0;k<N;k++){let px=p.entry,res=null;path[0].push(px);for(let j=0;j<steps;j++){const bi=start+j;const off=Math.floor(r()*5)-2;const bb=Math.max(1,Math.min(n-1,bi+off));const d=rat[Math.floor(r()*rat.length)][bb];
+   if(!res){if(px*d[1]<=p.stop)res='s';else if(px*d[0]>=p.target)res='t'}px*=d[2];path[j+1].push(px)}
+  fin.push(px);if(res==='t'){tg++;gr++;sumR+=p.R}else if(res==='s'){sl++;sumR-=1}else{ne++;const rr=(px-p.entry)/p.risk;sumR+=rr;if(px>p.entry)gr++}}
+ // history
+ let hf=0,ht=0,hs=0,hn=0;for(const s of pool){const q=plan(s,opts());if(!q.entry)continue;hf++;if(q.out==='target')ht++;else if(q.out==='stop')hs++;else hn++}
+ const pc=x=>(100*x/N).toFixed(1);const sided=tg+sl,be=1/(1+p.R),w=sided?tg/sided:0,gap=(w-be)*100;
+ const verdict=sided===0?'No replay hit either side.':Math.abs(gap)<5?(p.R===1?'Close to a coin flip.':'Close to break-even.'):Math.abs(gap)<15?(gap>0?'Leans toward the target.':'Leans toward the stop.'):(gap>0?'Strongly toward the target.':'Strongly toward the stop.');
+ fin.sort((a,b)=>a-b);const q=x=>fin[Math.floor(x*(N-1))];const c=cur();
+ $('tmOut').innerHTML=`<div class="card"><h2>${p.sym} · ${p.date} · entry ${c}${f2(p.entry)} ${hm(p.em)} · ${N.toLocaleString()} replays · seed ${$('seed').value}</h2>
+ <div class="bar"><div style="width:${pc(tg)}%;background:var(--up)">${pc(tg)}%</div><div style="width:${pc(sl)}%;background:var(--dn)">${pc(sl)}%</div><div style="width:${pc(ne)}%;background:#3a4756">${pc(ne)}%</div></div>
+ <div class="kpis">${K('Target first',pc(tg)+'%','up')+K('Stop first',pc(sl)+'%','dn')+K('Neither (open at '+$('until').value+')',pc(ne)+'%')+K('Green',pc(gr)+'%')+K('Avg R',(sumR/N>=0?'+':'')+(sumR/N).toFixed(2),sumR>=0?'up':'dn')+K('Close median',c+f2(q(.5)))+K('Close 5–95%',`${f2(q(.05))}–${f2(q(.95))}`)}</div>
+ <canvas id="fan" height="200" style="margin-top:10px"></canvas>
+ <p><b>History:</b> the same rule fired on ${hf} of ${pool.length} past sessions — ${ht} target, ${hs} stop, ${hn} neither.</p>
+ <div class="verdict">${verdict} <span class="mu" style="font-weight:400">Break-even at ${p.R}R needs ${(be*100).toFixed(0)}% of sided outcomes; replays gave ${(w*100).toFixed(0)}%.</span></div>
+ ${ne/N>.4?'<p class="note">More than 40% of replays hit neither side — the price at the end decides those.</p>':''}
+ <p class="note">Built from the last ${pool.length} sessions only. Earnings, news and halts can do things those sessions never did.</p></div>`;
+ // fan
+ const cv=$('fan'),dpr=devicePixelRatio||1,W=cv.clientWidth,Hh=200;cv.width=W*dpr;cv.height=Hh*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);
+ const bands=path.map(a=>{const s=a.slice().sort((x,y)=>x-y),Q=v=>s[Math.floor(v*(s.length-1))];return[Q(.05),Q(.25),Q(.5),Q(.75),Q(.95)]});
+ let hi=Math.max(p.target,...bands.map(b=>b[4])),lo=Math.min(p.stop,...bands.map(b=>b[0]));const y=v=>8+(hi-v)/(hi-lo)*(Hh-16),x=i=>40+i*(W-50)/steps;
+ const area=(a,b,col)=>{g.fillStyle=col;g.beginPath();bands.forEach((v,i)=>g.lineTo(x(i),y(v[a])));for(let i=bands.length-1;i>=0;i--)g.lineTo(x(i),y(bands[i][b]));g.fill()};
+ area(0,4,'rgba(76,154,255,.15)');area(1,3,'rgba(76,154,255,.3)');g.strokeStyle='#4c9aff';g.beginPath();bands.forEach((v,i)=>g.lineTo(x(i),y(v[2])));g.stroke();
+ [[p.target,'#26a269'],[p.stop,'#e5534b'],[p.entry,'#8b98a5']].forEach(([v,cl])=>{g.strokeStyle=cl;g.setLineDash([4,4]);g.beginPath();g.moveTo(40,y(v));g.lineTo(W-10,y(v));g.stroke();g.setLineDash([]);g.fillStyle=cl;g.font='10px system-ui';g.fillText(f2(v),2,y(v)+3)});
+ S.tm={tg:pc(tg),sl:pc(sl),verdict}}
+// --- size & risk ---
+function todays(){const p=S.plan;return S.journal.filter(j=>j.date===p.date)}
+function sizeRisk(){const p=S.plan,C=S.cfg,c=cur();if(!p||!p.entry){$('sizeK').innerHTML='';$('sizeNote').textContent='No triggered plan.';$('riskT').innerHTML='';$('riskV').textContent='—';$('ticket').textContent='';return}
+ const cash=C.budget*(1-C.cash_buffer_pct/100);const lim=[['max loss / trade',Math.floor(C.max_loss_per_trade/p.risk+1e-9)],['position cap',Math.floor(C.budget*C.max_position_pct/100/p.entry)],['max order',Math.floor(C.max_order/p.entry)],['cash after buffer',Math.floor(cash/p.entry)]];
+ const dec=lim.reduce((a,b)=>b[1]<a[1]?b:a);const sh=Math.max(0,dec[1]);p.shares=sh;const loss=rd(sh*p.risk),cost=rd(sh*p.entry);
+ $('sizeK').innerHTML=K('Shares',sh)+K('Cost',c+cost.toLocaleString())+K('Loss at stop',c+loss,'dn')+K('Gain at target',c+rd(sh*(p.target-p.entry)),'up')+K('Decided by',dec[0]);
+ $('sizeNote').textContent=lim.map(l=>`${l[0]}: ${l[1]}`).join(' · ');
+ const T=todays(),used=T.reduce((a,j)=>a+j.risk,0),em=p.em,rr=(p.target-p.entry)/p.risk;
+ const ck=[[p.stop>0,'Stop is set',`${c}${f2(p.stop)}`],[sh>0,'Size ≥ 1 share',sh?`${sh} shares`:'Stop too far for max loss'],[loss<=C.max_loss_per_trade,'Loss within max/trade',`${c}${loss} ≤ ${c}${C.max_loss_per_trade}`],[rr>=C.min_reward_risk-1e-9,'Reward:risk',`${rr.toFixed(2)} ≥ ${C.min_reward_risk}`],
+  [em>=pm(C.no_entries_before)&&em<=pm(C.no_entries_after),'Inside entry window',`${hm(em)} in ${C.no_entries_before}–${C.no_entries_after}`],[T.length<C.max_trades_per_day,'Trades today',`${T.length} logged / max ${C.max_trades_per_day}`],[used+loss<=C.max_daily_loss,'Daily risk',`${c}${rd(used+loss)} ≤ ${c}${C.max_daily_loss}`],[cost<=cash,'Cash after buffer',`${c}${cost} ≤ ${c}${rd(cash)}`]];
+ $('riskT').innerHTML=ck.map(([ok,n,d])=>`<tr><td>${ok?'✅':'⛔'}</td><td>${n}</td><td class="mu">${d}</td></tr>`).join('');const bad=ck.filter(k=>!k[0]);
+ $('riskV').innerHTML=bad.length?`<span class="dn">BLOCK</span> — ${bad.map(b=>b[1]).join(', ')}`:'<span class="up">PASS</span> — order fits every rule.';$('riskV').style.borderColor=bad.length?'var(--dn)':'var(--up)';S.pass=!bad.length;
+ S.ticket={symbol:p.sym,side:'buy',qty:sh,type:'market',time_in_force:'day',order_class:'bracket',take_profit:{limit_price:p.target},stop_loss:{stop_price:p.stop},meta:{date:p.date,entry_ref:p.entry,setup:'orb',flat_by:C.flat_by,risk_check:bad.length?'BLOCK':'PASS'}};
+ $('ticket').textContent=JSON.stringify(S.ticket,null,2)}
+// --- journal ---
+function renderJ(){const J=S.journal,c=cur();const pnl=J.reduce((a,j)=>a+j.pnl,0),w=J.filter(j=>j.pnl>0).length;
+ $('jK').innerHTML=K('Trades',J.length)+K('Win rate',J.length?(100*w/J.length).toFixed(0)+'%':'–')+K('Net P&L',(pnl>=0?'+':'')+rd(pnl),pnl>=0?'up':'dn')+K('Avg R',J.length?(J.reduce((a,j)=>a+j.rr,0)/J.length).toFixed(2):'–');
+ $('jT').innerHTML='<tr><th>Date</th><th>Sym</th><th>Qty</th><th>Entry</th><th>Exit</th><th>R</th><th>P&L</th></tr>'+J.slice().reverse().map(j=>`<tr><td>${j.date}</td><td>${j.sym}</td><td>${j.qty}</td><td>${f2(j.entry)}</td><td>${f2(j.exit)} <span class="mu">${j.out}</span></td><td class="${j.rr>0?'up':'dn'}">${j.rr}</td><td class="${j.pnl>0?'up':'dn'}">${rd(j.pnl)}</td></tr>`).join('')}
+// --- wiring ---
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.tab').forEach(e=>e.classList.remove('on'));b.classList.add('on');$(b.dataset.t).classList.add('on');if(b.dataset.t==='t1')refresh()});
+['sess','orm','tR','stopVal'].forEach(i=>$(i).oninput=refresh);$('stopRule').onchange=()=>{$('stopValL').style.display=/pct|price/.test($('stopRule').value)?'':'none';refresh()};
+$('runTM').onclick=()=>{$('runTM').textContent='Running…';setTimeout(()=>{runTM();$('runTM').textContent='Run Time Machine'},20)};
+$('logT').onclick=()=>{const p=S.plan;if(!p||!p.entry||!p.shares)return alert('No valid order.');if(!S.pass&&!confirm('Risk gate says BLOCK. Log anyway?'))return;
+ S.journal.push({date:p.date,sym:p.sym,qty:p.shares,entry:p.entry,exit:p.xp,out:p.out,rr:p.rr,risk:rd(p.shares*p.risk),pnl:rd(p.shares*(p.xp-p.entry))});store.set('journal',S.journal);renderJ();sizeRisk();alert('Logged with the session\'s real outcome: '+p.out)};
+$('copyT').onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText($('ticket').textContent)};
+$('jClr').onclick=()=>{if(confirm('Clear all paper trades?')){S.journal=[];store.set('journal',[]);renderJ()}};
+function cfgForm(){$('cfgF').innerHTML=Object.keys(CFG0).map(k=>`<label>${LBL[k]}<input data-k="${k}" value="${S.cfg[k]}"></label>`).join('');$('cfgF').querySelectorAll('input').forEach(i=>i.oninput=()=>{const k=i.dataset.k;S.cfg[k]=/:/.test(CFG0[k])?i.value:+i.value;store.set('cfg',S.cfg);refresh()})}
+function yurl(){$('yUrl').textContent=`https://query1.finance.yahoo.com/v8/finance/chart/${$('yT').value.trim()}?range=60d&interval=5m`}$('yT').oninput=yurl;
+$('mkt').onchange=()=>{S.mkt=$('mkt').value;const d=MK[S.mkt].def;Object.assign(S.cfg,{no_entries_before:d.neb,no_entries_after:d.nea,flat_by:d.flat});$('until').value=d.flat;$('yT').value=S.mkt==='NSE'?'RELIANCE.NS':'TSLA';yurl();cfgForm();$('dataMsg').textContent='Market switched — upload bars for this market.';if(S.raw)build(S.raw,S.name)};
+$('file').onchange=e=>{const fi=e.target.files[0];if(!fi)return;fi.text().then(t=>{try{const{rows,name}=parseUpload(t);if(!rows.length)throw Error('no rows');S.raw=rows;build(rows,name);$('dataMsg').textContent=`Loaded ${rows.length} bars, ${S.sessions.filter(s=>s.full).length} full sessions.`}catch(err){$('dataMsg').textContent='Could not read that file: '+err.message}})};
+$('demo').onclick=()=>{$('mkt').value='US';S.mkt='US';Object.assign(S.cfg,{no_entries_before:'09:45',no_entries_after:'15:30',flat_by:'15:55'});cfgForm();S.raw=DEMO;build(DEMO,'TSLA (demo)')};
+addEventListener('resize',()=>refresh());
+cfgForm();yurl();S.raw=DEMO;build(DEMO,'TSLA (demo)');renderJ();
+</script></body></html>
