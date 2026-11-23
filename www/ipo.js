@@ -67,11 +67,17 @@
   // "19 Nov - 23 Nov", "1-3 Dec", "28 Nov 2026 - 2 Dec 2026" -> {open, close, allot, list} (allotment/listing per SEBI T+3: T+1 / T+3 working days)
   const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
   function dates(s, now = new Date()) {
-    const m = String(s || '').toLowerCase().match(/(\d{1,2})\s*([a-z]{3,4})?\s*(\d{4})?\s*[-–to]+\s*(\d{1,2})\s*([a-z]{3,4})\s*(\d{4})?/);
-    if (!m) return null;
-    const mc = MON[m[5]], mo = m[2] && MON[m[2]] != null ? MON[m[2]] : mc; if (mc == null) return null;
-    const pick = (mon, yr) => { if (yr) return +yr; let y = now.getFullYear(); const d = new Date(y, mon, 15); if (d - now > 200 * 864e5) y--; else if (now - d > 200 * 864e5) y++; return y; };
-    const close = new Date(pick(mc, m[6]), mc, +m[4]); let open = new Date(pick(mo, m[3] || m[6]), mo, +m[1]); if (open > close) open = new Date(open.getFullYear() - 1, mo, +m[1]);
+    // accepts "19 Nov - 23 Nov", "19-23 Nov", "Nov 19 - Nov 23", "Nov 19-23", "19th November 2026 to 23rd November 2026", "28 Nov - 2 Dec"
+    const txt = String(s || '').toLowerCase().replace(/(\d+)(st|nd|rd|th)\b/g, '$1').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+    const mon = w => w ? MON[w.slice(0, 4) === 'sept' ? 'sept' : w.slice(0, 3)] : undefined;
+    let d1, m1, y1, d2, m2, y2, m;
+    if ((m = txt.match(/(\d{1,2}) ?([a-z]{3,9})? ?(\d{4})? ?(?:-|–|to) ?(\d{1,2}) ?([a-z]{3,9}) ?(\d{4})?/))) { [d1, m1, y1, d2, m2, y2] = [m[1], m[2], m[3], m[4], m[5], m[6]]; }
+    else if ((m = txt.match(/([a-z]{3,9}) ?(\d{1,2}) ?(\d{4})? ?(?:-|–|to) ?([a-z]{3,9})? ?(\d{1,2}) ?(\d{4})?/))) { [m1, d1, y1, m2, d2, y2] = [m[1], m[2], m[3], m[4] || m[1], m[5], m[6]]; }
+    else return null;
+    const mc = mon(m2), mo = m1 && mon(m1) != null ? mon(m1) : mc; if (mc == null || mo == null) return null;
+    const pick = (mn, yr) => { if (yr) return +yr; let y = now.getFullYear(); const d = new Date(y, mn, 15); if (d - now > 200 * 864e5) y--; else if (now - d > 200 * 864e5) y++; return y; };
+    const close = new Date(pick(mc, y2), mc, +d2); let open = new Date(pick(mo, y1 || y2), mo, +d1); if (open > close) open = new Date(open.getFullYear() - 1, mo, +d1);
+    if (!isFinite(open) || !isFinite(close)) return null;
     const work = (d, n) => { const x = new Date(d); while (n > 0) { x.setDate(x.getDate() + 1); if (x.getDay() % 6) n--; } return x; };
     return { open, close, allot: work(close, 1), list: work(close, 3) };
   }

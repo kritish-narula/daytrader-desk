@@ -18,7 +18,7 @@ async function chart(s, range, iv) {
     } catch (e) { console.log(s, 'FAILED', e.message); }
   }
   try { const I = require('../www/ipo.js'); const h = await fetch('https://ipowatch.in/ipo-grey-market-premium-latest-ipo-gmp/', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.text());
-    const L = I.parseTables(h); console.log('IPO rows parsed:', L.length); for (const x of L.slice(0, 6)) { const r = I.rate(x); console.log('  ', x.name, '| GMP', x.gmp, '| price', x.price, x.sme ? 'SME' : 'MAIN', x.status, '=>', r.rating, r.action); } }
+    const L = I.parseTables(h); console.log('IPO rows parsed:', L.length); for (const x of L.slice(0, 20)) { const r = I.rate(x); const Dt = I.dates(x.dates); console.log('  ', x.name, '| GMP', x.gmp, '| price', x.price, x.sme ? 'SME' : 'MAIN', x.status, '=>', r.rating, r.action, '| dates:', JSON.stringify(x.dates), '→', Dt ? ['open', 'close', 'allot', 'list'].map(k => Dt[k].toDateString().slice(4, 10)).join(' / ') : 'UNPARSED'); } }
   catch (e) { console.log('IPO FAILED', e.message); }
   const q = await fetch('https://query2.finance.yahoo.com/v1/finance/search?q=tata%20motors&quotesCount=5&newsCount=0', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()).catch(e => ({ err: e.message }));
   console.log('search:', (q.quotes || []).map(x => x.symbol).join(', ') || JSON.stringify(q).slice(0, 200));
