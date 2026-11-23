@@ -160,6 +160,7 @@
     const D = { t: B.map(b => b.time), o: B.map(b => b.open), h: B.map(b => b.high), l: B.map(b => b.low), c: B.map(b => b.close), v: B.map(b => b.volume || 0) };
     try { const I = Engine.indicators(D); V.pats = Engine.chartPatterns(I, V.opts.mkt === 'IN' ? 0.05 : 0.01); V.levels = Engine.levels(I); } catch (e) { V.pats = []; V.levels = []; }
   }
+  const abbr = n => ({ 'Head & shoulders': 'H&S', 'Inverse head & shoulders': 'iH&S', 'Double top': 'DT', 'Double bottom': 'DB', 'Bull flag': 'Flag', 'Bear flag': 'Flag', 'Ascending triangle': 'Tri', 'Descending triangle': 'Tri', 'Symmetrical triangle': 'Tri' }[n] || n);
   function drawPatterns() {
     const S = V.series, B = V.B;
     V.patSeries.forEach(s => { try { V.main.removeSeries(s); } catch (e) {} }); V.patSeries = [];
@@ -180,11 +181,11 @@
         }
         for (const m of p.marks) { const k = Math.max(0, Math.min(B.length - 1, m.i)); marks.push({ time: B[k].time, position: m.pos === 'above' ? 'aboveBar' : 'belowBar', color: p.b > 0 ? '#22c55e' : p.b < 0 ? '#ef4444' : '#f5b301', shape: 'circle', text: m.t }); }
         const end = Math.max(...p.lines.flatMap(L => L.pts.map(q => q[0]))), k = Math.max(0, Math.min(B.length - 1, Math.round(end)));
-        marks.push({ time: B[k].time, position: p.b < 0 ? 'aboveBar' : 'belowBar', color: '#e879f9', shape: p.b > 0 ? 'arrowUp' : p.b < 0 ? 'arrowDown' : 'square', text: p.n });
-        if (p.target) V.patLines.push(S.c.createPriceLine({ price: p.target, color: '#e879f9', lineStyle: 3, lineWidth: 1, title: ({ 'Head & shoulders': 'H&S', 'Inverse head & shoulders': 'Inv H&S', 'Double top': 'Dbl top', 'Double bottom': 'Dbl bottom', 'Bull flag': 'Flag', 'Bear flag': 'Flag' }[p.n] || p.n.split(' ')[0]) + ' target' }));
+        marks.push({ time: B[k].time, position: p.b < 0 ? 'aboveBar' : 'belowBar', color: '#e879f9', shape: p.b > 0 ? 'arrowUp' : p.b < 0 ? 'arrowDown' : 'square', text: abbr(p.n) });
+        if (p.target) V.patLines.push(S.c.createPriceLine({ price: p.target, color: '#e879f9', lineStyle: 3, lineWidth: 1, title: 'PT' }));
       }
     } else box.style.display = 'none';
-    if (V.on.sr) for (const z of V.levels || []) V.patLines.push(S.c.createPriceLine({ price: z.p, color: z.kind === 'R' ? 'rgba(239,68,68,.55)' : 'rgba(34,197,94,.55)', lineStyle: 1, lineWidth: 1, title: `${z.kind === 'R' ? 'Resistance' : 'Support'} ×${z.n}` }));
+    if (V.on.sr) for (const z of V.levels || []) V.patLines.push(S.c.createPriceLine({ price: z.p, color: z.kind === 'R' ? 'rgba(239,68,68,.55)' : 'rgba(34,197,94,.55)', lineStyle: 1, lineWidth: 1, title: z.kind }));
     marks.sort((a, b) => a.time - b.time); S.c.setMarkers(marks);
   }
   function draw(fit) {
@@ -198,7 +199,7 @@
     if (fit) {
       findPatterns(); drawPatterns();
       (V.lines || []).forEach(l => S.c.removePriceLine(l)); V.lines = [];
-      const L = V.opts.levels; if (V.on.lv && L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2'], [L.entry, '#8a97a6', 'Entry']].forEach(([p, color, title]) => p && V.lines.push(S.c.createPriceLine({ price: p, color, lineStyle: 2, lineWidth: 1, title: V.opts.hz ? `${title} · ${V.opts.hz}` : title })));
+      const L = V.opts.levels; if (V.on.lv && L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2'], [L.entry, '#8a97a6', 'E']].forEach(([p, color, title]) => p && V.lines.push(S.c.createPriceLine({ price: p, color, lineStyle: 2, lineWidth: 1, title })));
       const n = B.length, show = Math.min(n, /m$|h$/.test(V.iv) ? 120 : 150);
       V.main.timeScale().setVisibleLogicalRange({ from: n - show, to: n + 4 });
       if (!V.free) V.main.priceScale('right').applyOptions({ autoScale: true });

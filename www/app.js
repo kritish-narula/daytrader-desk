@@ -766,14 +766,14 @@ function drawPreview() {
   const cs = ch.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444', wickUpColor: '#22c55e', wickDownColor: '#ef4444', borderVisible: false });
   cs.setData(B);
   [['e20', '#4c9aff'], ['e50', '#f5b301'], ['e200', '#c084fc']].forEach(([k, color]) => { const ls = ch.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); ls.setData(B.map((b, j) => ({ time: b.time, value: A.I[k][s0 + j] })).filter(p => isFinite(p.value))); });
-  const L = S.detail.levels, hzl = S.detail.levelsHz || ''; if (L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2']].forEach(([price, color, title]) => cs.createPriceLine({ price, color, lineStyle: 2, lineWidth: 1, title: hzl ? title + '·' + hzl : title }));
+  const L = S.detail.levels, hzl = S.detail.levelsHz || ''; if (L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2']].forEach(([price, color, title]) => cs.createPriceLine({ price, color, lineStyle: 2, lineWidth: 1, title }));
   if (store.get('pvPat', true)) {
     const marks = [];
     for (const p of A.chartPats || []) {
       for (const Ln of p.lines) { const pts = []; let last = -1; for (const [ix, val] of Ln.pts) { const k = Math.round(ix); if (k < s0 || k <= last) continue; last = k; pts.push({ time: D.t[k], value: val }); }
         if (pts.length >= 2) ch.addLineSeries({ color: Ln.color, lineWidth: Ln.w || 2, lineStyle: Ln.dash ? 2 : 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }).setData(pts); }
       for (const m of p.marks) if (m.i >= s0) marks.push({ time: D.t[m.i], position: m.pos === 'above' ? 'aboveBar' : 'belowBar', color: p.b > 0 ? '#22c55e' : '#ef4444', shape: 'circle', text: m.t });
-      const end = Math.round(Math.max(...p.lines.flatMap(Ln => Ln.pts.map(q => q[0])))); if (end >= s0) marks.push({ time: D.t[Math.min(end, n - 1)], position: p.b < 0 ? 'aboveBar' : 'belowBar', color: '#e879f9', shape: p.b > 0 ? 'arrowUp' : p.b < 0 ? 'arrowDown' : 'square', text: p.n });
+      const end = Math.round(Math.max(...p.lines.flatMap(Ln => Ln.pts.map(q => q[0])))); if (end >= s0) marks.push({ time: D.t[Math.min(end, n - 1)], position: p.b < 0 ? 'aboveBar' : 'belowBar', color: '#e879f9', shape: p.b > 0 ? 'arrowUp' : p.b < 0 ? 'arrowDown' : 'square', text: ({ 'Head & shoulders': 'H&S', 'Inverse head & shoulders': 'iH&S', 'Double top': 'DT', 'Double bottom': 'DB', 'Bull flag': 'Flag', 'Bear flag': 'Flag', 'Ascending triangle': 'Tri', 'Descending triangle': 'Tri', 'Symmetrical triangle': 'Tri' }[p.n] || p.n) });
     }
     marks.sort((a, b) => a.time - b.time); cs.setMarkers(marks);
     for (const z of A.srLevels || []) cs.createPriceLine({ price: z.p, color: z.kind === 'R' ? 'rgba(239,68,68,.5)' : 'rgba(34,197,94,.5)', lineStyle: 1, lineWidth: 1, title: z.kind === 'R' ? 'R' : 'S' });

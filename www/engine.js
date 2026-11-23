@@ -503,7 +503,7 @@
       out.push({ id: (top ? 'dt' : 'db') + a, n: top ? 'Double top' : 'Double bottom', b: -sg, q: 60 + (broke ? 12 : 0) + (b2 - a >= 20 ? 4 : 0), status: broke ? 'confirmed' : 'forming',
         note: `Two ${top ? 'peaks' : 'troughs'} near ${R((val[a] + val[b2]) / 2)}; neckline ${R(nk)}. Target ${R(nk - sg * depth)}.`, target: R(nk - sg * depth), stop: R((top ? Math.max : Math.min)(val[a], val[b2]) + sg * 0.2 * at),
         lines: [{ pts: [[a, val[a]], [nkI, nk], [b2, val[b2]]], color: top ? RED : GREEN, w: 2 }, { pts: [[a, nk], [i, nk]], color: GOLD, dash: 1, label: 'Neckline' }],
-        marks: [{ i: a, p: val[a], t: top ? 'Top 1' : 'Bottom 1', pos: top ? 'above' : 'below' }, { i: b2, p: val[b2], t: top ? 'Top 2' : 'Bottom 2', pos: top ? 'above' : 'below' }] });
+        marks: [{ i: a, p: val[a], t: '1', pos: top ? 'above' : 'below' }, { i: b2, p: val[b2], t: '2', pos: top ? 'above' : 'below' }] });
     };
     dbl(PH, PL, true); dbl(PL, PH, false);
     // ---- flag with pole (bull and bear) ----
