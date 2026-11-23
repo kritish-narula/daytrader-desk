@@ -64,6 +64,30 @@
     const act = /listed/.test(st) ? 'LISTED' : /closed/.test(st) ? 'CLOSED' : r >= 70 ? 'APPLY' : r >= 58 ? 'APPLY (listing gains)' : r >= 45 ? 'NEUTRAL' : 'AVOID';
     return { rating: r, action: act, gmpPct: g, why: why.sort((a, b) => Math.abs(b[0]) - Math.abs(a[0])) };
   }
-  const api = { load, parseTables, rate };
+  // "19 Nov - 23 Nov", "1-3 Dec", "28 Nov 2026 - 2 Dec 2026" -> {open, close, allot, list} (allotment/listing per SEBI T+3: T+1 / T+3 working days)
+  const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+  function dates(s, now = new Date()) {
+    const m = String(s || '').toLowerCase().match(/(\d{1,2})\s*([a-z]{3,4})?\s*(\d{4})?\s*[-–to]+\s*(\d{1,2})\s*([a-z]{3,4})\s*(\d{4})?/);
+    if (!m) return null;
+    const mc = MON[m[5]], mo = m[2] && MON[m[2]] != null ? MON[m[2]] : mc; if (mc == null) return null;
+    const pick = (mon, yr) => { if (yr) return +yr; let y = now.getFullYear(); const d = new Date(y, mon, 15); if (d - now > 200 * 864e5) y--; else if (now - d > 200 * 864e5) y++; return y; };
+    const close = new Date(pick(mc, m[6]), mc, +m[4]); let open = new Date(pick(mo, m[3] || m[6]), mo, +m[1]); if (open > close) open = new Date(open.getFullYear() - 1, mo, +m[1]);
+    const work = (d, n) => { const x = new Date(d); while (n > 0) { x.setDate(x.getDate() + 1); if (x.getDay() % 6) n--; } return x; };
+    return { open, close, allot: work(close, 1), list: work(close, 3) };
+  }
+  function when(D, now = new Date()) {
+    if (!D) return '';
+    const day = d => Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
+    const o = day(D.open), c = day(D.close), a = day(D.allot), l = day(D.list);
+    if (o > 0) return o === 1 ? 'Opens tomorrow' : `Opens in ${o} days`;
+    if (c === 0) return 'Closes today: last day to apply';
+    if (c > 0) return c === 1 ? 'Open · closes tomorrow' : `Open · closes in ${c} days`;
+    if (a === 0) return 'Allotment today';
+    if (a > 0) return 'Allotment tomorrow';
+    if (l === 0) return 'Listing today';
+    if (l > 0) return `Listing in ${l} day${l > 1 ? 's' : ''}`;
+    return 'Listed';
+  }
+  const api = { load, parseTables, rate, dates, when };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.IPO = api;
 })(typeof self !== 'undefined' ? self : this);

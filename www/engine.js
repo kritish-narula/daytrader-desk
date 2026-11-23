@@ -483,6 +483,32 @@
     return res;
   };
 
+  // ---------- risk vs the index: beta, alpha, volatility, Sharpe, Sortino, drawdown ----------
+  // D, M: daily bars with .day (YYYY-MM-DD). rf: risk-free rate % per year. Uses the last ~250 common sessions.
+  E.risk = function (D, M, rf = 6) {
+    if (!D || !M || !D.day || !M.day) return null;
+    const mi = new Map(M.day.map((d, i) => [d, i])), rs = [], rm = [];
+    for (let i = 1; i < D.c.length; i++) { const j = mi.get(D.day[i]), j0 = mi.get(D.day[i - 1]); if (j == null || j0 == null || j !== j0 + 1) continue; rs.push(D.c[i] / D.c[i - 1] - 1); rm.push(M.c[j] / M.c[j0] - 1); }
+    const n0 = Math.max(0, rs.length - 250), S = rs.slice(n0), Mk = rm.slice(n0), n = S.length;
+    if (n < 120) return { na: true, n };
+    const mean = a => a.reduce((x, y) => x + y, 0) / a.length, ms = mean(S), mm = mean(Mk);
+    let cov = 0, vm = 0, vs = 0; for (let k = 0; k < n; k++) { cov += (S[k] - ms) * (Mk[k] - mm); vm += (Mk[k] - mm) ** 2; vs += (S[k] - ms) ** 2; }
+    const beta = cov / vm, corr = cov / Math.sqrt(vm * vs);
+    const sub = sgn => { const a = [], b = []; for (let k = 0; k < n; k++) if (sgn * Mk[k] > 0) { a.push(S[k]); b.push(Mk[k]); } const x = mean(a), y = mean(b); let c2 = 0, v2 = 0; for (let k = 0; k < a.length; k++) { c2 += (a[k] - x) * (b[k] - y); v2 += (b[k] - y) ** 2; } return c2 / v2; };
+    const annS = ms * 250 * 100, annM = mm * 250 * 100, vol = Math.sqrt(vs / (n - 1)) * Math.sqrt(250) * 100;
+    const down = S.filter(x => x < 0), dvol = Math.sqrt(down.reduce((x, y) => x + y * y, 0) / Math.max(1, n)) * Math.sqrt(250) * 100;
+    let peak = -Infinity, mdd = 0, eq = 1; for (const x of S) { eq *= 1 + x; peak = Math.max(peak, eq); mdd = Math.min(mdd, eq / peak - 1); }
+    const alpha = (annS - rf) - beta * (annM - rf);
+    const r = v => Math.round(v * 100) / 100;
+    return { beta: r(beta), alpha: r(alpha), corr: r(corr), r2: r(corr * corr), upBeta: r(sub(1)), downBeta: r(sub(-1)), vol: r(vol), sharpe: r((annS - rf) / vol), sortino: r((annS - rf) / (dvol || 1e-9)), mdd: r(mdd * 100), ret: r(annS), mret: r(annM), n };
+  };
+  E.riskLabel = function (k) {
+    if (!k || k.na) return null;
+    const style = k.r2 < 0.12 ? 'Moves independently' : k.beta >= 1.25 ? 'Aggressive' : k.beta <= 0.8 ? 'Defensive' : 'Market-like';
+    const leader = k.alpha > 0 && k.sortino > 1 && k.upBeta > k.downBeta;
+    return { style, leader, text: `${style} · beta ${k.beta.toFixed(2)}${leader ? ' · Leader' : ''}` };
+  };
+
   // ---------- unified rating (identical in scanner and stock page) ----------
   // signal = trend/momentum/setup score across swing..long; edge = how this signal actually performed on this stock;
   // + market regime and news nudges. intraday is excluded so the number doesn't change with 5-min noise.
@@ -494,7 +520,7 @@
     if (bt && bt.n >= 6) { const p = (bt.wins + 1) / (bt.n + 2), ev = p * 1.5 - (1 - p); edge = clamp(50 + 40 * ev, 0, 100); ew = Math.min(0.45, bt.n / 60); }
     let r = edge == null ? 50 + (signal - 50) * 0.85 : (1 - ew) * signal + ew * edge;
     const reg = ok(ctx.regime) ? ctx.regime : 0, nw = ok(ctx.news) ? ctx.news : 0;
-    const regAdj = Math.round(clamp((reg - 50) / 10, -5, 5)), newsAdj = Math.round(8 * clamp(nw));
+    const bt0 = ok(ctx.beta) ? clamp(ctx.beta, 0.3, 2) : 1, regAdj = Math.round(clamp((reg - 50) / 10 * bt0, -7, 7)), newsAdj = Math.round(8 * clamp(nw));
     r = Math.round(clamp(r + regAdj + newsAdj, 0, 100));
     const a = r >= 70 ? 'STRONG BUY' : r >= 58 ? 'BUY' : r > 42 ? 'HOLD / WAIT' : r > 30 ? 'SELL / AVOID' : 'STRONG SELL';
     return { rating: r, action: a, signal: Math.round(signal), edge: edge == null ? null : Math.round(edge), regAdj, newsAdj, bt };
@@ -506,7 +532,7 @@
     const P = H[hz], bt = h.bt; let edge = null, ew = 0;
     if (bt && bt.n >= 6) { const p = (bt.wins + 1) / (bt.n + 2), ev = p * P.t1 - (1 - p); edge = clamp(50 + 40 * ev, 0, 100); ew = Math.min(0.45, bt.n / 60); }
     let r = edge == null ? 50 + (h.score - 50) * (hz === 'intraday' ? 1 : 0.85) : (1 - ew) * h.score + ew * edge;
-    const regAdj = hz === 'long' ? 0 : Math.round(clamp(((ok(ctx.regime) ? ctx.regime : 50) - 50) / 10, -5, 5));
+    const regAdj = hz === 'long' ? 0 : Math.round(clamp(((ok(ctx.regime) ? ctx.regime : 50) - 50) / 10 * (ok(ctx.beta) ? clamp(ctx.beta, 0.3, 2) : 1), -7, 7));
     const newsAdj = hz === 'long' ? 0 : Math.round((hz === 'intraday' ? 10 : 8) * clamp(ok(ctx.news) ? ctx.news : 0));
     r = Math.round(clamp(r + regAdj + newsAdj, 0, 100));
     const a = action(r, hz, ctx.canShort);

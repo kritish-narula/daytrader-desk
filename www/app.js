@@ -8,7 +8,7 @@ const MK = {
   US: { name: 'Global', tz: 'America/New_York', open: 570, close: 960, cur: '$', tick: 0.01, idx: () => window.IDX_US },
 };
 const S = { mkt: store.get('mkt', 'IN'), tab: 'home', stack: [], nse: null, saved: store.get('saved', { IN: [], US: [] }), scan: store.get('scan', {}), detail: null, hz: 'swing', timer: null,
-  news: store.get('news', {}), regime: {}, uni: store.get('uni', { size: 'L', sector: '' }), minTurnover: store.get('minTurnover', { IN: 1e7, US: 5e6 }), scanning: false };
+  news: store.get('news', {}), regime: {}, uni: store.get('uni', { size: 'L', sector: '' }), minTurnover: store.get('minTurnover', { IN: 1e7, US: 5e6 }), scanning: false, idxD: {}, sizing: store.get('sizing', { capital: 100000, riskPct: 1 }), rf: store.get('rf', { IN: 6, US: 4 }) };
 
 // ---------- symbols ----------
 async function loadNSE() {
@@ -70,6 +70,7 @@ function setLive() { const on = marketOpen(); $('#live').className = 'live' + (o
 // ---------- navigation (also driven by the phone's back button) ----------
 function go(tab) { if (tab !== S.tab) S.stack.push(S.tab); if (S.stack.length > 20) S.stack.shift(); S.tab = tab; render(); }
 function back() {
+  const sh = document.querySelector('.sheet'); if (sh) { sh.remove(); return true; }
   if (window.ChartView && document.querySelector('.cfull')) { ChartView.close(); return true; }
   const sr = $('#sres'); if (sr && sr.innerHTML) { $('#q').value = ''; sr.innerHTML = ''; return true; }
   if (S.stack.length) { S.tab = S.stack.pop(); render(); return true; }
@@ -83,7 +84,7 @@ function render() {
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
   $('#navFno').style.display = S.mkt === 'IN' ? '' : 'none'; $('#navIpo').style.display = S.mkt === 'IN' ? '' : 'none'; updBell();
   setLive(); window.scrollTo(0, 0);
-  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, settings: vSettings, ipo: vIpo })[S.tab]();
+  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, settings: vSettings, ipo: vIpo, learn: vLearn })[S.tab]();
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
 }
 function rowHTML(sym, name, price, chg, sc, lbl, tags = '', rank, bear) {
@@ -99,7 +100,7 @@ function vHome() {
   v.innerHTML = `<div class="search"><input id="q" placeholder="Search ${S.mkt === 'IN' ? 'any NSE stock or index' : 'any global stock, e.g. AAPL'}" autocomplete="off"></div>
   <div id="sres"></div>${S.mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in for live prices.' : 'Connect your mStock account for exchange-accurate live prices. Tap to set up.'}</div>`) : ''}
   <div class="idx" id="idx">${m.idx().map(x => `<div class="card" data-sym="${x[0]}"><div class="n">${x[1]}</div><div class="p" id="ix_${x[0]}"><span class="spin"></span></div><div id="ixc_${x[0]}" style="font-size:12px"></div></div>`).join('')}</div>
-  <div class="chips wrap" id="quick">${[['top', '⭐ Overall'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
+  <div class="chips wrap" id="quick">${[['top', '⭐ Overall'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
   <div class="card regime" id="regime"><span class="spin"></span></div>
   ${S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length ? `<h3>Browse stocks</h3><div class="card"><div class="pick2" style="margin:0"><label><span>Market cap</span><select id="hbSize">${SIZES.map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
    <label><span>Sector</span><select id="hbSec"><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div><button class="btn w" id="hbGo" style="margin-top:10px">Show stocks</button></div>` : ''}
@@ -131,6 +132,8 @@ function tagsOf(r) {
   (r.cross || []).slice(0, 1).forEach(c => t.push(`<span class="tag ${c.dir > 0 ? 'p' : 'n'}">${esc(c.name.split(' ')[0])} ${c.days ? '~' + Math.max(1, Math.round(c.days)) + 'd' : 'crossed'}</span>`));
   (r.setups || []).slice(0, 2).forEach(s => t.push(`<span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.n.replace(/^SMC: /, 'SMC ').replace(' (Minervini template)', ''))}</span>`));
   if (!(r.setups || []).length) (r.patterns || []).filter(p => p.b).slice(0, 1).forEach(p => t.push(`<span class="tag ${p.b > 0 ? 'p' : 'n'}">${esc(p.n)}</span>`));
+  const RLt = r.risk ? Engine.riskLabel(r.risk) : null; if (RLt && RLt.leader) t.push('<span class="tag p">🏆 Leader</span>');
+  if (r.risk && r.risk.beta >= 1.4) t.push(`<span class="tag n">β ${r.risk.beta.toFixed(1)}</span>`);
   const rsv = relStr(r); if (rsv != null && Math.abs(rsv) >= 10) t.push(`<span class="tag ${rsv > 0 ? 'p' : 'n'}">RS ${rsv > 0 ? '+' : ''}${rsv.toFixed(0)}%</span>`);
   if (r.news && r.news.n && Math.abs(r.news.s) >= 0.15) t.push(`<span class="tag ${r.news.s > 0 ? 'p' : 'n'}">📰 ${r.news.s > 0 ? 'Positive' : 'Negative'} news</span>`);
   return t.length ? `<div>${t.join('')}</div>` : '';
@@ -156,6 +159,8 @@ function setupSearch() {
   };
 }
 
+function riskOf(D, mkt, sym) { if (mkt === 'IN' && window.IDX_IN.some(x => x[0] === sym)) return null; const k = Engine.risk(D, S.idxD[mkt], S.rf[mkt]); return k && !k.na ? k : null; }
+const betaOf = r => r && r.risk && isFinite(r.risk.beta) ? r.risk.beta : undefined;
 // relative strength: stock's 3-month return minus the index's (positive = outperforming)
 function relStr(r, mkt = S.mkt) { const ix = S.regime[mkt]; return r && isFinite(r.ret63) && ix && isFinite(ix.ret63) ? r.ret63 - ix.ret63 : null; }
 // ---------- unified rating: the same number everywhere ----------
@@ -163,19 +168,19 @@ const nkey = (mkt, sym) => mkt + ':' + sym;
 function newsOf(mkt, sym) { const n = S.news[nkey(mkt, sym)]; return n && Date.now() - n.at < 6 * 3600e3 ? n : null; }
 function putNews(mkt, sym, N) { S.news[nkey(mkt, sym)] = { s: +(N.score * Math.min(1, N.n / 3)).toFixed(2), n: N.n, top: (N.items.find(i => i.s) || {}).title || '', at: Date.now() }; store.set('news', S.news); }
 async function regime(mkt) { // market trend from the index: nudges ratings ±5
-  const r = S.regime[mkt]; if (r && Date.now() - r.at < 15 * 60e3) return r.v;
-  try { const { D } = await chart(mkt === 'IN' ? '^NSEI' : '^GSPC', '2y', '1d'); const q = Engine.quick(D, { tick: 0.05 }); const v = Engine.rating(q).signal; S.regime[mkt] = { v, at: Date.now(), ret63: q.ret63 }; return v; }
+  const r = S.regime[mkt]; if (r && S.idxD[mkt] && Date.now() - r.at < 15 * 60e3) return r.v;
+  try { const { D } = await chart(mkt === 'IN' ? '^NSEI' : '^GSPC', '2y', '1d'); const q = Engine.quick(D, { tick: 0.05 }); const v = Engine.rating(q).signal; S.regime[mkt] = { v, at: Date.now(), ret63: q.ret63 }; S.idxD[mkt] = D; return v; }
   catch (e) { return 50; }
 }
 function rateRow(r, mkt = S.mkt) {
   if (!r || r.err) return null;
   const isIdx = mkt === 'IN' ? window.IDX_IN.some(x => x[0] === r.sym) : false, n = newsOf(mkt, r.sym);
-  return Engine.rating(r, { regime: isIdx ? 50 : (S.regime[mkt] || {}).v, news: n ? n.s : 0 });
+  return Engine.rating(r, { regime: isIdx ? 50 : (S.regime[mkt] || {}).v, news: n ? n.s : 0, beta: betaOf(r) });
 }
 function hzRate(r, hz, mkt = S.mkt) {
   if (!r || !r[hz] || r[hz].na) return null;
   const n = newsOf(mkt, r.sym), isIdx = mkt === 'IN' && window.IDX_IN.some(x => x[0] === r.sym);
-  return Engine.hzRating(r[hz], hz, { regime: isIdx ? 50 : (S.regime[mkt] || {}).v, news: n ? n.s : 0, canShort: mkt === 'US' || isFno(r.sym) });
+  return Engine.hzRating(r[hz], hz, { regime: isIdx ? 50 : (S.regime[mkt] || {}).v, news: n ? n.s : 0, canShort: mkt === 'US' || isFno(r.sym), beta: betaOf(r) });
 }
 const actLabel = a => ({ 'STRONG BUY': 'S.BUY', 'BUY': 'BUY', 'HOLD / WAIT': 'HOLD', 'SELL / AVOID': 'SELL', 'STRONG SELL': 'S.SELL', 'SELL': 'SELL', 'SELL / EXIT': 'EXIT', 'AVOID': 'AVOID' }[a] || a);
 async function msQuotes(syms, mkt) {
@@ -188,10 +193,11 @@ async function dailyQuick(sym, mkt, Q) {
   const o = Q && MS.overlay(D, Q[sym]); if (o) { price = o.price; prev = o.prev; }
   const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price });
   if (!q.err && prev) q.chg = (q.price / prev - 1) * 100;
+  if (!q.err) q.risk = riskOf(D, mkt, sym);
   return q;
 }
 // ---------- scanner ----------
-const FILTERS = [['top', '⭐ Overall'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
+const FILTERS = [['top', '⭐ Overall'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
 const HZ = ['intraday', 'swing', 'short', 'medium', 'long'], HZL = { intraday: 'INTRA', swing: 'SWING', short: 'SHORT', medium: 'MEDIUM', long: 'LONG' };
 // Overall lists show the overall rating; a horizon list (Swing, Intraday…) shows only stocks rated BUY on that
 // horizon, ranked by that horizon's rating, high → low. The stock page opens on the same horizon with the same number.
@@ -210,11 +216,13 @@ function rated(rows, f, mkt = S.mkt) {
     const brk = (r.setups || []).find(s => s.b > 0 && (s.k === 'BRK' || s.k === 'GAP' || /VCP breakout|Break of structure|Change of character/.test(s.n))) || ((r.patterns || []).find(p => /52-week high breakout|20-day range breakout/.test(p.n)) ? { n: (r.patterns.find(p => /breakout/.test(p.n)) || {}).n, q: 60 } : null);
     const pre = (r.setups || []).find(s => s.k === 'PRE' || /VCP \(volatility/.test(s.n));
     const rsv = relStr(r, mkt);
-    if ((f === 'breakout' || f === 'near') && (rsv != null && rsv < 0)) continue; // only leaders: beating the index over 3 months
-    const ok = f === 'top' ? true : f === 'breakout' ? !!brk && R.rating >= 50 : f === 'near' ? !!pre : f === 'setups' ? bull.length > 0 : f === 'cross' ? (r.cross || []).some(c => c.dir > 0)
+    const K = r.risk, RL = K ? Engine.riskLabel(K) : null;
+    // breakout lists: only stocks outperforming — risk-adjusted (alpha) when available, else 3-month relative strength
+    if ((f === 'breakout' || f === 'near') && (K ? K.alpha < 0 : rsv != null && rsv < 0)) continue;
+    const ok = f === 'top' ? true : f === 'leaders' ? !!(RL && RL.leader) && R.rating >= 50 : f === 'breakout' ? !!brk && R.rating >= 50 : f === 'near' ? !!pre : f === 'setups' ? bull.length > 0 : f === 'cross' ? (r.cross || []).some(c => c.dir > 0)
       : f === 'news' ? n && Math.abs(n.s) >= 0.15 : f === 'sell' ? R.rating <= 42 : true;
     if (!ok) continue;
-    const sub = f === 'breakout' ? `${brk.n.replace(/^SMC: /, 'SMC ')}${rsv != null ? ` · RS +${rsv.toFixed(0)}% vs index` : ''}` : f === 'near' ? `${pre.n.replace(' (coiling under resistance)', '').replace(' (volatility contraction) forming', ' forming')} · quality ${pre.q}${rsv != null ? ` · RS +${rsv.toFixed(0)}%` : ''}` : f === 'setups' ? `${bull[0].n.replace(/^SMC: /, 'SMC ')} · quality ${bull[0].q}` : f === 'news' ? (n.top || '') : '';
+    const sub = f === 'leaders' ? `α ${K.alpha > 0 ? '+' : ''}${K.alpha.toFixed(0)}%/yr · β ${K.beta.toFixed(2)} · Sortino ${K.sortino.toFixed(1)}` : f === 'breakout' ? `${brk.n.replace(/^SMC: /, 'SMC ')}${rsv != null ? ` · RS +${rsv.toFixed(0)}% vs index` : ''}` : f === 'near' ? `${pre.n.replace(' (coiling under resistance)', '').replace(' (volatility contraction) forming', ' forming')} · quality ${pre.q}${rsv != null ? ` · RS +${rsv.toFixed(0)}%` : ''}` : f === 'setups' ? `${bull[0].n.replace(/^SMC: /, 'SMC ')} · quality ${bull[0].q}` : f === 'news' ? (n.top || '') : '';
     out.push({ r, rating: R.rating, label: actLabel(R.action), R, sub, hz: 'overall' });
   }
   return out.sort(f === 'sell' ? (a, b) => a.rating - b.rating : (a, b) => b.rating - a.rating || a.r.sym.localeCompare(b.r.sym));
@@ -257,7 +265,7 @@ function drawScan() {
   if (!sc) { el.innerHTML = '<div class="empty">Pick a group and tap <b>Scan</b>.<br>Lists are ranked by rating, highest first.</div>'; return; }
   const inUni = new Set(uniSyms()), f = S.scanFilter || 'top';
   const rows = rated(sc.rows.filter(r => inUni.has(r.sym)), f).slice(0, 150);
-  el.innerHTML = rows.length ? `<p class="note">Scan from ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' (prices move; the stock page is live)' : ''}. ${f === 'sell' ? 'Lowest overall rating first = strongest sell.' : f === 'breakout' ? 'Fresh breakouts in stocks beating the index, highest rating first.' : f === 'near' ? 'Coiling just under resistance; buy only on the breakout close. Highest rating first.' : HZ.includes(f) ? `Stocks rated BUY for ${FILTERS.find(z => z[0] === f)[1].replace(/^\W+ /, '')}, highest ${f} rating first.` : 'Highest overall rating first.'}</p><div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
+  el.innerHTML = rows.length ? `<p class="note">Scan from ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' (prices move; the stock page is live)' : ''}. ${f === 'sell' ? 'Lowest overall rating first = strongest sell.' : f === 'leaders' ? 'Positive alpha, good downside-adjusted returns and they rise more with the market than they fall with it. <a class="help" data-help="leader">What is this?</a>' : f === 'breakout' ? 'Fresh breakouts in stocks with positive alpha, highest rating first.' : f === 'near' ? 'Coiling just under resistance; buy only on the breakout close. Highest rating first.' : HZ.includes(f) ? `Stocks rated BUY for ${FILTERS.find(z => z[0] === f)[1].replace(/^\W+ /, '')}, highest ${f} rating first.` : 'Highest overall rating first.'}</p><div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
     : `<div class="empty">Nothing in "${FILTERS.find(z => z[0] === f)[1]}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
   bindRows(el, HZ.includes(f) ? f : 'overall');
 }
@@ -384,6 +392,7 @@ function bindOpt() { document.querySelectorAll('.optOpen').forEach(a => a.onclic
 async function vIpo() {
   const v = $('#view');
   v.innerHTML = `<h3>IPOs · grey market premium <a id="ipoRef">Refresh</a></h3><div id="ipoBody"><div class="empty"><span class="spin"></span> Loading live GMP…</div></div>
+   <p class="note">*Allotment and listing are expected dates under SEBI's T+3 timeline (allotment 1 working day after close, listing 3). Exchange holidays can shift them, so confirm on the registrar's site.</p>
    <p class="note">GMP is unofficial and unregulated grey-market data. It changes daily and does not guarantee the listing price. Rating = GMP % + GMP trend + news + market trend − SME risk. Not investment advice.</p>`;
   $('#ipoRef').onclick = () => { S.ipo = null; vIpo(); };
   try {
@@ -397,8 +406,10 @@ async function vIpo() {
     const live = L.filter(x => !/closed|listed/i.test(x.status)).sort((a, b) => b.R.rating - a.R.rating), done = L.filter(x => /closed|listed/i.test(x.status)).sort((a, b) => b.R.gmpPct - a.R.gmpPct);
     for (const x of live) if (x.R.rating >= 70) Alerts.evaluate({ sym: 'IPO ' + x.name, mkt: 'IN', price: x.price, rating: x.R.rating, action: x.R.action, setups: [{ n: `IPO ${x.R.action}`, b: 1, q: x.R.rating }] }, true);
     Alerts.save(); Alerts.flush();
-    const card = (x, k) => `<div class="card ipo" data-ipo="${esc(x.name)}"><div class="ohead"><div style="min-width:0"><div class="s">${k ? `<span class="rk">${k}</span> ` : ''}${esc(x.name)}</div><div class="note">${x.sme ? '<span class="tag n">SME</span>' : '<span class="tag">Mainboard</span>'} ${esc(x.status)} · ${esc(x.dates)}</div></div>
+    const card = (x, k) => `<div class="card ipo" data-ipo="${esc(x.name)}"><div class="ohead"><div style="min-width:0"><div class="s">${k ? `<span class="rk">${k}</span> ` : ''}${esc(x.name)}</div><div class="note">${x.sme ? '<span class="tag n">SME</span>' : '<span class="tag">Mainboard</span>'} ${esc(x.status)}</div></div>
       <div class="sc ${x.R.rating >= 58 ? 'b1' : x.R.rating <= 44 ? 'b-1' : 'b0'}">${x.R.rating}<small>${esc(x.R.action.split(' ')[0])}</small></div></div>
+      ${(() => { const Dt = IPO.dates(x.dates), f = d => d ? d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' }) : '–';
+        return Dt ? `<div class="ipod"><div><span>Opens</span><b>${f(Dt.open)}</b></div><div><span>Closes</span><b>${f(Dt.close)}</b></div><div><span>Allotment*</span><b>${f(Dt.allot)}</b></div><div><span>Listing*</span><b>${f(Dt.list)}</b></div></div><div class="ipow">${esc(IPO.when(Dt))}</div>` : ''; })()}
       <div class="ipog"><div><span>GMP</span><b class="${x.gmp > 0 ? 'up' : x.gmp < 0 ? 'dn' : ''}">${x.gmp > 0 ? '+' : ''}₹${fmt(x.gmp, 0)} · ${x.R.gmpPct.toFixed(1)}%</b></div><div><span>Price band</span><b>${esc(x.priceBand || '–')}</b></div><div><span>Est. listing</span><b>${esc(x.est || '–')}</b></div></div>
       <div class="ipox" style="display:none"><div class="pill ${x.R.rating >= 58 ? 'b1' : x.R.rating <= 44 ? 'b-1' : 'b0'}" style="display:inline-block;margin:8px 0">${esc(x.R.action)}</div>
       <ul class="why">${x.R.why.map(w => `<li>${w[0] >= 0 ? '<span class="up">▲</span>' : '<span class="dn">▼</span>'} ${esc(w[1])}</li>`).join('')}</ul><div class="inews note"><span class="spin"></span> News…</div></div></div>`;
@@ -417,17 +428,23 @@ async function vIpo() {
 // ---------- saved ----------
 function vSaved() {
   const L = S.saved[S.mkt];
-  $('#view').innerHTML = L.length ? `<div class="list" id="svl">${L.map(s => rowHTML(s, nameOf(s), null, null, null)).join('')}</div><p class="note">Overall rating, highest first.</p>` : '<div class="empty">Nothing saved yet. Open any stock and tap ☆.</div>';
+  $('#view').innerHTML = L.length ? `<div class="card" id="wbeta" data-help="wbeta"><span class="spin"></span> Measuring watchlist risk…</div><div class="list" id="svl">${L.map(s => rowHTML(s, nameOf(s), null, null, null)).join('')}</div><p class="note">Overall rating, highest first.</p>` : '<div class="empty">Nothing saved yet. Open any stock and tap ☆.</div>';
   bindRows($('#view'));
   const mkt = S.mkt;
-  const got = {};
+  const got = {}; S.wrisk = {};
   regime(mkt).then(() => msQuotes(L, mkt)).then(Q => pool(L, 4, async sym => {
     const q = await dailyQuick(sym, mkt, Q);
     const row = document.querySelector(`#svl .row[data-sym="${CSS.escape(sym)}"]`);
     const R = rateRow(Object.assign({ sym }, q), mkt);
     if (R) { Alerts.evaluate({ sym, mkt, price: q.price, rating: R.rating, action: R.action, setups: q.setups, cross: q.cross, news: newsOf(mkt, sym) }, true); upsertRow(mkt, Object.assign({ sym }, q)); }
+    if (q.risk) S.wrisk[sym] = q.risk;
     if (row && R) { got[sym] = R.rating; row.outerHTML = rowHTML(sym, nameOf(sym), q.price, q.chg, R.rating, actLabel(R.action), tagsOf(q)); bindRows($('#svl')); }
-  })).then(() => { const box = $('#svl'); if (!box || S.tab !== 'saved') return; [...box.children].sort((a, b) => (got[b.dataset.sym] ?? -1) - (got[a.dataset.sym] ?? -1)).forEach(n => box.appendChild(n)); Alerts.save(); Alerts.flush(); });
+  })).then(() => { const box = $('#svl'); if (!box || S.tab !== 'saved') return; [...box.children].sort((a, b) => (got[b.dataset.sym] ?? -1) - (got[a.dataset.sym] ?? -1)).forEach(n => box.appendChild(n)); Alerts.save(); Alerts.flush();
+    const W = Object.values(S.wrisk), wb = $('#wbeta'); if (!wb) return;
+    if (!W.length) { wb.innerHTML = '<span class="note">Not enough history to measure watchlist beta.</span>'; return; }
+    const b = W.reduce((x, k) => x + k.beta, 0) / W.length, a = W.reduce((x, k) => x + k.alpha, 0) / W.length, lead = W.filter(k => Engine.riskLabel(k).leader).length, idx = mkt === 'IN' ? 'Nifty' : 'S&P 500';
+    wb.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div class="note">Watchlist beta <span class="qm">ⓘ</span></div><b style="font-size:22px" class="${b >= 1.25 ? 'dn' : b <= 0.85 ? 'up' : 'wa'}">${b.toFixed(2)}×</b> <span class="mu">${idx}</span></div><div style="text-align:right"><div class="note">Avg alpha</div><b class="${a >= 0 ? 'up' : 'dn'}">${a >= 0 ? '+' : ''}${a.toFixed(1)}%/yr</b><div class="note">${lead}/${W.length} leaders</div></div></div>
+      <div class="note" style="margin-top:6px">If ${idx} falls 2%, your saved stocks tend to fall about ${(2 * b).toFixed(1)}%.${b >= 1.25 ? ' That is aggressive: add some low-beta names to balance it.' : ''}</div>`; });
 }
 
 // ---------- broker (mStock) ----------
@@ -494,9 +511,16 @@ function vSettings() {
    <div class="srow"><div><b>Alert on non-saved stocks at rating</b></div><select id="strong">${[70, 75, 80, 85].map(x => `<option ${P.strong == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
   <h3>Scanner</h3><div class="card">
    <div class="srow"><div><b>Skip illiquid stocks</b><div class="note">Average daily value traded below</div></div><select id="liq">${(S.mkt === 'IN' ? [[0, 'Off'], [1e6, '₹10 lakh'], [1e7, '₹1 Cr'], [5e7, '₹5 Cr'], [1e8, '₹10 Cr']] : [[0, 'Off'], [1e6, '$1M'], [5e6, '$5M'], [2e7, '$20M']]).map(x => `<option value="${x[0]}" ${S.minTurnover[S.mkt] == x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></div></div>
-  <h3>Tools</h3><div class="list"><div class="row" id="goDesk"><div class="nm"><div class="s">🧪 ORB Desk</div><div class="f">Opening-range breakout + 10,000-replay Time Machine</div></div><div class="px">›</div></div></div>
+  <h3>Position sizing & risk</h3><div class="card">
+   <div class="srow"><div><b>Trading capital</b><div class="note">Used for the suggested quantity</div></div><input id="cap" class="inp" style="width:130px;margin:0" inputmode="numeric" value="${S.sizing.capital}"></div>
+   <div class="srow"><div><b>Risk per trade</b><div class="note">% of capital lost if the stop is hit</div></div><select id="rpct">${[0.25, 0.5, 1, 1.5, 2].map(x => `<option ${S.sizing.riskPct == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+   <div class="srow"><div><b>Risk-free rate (${S.mkt === 'IN' ? 'India' : 'US'})</b><div class="note">% per year, used for alpha, Sharpe & Sortino</div></div><input id="rf" class="inp" style="width:80px;margin:0" inputmode="decimal" value="${S.rf[S.mkt]}"></div></div>
+  <h3>Tools</h3><div class="list"><div class="row" id="goLearn"><div class="nm"><div class="s">📘 Alpha, beta & risk explained</div><div class="f">What each number means and where the app uses it</div></div><div class="px">›</div></div><div class="row" id="goDesk"><div class="nm"><div class="s">🧪 ORB Desk</div><div class="f">Opening-range breakout + 10,000-replay Time Machine</div></div><div class="px">›</div></div></div>
   <p class="note">DayTrader Desk · analysis only, never places orders. Not investment advice.</p>`;
-  $('#back').onclick = back; $('#goBroker').onclick = () => go('broker'); $('#goDesk').onclick = () => { location.href = 'desk.html'; };
+  $('#back').onclick = back; $('#goBroker').onclick = () => go('broker'); $('#goDesk').onclick = () => { location.href = 'desk.html'; }; $('#goLearn').onclick = () => go('learn');
+  $('#cap').onchange = e => { S.sizing.capital = Math.max(0, +e.target.value || 0); store.set('sizing', S.sizing); };
+  $('#rpct').onchange = e => { S.sizing.riskPct = +e.target.value; store.set('sizing', S.sizing); };
+  $('#rf').onchange = e => { const v = +e.target.value; if (isFinite(v) && v >= 0 && v < 20) { S.rf[S.mkt] = v; store.set('rf', S.rf); } };
   $('#pinBtn').onclick = async () => { const p1 = await pinPad(pin ? 'New PIN (4–8 digits)' : 'Choose a PIN (4–8 digits)'); if (!p1) return; const p2 = await pinPad('Enter it again'); if (p1 !== p2) return toast('PINs did not match.');
     if (pin) { const old = await pinPad('Current PIN'); if (!old) return; try { await Sec.unlock(old); } catch (e) { return toast(e.message); } }
     try { await Sec.setPin(p1); store.set('pinLen', p1.length); toast('PIN set. Your mStock key is now encrypted.'); } catch (e) { toast(e.message); } vSettings(); };
@@ -558,7 +582,7 @@ function openDetail(sym, hz) { S.detail = { sym, mkt: S.mkt }; S.hz = hz || 'ove
 function rowFromA(A) { // same shape as a scan row, so the list shows the same rating
   const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt } : h, H = A.horizons;
   return { price: A.price, chg: A.chg, overall: A.overall, act: A.overallAction, swing: slim(H.swing), short: slim(H.short), intraday: slim(H.intraday), medium: slim(H.medium), long: slim(H.long),
-    horizons: { swing: slim(H.swing), short: slim(H.short), medium: slim(H.medium), long: slim(H.long) }, turnover: A.stats.turnover, ret63: A.stats.ret63, patterns: A.patterns.map(p => ({ n: p.n, b: p.b })), setups: A.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: A.cross, volx: A.stats.volx, rsi: A.stats.rsi };
+    horizons: { swing: slim(H.swing), short: slim(H.short), medium: slim(H.medium), long: slim(H.long) }, turnover: A.stats.turnover, ret63: A.stats.ret63, risk: A.risk || null, patterns: A.patterns.map(p => ({ n: p.n, b: p.b })), setups: A.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: A.cross, volx: A.stats.volx, rsi: A.stats.rsi };
 }
 async function loadDetail() {
   const { sym, mkt } = S.detail, ys = ySym(sym, mkt), useMS = mkt === 'IN' && window.MS && MS.ok();
@@ -581,6 +605,7 @@ async function loadDetail() {
   await regime(mkt);
   const A = Engine.analyze(d.D, { intra: it && marketOpen(mkt) ? it.D : null, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
   if (prev && !A.err) A.chg = (A.price / prev - 1) * 100;
+  if (!A.err) A.risk = riskOf(d.D, mkt, sym);
   let R = null;
   if (!A.err) { const row = Object.assign({ sym }, rowFromA(A)); R = rateRow(row, mkt); upsertRow(mkt, row); store.set('scan', S.scan);
     Alerts.evaluate({ sym, mkt, price: A.price, rating: R.rating, action: R.action, setups: A.setups, cross: A.cross, news: newsOf(mkt, sym) }, S.saved[mkt].includes(sym)); Alerts.save(); Alerts.flush(); }
@@ -628,7 +653,7 @@ function drawDetail(isRefresh) {
   <div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-end"><div><div class="price">${c}${fmt(A.price)}</div><div>${pct(A.chg)} <span class="mu" style="font-size:12px">today · ${isRefresh ? 'updated ' : ''}${new Date(at).toLocaleTimeString()}</span></div><div style="font-size:11px;margin-top:3px" class="${/mStock/.test(S.detail.src) ? 'up' : 'mu'}">Source: ${esc(S.detail.src)}${S.detail.msErr ? ` <span class="wa">· mStock: ${esc(S.detail.msErr)}</span>` : ''}</div></div>
   <span class="live ${marketOpen(S.detail.mkt) ? 'on' : ''}"><i></i><span>${marketOpen(S.detail.mkt) ? 'Live · 30s' : 'Market closed'}</span></span></div></div>
   <div class="card hero">${ring(top.rating)}<div style="flex:1;min-width:0"><div class="sub">${esc(top.label)}</div><div class="verdict ${cls(top.rating) === 'b1' ? 'up' : cls(top.rating) === 'b-1' ? 'dn' : 'wa'}">${top.action}</div>
-  <div class="sub">Signal <b>${top.signal}</b> · Proven edge <b class="${top.edge == null ? '' : top.edge >= 50 ? 'up' : 'dn'}">${top.edge == null ? 'n/a' : top.edge}</b>${top.bt ? ` <span class="mu">(${top.bt.wins}/${top.bt.n} wins)</span>` : ''} · Market <b>${top.regAdj >= 0 ? '+' : ''}${top.regAdj}</b> · News <b>${top.newsAdj >= 0 ? '+' : ''}${top.newsAdj}</b></div></div></div>
+  <div class="sub">Signal <b>${top.signal}</b> · Proven edge <b class="${top.edge == null ? '' : top.edge >= 50 ? 'up' : 'dn'}">${top.edge == null ? 'n/a' : top.edge}</b>${top.bt ? ` <span class="mu">(${top.bt.wins}/${top.bt.n} wins)</span>` : ''} · Market <b>${top.regAdj >= 0 ? '+' : ''}${top.regAdj}</b>${A.risk ? ` <span class="mu">(β ${A.risk.beta.toFixed(1)})</span>` : ''} · News <b>${top.newsAdj >= 0 ? '+' : ''}${top.newsAdj}</b></div></div></div>
   ${A.stats.turnover < (S.minTurnover[S.detail.mkt] || 0) ? `<div class="warn">⚠ Thinly traded: about ${c}${fmt(A.stats.turnover / (S.detail.mkt === 'IN' ? 1e7 : 1e6), 2)} ${S.detail.mkt === 'IN' ? 'Cr' : 'M'} a day. Wide spreads and slippage can wipe out the edge.</div>` : ''}
   <div class="hzrow">${['overall', ...HZ].map(x => { const v = x === 'overall' ? R : RH[x]; return `<button data-h="${x}" class="hzc ${x === sel ? 'on' : ''}"><span>${x === 'overall' ? 'Overall' : H[x].label.replace(' term', '')}</span><b class="${!v ? 'mu' : v.rating >= 58 ? 'up' : v.rating <= 42 ? 'dn' : 'wa'}">${v ? v.rating : '–'}</b></button>`; }).join('')}</div>
   <h3>What to do · ${esc(h.label)}${sel === 'overall' ? ' <span class="note">(strongest horizon)</span>' : ''}</h3>
@@ -637,10 +662,11 @@ function drawDetail(isRefresh) {
    <div class="meter"><i style="left:calc(${Rk.rating}% - 2px)"></i></div>
    <div style="font-size:13px;margin-top:6px">${odds}</div>${Rk.dir && h.bt && h.bt.odds != null && h.bt.odds < 100 / (1 + (h.levels ? h.levels.rr1 : 1.5)) ? `<div class="warn" style="margin:8px 0 0">⚠ Weak edge: on ${esc(S.detail.sym)} this signal hit Target 1 less often than the ${Math.round(100 / (1 + h.levels.rr1))}% needed to break even. Trade smaller, or wait for a pattern trigger.</div>` : ''}
    ${L ? `<div class="lv">${lvl('Entry', L.entry)}${lvl('Stop loss', L.stop)}${lvl('Target 1', L.t1)}${lvl('Target 2', L.t2)}</div>
-   <div class="sub">Risk ${L.riskPct.toFixed(1)}% · Reward:risk 1:${L.rr1} / 1:${L.rr2}${L.vwap ? ` · VWAP ${fmt(L.vwap)}` : ''}${Rk.noShort ? ' · Exit longs or avoid. Shorting needs F&O.' : ''}${k === 'intraday' && S.detail.mkt === 'IN' ? ' · Square off by 3:15 PM' : ''}</div>
+   ${sizeLine(L, A, S.detail.mkt)}<div class="sub">Risk ${L.riskPct.toFixed(1)}% · Reward:risk 1:${L.rr1} / 1:${L.rr2}${L.vwap ? ` · VWAP ${fmt(L.vwap)}` : ''}${Rk.noShort ? ' · Exit longs or avoid. Shorting needs F&O.' : ''}${k === 'intraday' && S.detail.mkt === 'IN' ? ' · Square off by 3:15 PM' : ''}</div>
    ${A.fno && Rk.dir && (k === 'intraday' || k === 'swing') ? `<div class="sub" style="margin-top:6px">Futures: ${Rk.dir > 0 ? 'BUY' : 'SELL'} 1 lot${A.fno.lot ? ` (${A.fno.lot} qty) · risk ≈ ${c}${fmt(Math.abs(L.entry - L.stop) * A.fno.lot, 0)}` : ''}</div>` : ''}`
      : `<div class="sub">${Rk.dir ? 'Signal and backtest disagree on direction, so there are no levels. Stand aside.' : `No trade: ${Rk.rating} is in the wait zone (43–57). Wait for 58+ to buy or 42- to sell.`} Raw signal ${h.score}.</div>`}
    <ul class="why">${h.why.map(w => `<li>${w.w > 0 ? '<span class="up">✓</span>' : '<span class="dn">✗</span>'} ${esc(w.t)}</li>`).join('')}</ul>`}</div>
+  ${riskCard(A, S.detail.mkt)}
   <div class="card pvcard"><div class="pvhead"><b>Chart</b><span class="note">Daily · EMA 20/50/200 · levels</span><button class="btn sm" id="openChart">⛶ Live chart</button></div><div id="pv" class="pv"></div><div class="note" style="margin-top:6px">Tap the chart for full screen: 1m → monthly, EMAs, VWAP, RSI, MACD, free scrolling.</div></div>
   <h3>Setups <span class="note">SMC · VCP · trend</span></h3><div class="card">${A.setups.length ? A.setups.map(s => `<div class="setup"><div class="sh"><span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.k)}</span><b>${esc(s.n.replace(/^SMC: /, ''))}</b><span class="q ${s.q >= 70 ? 'up' : s.q >= 55 ? 'wa' : 'mu'}">${s.q}</span></div>
      <div class="qbar"><i style="width:${s.q}%;background:${s.b > 0 ? 'var(--up)' : 'var(--dn)'}"></i></div><div class="x">${esc(s.note)}</div>
@@ -661,6 +687,50 @@ function drawDetail(isRefresh) {
   const oc = () => ChartView.open({ sym: S.detail.sym, mkt: S.detail.mkt, levels: L });
   $('#openChart').onclick = oc; $('#pv').onclick = oc;
   S.detail.levels = L; drawPreview();
+}
+const HELP = {
+  beta: ['Beta (β): how much it moves with the market', 'Beta compares the stock with Nifty 50 (India) or the S&P 500 (US) over the last year.<br><b>1.0</b> moves in line with the index. <b>1.5</b> moves about 1.5×: Nifty +1% → stock ≈ +1.5%, and the same on the way down. <b>0.6</b> is defensive.<br><br><b>Where the app uses it</b><br>• Ratings: in a rising market high-beta stocks get a bigger boost, in a falling market a bigger cut (the "Market" number on the rating).<br>• Position size: high beta → trade smaller.<br>• Watchlist beta: how hard your saved stocks would fall if Nifty falls.'],
+  alpha: ['Alpha (α): return beyond what the market explains', 'Alpha = the stock\'s yearly return − the risk-free rate − beta × (market return − risk-free rate).<br>Example: Nifty +10%, beta 1.2 → the market "explains" about +12%. If the stock made +20%, alpha ≈ +8%: genuine strength from the company or its sector.<br><br><b>Where the app uses it</b><br>• 🏆 Leaders list and the Breakout lists only show positive-alpha stocks.<br>• Risk profile on every stock.<br>Alpha is backward-looking: results or news can change it fast.'],
+  updown: ['Upside vs downside beta', 'Beta measured separately on days the market rose and days it fell. The ideal stock has <b>upside beta > downside beta</b>: it rises more in rallies than it falls in sell-offs. This is one condition for 🏆 Leader.'],
+  vol: ['Volatility', 'How wild the daily swings are, scaled to a year. 20% is calm for a large cap; 50%+ is very volatile. Higher volatility needs wider stops and smaller size.'],
+  sharpe: ['Sharpe & Sortino ratios', '<b>Sharpe</b> = (yearly return − risk-free rate) ÷ volatility: return per unit of risk. Above 1 is good, above 2 is excellent.<br><b>Sortino</b> is the same but counts only downside swings, which is fairer for strong uptrends. Sortino > 1 is one condition for 🏆 Leader.'],
+  mdd: ['Max drawdown', 'The worst fall from a peak to a bottom in the last year. It shows how much pain holding the stock would have caused. A swing stop far smaller than this will get hit often.'],
+  r2: ['R² (how much the market explains)', 'The share of the stock\'s moves explained by the index (0–100%). High R² means beta is reliable. Low R² means company news dominates and beta matters less.'],
+  leader: ['🏆 Leaders', 'Stocks with <b>positive alpha</b>, <b>Sortino above 1</b> and <b>upside beta above downside beta</b>: they beat what their risk explains, reward risk well, and resist sell-offs better than they lag rallies. Ranked by rating.'],
+  wbeta: ['Watchlist beta', 'The average beta of your saved stocks. 1.3 means your watchlist tends to move about 1.3× Nifty: a 2% Nifty fall ≈ 2.6% for your basket. Add low-beta names if it is too high for your comfort.'],
+  sizing: ['Suggested quantity', 'Quantity = (capital × risk %) ÷ (entry − stop loss). Every trade then risks the same amount of money, whatever the stock\'s price or volatility. High-beta stocks get a note to go smaller. Set capital and risk % in Settings.'],
+};
+function showHelp(k) {
+  const h = HELP[k]; if (!h) return; const o = document.createElement('div'); o.className = 'sheet';
+  o.innerHTML = `<div class="sh-in"><div class="sh-h"><b>${h[0]}</b><button class="back" id="shx">✕</button></div><div class="sh-b">${h[1]}</div><button class="btn g w" id="shall">All terms explained</button></div>`;
+  document.body.appendChild(o); const close = () => o.remove(); o.onclick = e => { if (e.target === o) close(); }; o.querySelector('#shx').onclick = close;
+  o.querySelector('#shall').onclick = () => { close(); go('learn'); }; S.sheet = close;
+}
+document.addEventListener('click', e => { const a = e.target.closest('[data-help]'); if (a) { e.preventDefault(); e.stopPropagation(); showHelp(a.dataset.help); } }, true);
+function vLearn() {
+  $('#view').innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">Alpha, beta & risk</div><div class="f">What they mean and where the app uses them</div></div></div>
+  ${['beta', 'alpha', 'updown', 'vol', 'sharpe', 'mdd', 'r2', 'leader', 'wbeta', 'sizing'].map(k => `<div class="card"><b>${HELP[k][0]}</b><div class="note" style="font-size:13.5px;color:var(--tx);margin-top:6px;line-height:1.5">${HELP[k][1]}</div></div>`).join('')}`;
+  $('#back').onclick = back;
+}
+function riskCard(A, mkt) {
+  const K = A.risk; if (!K) return `<h3>Risk profile</h3><div class="card note">${A.horizons ? 'Not enough shared history with the index to measure alpha and beta (needs ~6 months).' : ''}</div>`;
+  const RL = Engine.riskLabel(K), idx = mkt === 'IN' ? 'Nifty' : 'S&P 500', ab = x => (x > 0 ? '+' : '') + x.toFixed(1);
+  const say = (K.r2 < 0.12 ? `${idx} explains little of its moves (R² ${Math.round(K.r2 * 100)}%), so beta is unreliable here; company news drives it. ` : `Moves about <b>${K.beta.toFixed(2)}×</b> ${idx}. `) + `${K.alpha >= 0 ? `Beat what its risk explains by <b class="up">${ab(K.alpha)}%</b> a year` : `Lagged what its risk explains by <b class="dn">${ab(K.alpha)}%</b> a year`}. ${K.upBeta > K.downBeta ? 'Rises more in rallies than it falls in sell-offs.' : 'Falls harder in sell-offs than it rises in rallies.'}`;
+  const cell = (l, v, h, c = '') => `<div data-help="${h}"><div class="l">${l} <span class="qm">ⓘ</span></div><div class="v ${c}">${v}</div></div>`;
+  return `<h3>Risk profile <span class="note">vs ${idx}, last year</span> <a class="help" data-help="beta">What is this?</a></h3><div class="card">
+   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="pill ${RL.style === 'Aggressive' ? 'b-1' : RL.style === 'Defensive' ? 'b1' : 'b0'}" style="font-size:13px">${RL.style}</span>${RL.leader ? '<span class="pill b1" style="font-size:13px">🏆 Leader</span>' : ''}</div>
+   <div class="sub" style="color:var(--tx);margin-bottom:10px">${say}</div>
+   <div class="kv">${cell('Beta (β)', K.beta.toFixed(2), 'beta')}${cell('Alpha (α) / yr', ab(K.alpha) + '%', 'alpha', K.alpha >= 0 ? 'up' : 'dn')}
+    ${cell('Upside / downside β', `${K.upBeta.toFixed(2)} / ${K.downBeta.toFixed(2)}`, 'updown', K.upBeta > K.downBeta ? 'up' : 'dn')}${cell('Volatility / yr', K.vol.toFixed(0) + '%', 'vol')}
+    ${cell('Sharpe · Sortino', `${K.sharpe.toFixed(2)} · ${K.sortino.toFixed(2)}`, 'sharpe', K.sortino >= 1 ? 'up' : '')}${cell('Max drawdown', K.mdd.toFixed(0) + '%', 'mdd', 'dn')}
+    ${cell('R² with index', Math.round(K.r2 * 100) + '%', 'r2')}${cell('1-yr return vs index', `${ab(K.ret)}% vs ${ab(K.mret)}%`, 'alpha', K.ret >= K.mret ? 'up' : 'dn')}</div>
+   <div class="note" style="margin-top:8px">Risk-free rate assumed ${S.rf[mkt]}% (change in Settings). Tap any box for an explanation.</div></div>`;
+}
+function sizeLine(L, A, mkt) {
+  const Z = S.sizing, risk = Math.abs(L.entry - L.stop); if (!risk || !Z.capital) return '';
+  let q = Math.floor(Z.capital * Z.riskPct / 100 / risk); q = Math.min(q, Math.floor(Z.capital / L.entry)); if (q < 1) return '';
+  const hb = A.risk && A.risk.beta >= 1.3, c = cur();
+  return `<div class="sizeln" data-help="sizing">📐 Suggested qty <b>${q}</b> · risk ${c}${fmt(q * risk, 0)} (${Z.riskPct}% of ${c}${fmt(Z.capital, 0)}) · needs ${c}${fmt(q * L.entry, 0)}${hb ? ` · <span class="wa">β ${A.risk.beta.toFixed(1)}: consider ~25% less</span>` : ''} <span class="qm">ⓘ</span></div>`;
 }
 function newsHead(N) {
   if (!N || !N.n) return N && N.err ? 'unavailable' : 'no rated headlines';
