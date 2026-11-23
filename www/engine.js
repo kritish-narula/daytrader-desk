@@ -90,6 +90,99 @@
     };
   };
 
+
+  // ---------- setups (use bars up to index i only) ----------
+  function pivotsUpTo(D, i0, i1, k) { // confirmed pivots need k bars after them, all <= i1
+    const hi = [], lo = [];
+    for (let j = Math.max(i0, k); j <= i1 - k; j++) {
+      let H1 = true, L1 = true;
+      for (let m = j - k; m <= j + k; m++) { if (D.h[m] > D.h[j]) H1 = false; if (D.l[m] < D.l[j]) L1 = false; }
+      if (H1) hi.push(j); if (L1) lo.push(j);
+    }
+    return { hi, lo };
+  }
+  E.setups = function (I, i, tick = 0.05) {
+    i = i == null ? I.n - 1 : i;
+    const D = I.D, c = D.c, h = D.h, l = D.l, o = D.o, v = D.v, out = [], at = I.atr[i];
+    if (i < 60 || !ok(at)) return out;
+    const R = x => roundTick(x, tick), px = c[i];
+    const add = (s) => { s.q = Math.round(clamp(s.q, 0, 100)); out.push(s); };
+    const pv = pivotsUpTo(D, i - 120, i, 3);
+    const lastH = pv.hi.slice(-3), lastL = pv.lo.slice(-3);
+    // --- SMC: structure, BOS / CHoCH ---
+    if (lastH.length >= 2 && lastL.length >= 2) {
+      const [h1, h2] = lastH.slice(-2), [l1, l2] = lastL.slice(-2);
+      const upStruct = h[h2] > h[h1] && l[l2] > l[l1], dnStruct = h[h2] < h[h1] && l[l2] < l[l1];
+      const brokeUp = c[i] > h[h2] && c[i - 1] <= h[h2], brokeDn = c[i] < l[l2] && c[i - 1] >= l[l2];
+      if (brokeUp) {
+        const choch = dnStruct || (!upStruct && h[h2] < h[h1]);
+        // order block = last red candle before the impulse that broke structure
+        let ob = -1; for (let j = i - 1; j > Math.max(l2, i - 15) - 1; j--) if (c[j] < o[j]) { ob = j; break; }
+        const stop = ob >= 0 ? l[ob] - 0.1 * at : l[l2] - 0.1 * at;
+        add({ n: choch ? 'SMC: Change of character (bullish)' : 'SMC: Break of structure (bullish)', k: 'SMC', b: 1, q: (choch ? 62 : 70) + (I.v20[i - 1] && v[i] > 1.3 * I.v20[i - 1] ? 12 : 0) + (c[i] > I.e50[i] ? 8 : -8),
+          note: `Closed above swing high ${R(h[h2])}.${ob >= 0 ? ` Order block ${R(l[ob])}–${R(h[ob])}: best entry on a retest.` : ''}`, entry: R(ob >= 0 ? h[ob] : px), stop: R(stop), target: R(px + 2 * (px - stop)) });
+      }
+      if (brokeDn) {
+        const choch = upStruct || (!dnStruct && l[l2] > l[l1]);
+        let ob = -1; for (let j = i - 1; j > Math.max(h2, i - 15) - 1; j--) if (c[j] > o[j]) { ob = j; break; }
+        const stop = ob >= 0 ? h[ob] + 0.1 * at : h[h2] + 0.1 * at;
+        add({ n: choch ? 'SMC: Change of character (bearish)' : 'SMC: Break of structure (bearish)', k: 'SMC', b: -1, q: (choch ? 62 : 70) + (I.v20[i - 1] && v[i] > 1.3 * I.v20[i - 1] ? 12 : 0) + (c[i] < I.e50[i] ? 8 : -8),
+          note: `Closed below swing low ${R(l[l2])}.${ob >= 0 ? ` Supply order block ${R(l[ob])}–${R(h[ob])}.` : ''}`, entry: R(ob >= 0 ? l[ob] : px), stop: R(stop), target: R(px - 2 * (stop - px)) });
+      }
+      // --- liquidity sweep (stop hunt) ---
+      const swL = Math.min(...lastL.map(j => l[j])), swH = Math.max(...lastH.map(j => h[j]));
+      if (l[i] < l[l2] && c[i] > l[l2] && c[i] > o[i]) add({ n: 'SMC: Liquidity sweep below lows', k: 'SMC', b: 1, q: 60 + (c[i] > I.e200[i] ? 12 : 0) + (l[i] <= swL ? 6 : 0), note: `Took stops under ${R(l[l2])} and closed back above. Classic reversal trigger.`, entry: R(px), stop: R(l[i] - 0.1 * at), target: R(h[h2]) });
+      if (h[i] > h[h2] && c[i] < h[h2] && c[i] < o[i]) add({ n: 'SMC: Liquidity sweep above highs', k: 'SMC', b: -1, q: 60 + (c[i] < I.e200[i] ? 12 : 0) + (h[i] >= swH ? 6 : 0), note: `Ran stops above ${R(h[h2])} and closed back below.`, entry: R(px), stop: R(h[i] + 0.1 * at), target: R(l[l2]) });
+    }
+    // --- SMC: unfilled fair value gaps near price ---
+    for (let j = i; j >= Math.max(2, i - 25); j--) {
+      if (l[j] > h[j - 2]) { // bullish FVG between h[j-2] and l[j]
+        const top = l[j], bot = h[j - 2]; let filled = false; for (let m = j + 1; m <= i; m++) if (l[m] <= bot) { filled = true; break; }
+        if (!filled && l[i] <= top && c[i] >= bot && j < i - 1) { add({ n: 'SMC: Retest of bullish fair value gap', k: 'SMC', b: 1, q: 58 + (c[i] > I.e50[i] ? 12 : 0) + (c[i] > o[i] ? 6 : 0), note: `Price is inside the imbalance ${R(bot)}–${R(top)}. Buyers often defend it.`, entry: R(px), stop: R(bot - 0.3 * at), target: R(Math.max(...h.slice(j, i + 1))) }); break; }
+      }
+      if (h[j] < l[j - 2]) {
+        const top = l[j - 2], bot = h[j]; let filled = false; for (let m = j + 1; m <= i; m++) if (h[m] >= top) { filled = true; break; }
+        if (!filled && h[i] >= bot && c[i] <= top && j < i - 1) { add({ n: 'SMC: Retest of bearish fair value gap', k: 'SMC', b: -1, q: 58 + (c[i] < I.e50[i] ? 12 : 0) + (c[i] < o[i] ? 6 : 0), note: `Price is inside the imbalance ${R(bot)}–${R(top)}. Sellers often defend it.`, entry: R(px), stop: R(top + 0.3 * at), target: R(Math.min(...l.slice(j, i + 1))) }); break; }
+      }
+    }
+    // --- Minervini trend template ---
+    const hi52 = maxIn(h, i - 251, i), lo52 = minIn(l, i - 251, i);
+    const tt = [c[i] > I.e150[i] && c[i] > I.e200[i], I.e150[i] > I.e200[i], i >= 20 && I.e200[i] > I.e200[i - 20], I.e50[i] > I.e150[i], c[i] > I.e50[i], c[i] >= 1.25 * lo52, c[i] >= 0.75 * hi52];
+    const ttN = tt.filter(Boolean).length;
+    if (I.n > 210 && ttN === 7) add({ n: 'Stage 2 uptrend (Minervini template)', k: 'TREND', b: 1, q: 66 + Math.min(14, (c[i] / hi52 - 0.75) * 56), note: 'All 7 trend-template rules pass: the stock is in a leadership uptrend.' });
+    // --- VCP ---
+    if (ttN >= 6) {
+      const base = pivotsUpTo(D, i - 65, i, 2);
+      const seq = [...base.hi.map(j => [j, 'H']), ...base.lo.map(j => [j, 'L'])].sort((a, b) => a[0] - b[0]);
+      const depths = []; let lastHi = null;
+      for (const [j, k] of seq) { if (k === 'H') lastHi = j; else if (lastHi != null) { depths.push({ d: (h[lastHi] - l[j]) / h[lastHi], hi: lastHi, lo: j }); lastHi = null; } }
+      const dd = depths.slice(-4);
+      let contracting = dd.length >= 2; for (let k = 1; k < dd.length; k++) if (dd[k].d > dd[k - 1].d * 0.95) contracting = false;
+      if (contracting && dd[dd.length - 1].d < 0.12) {
+        const pivot = maxIn(h, dd[dd.length - 1].hi, i), lastLow = l[dd[dd.length - 1].lo];
+        const v10 = v.slice(i - 9, i + 1).reduce((a, b) => a + b, 0) / 10, v50 = v.slice(i - 49, i + 1).reduce((a, b) => a + b, 0) / 50;
+        const dry = v50 > 0 && v10 < 0.85 * v50, near = c[i] >= pivot * 0.92, brk = c[i] > pivot * 0.999 && I.v20[i - 1] && v[i] > 1.4 * I.v20[i - 1];
+        if (near) add({ n: brk ? 'VCP breakout' : 'VCP (volatility contraction) forming', k: 'VCP', b: 1,
+          q: 62 + dd.length * 4 + (dry ? 8 : 0) + (brk ? 10 : 0) + (ttN === 7 ? 4 : 0),
+          note: `${dd.length} contractions: ${dd.map(x => (x.d * 100).toFixed(0) + '%').join(' → ')}${dry ? ', volume drying up' : ''}. ${brk ? 'Broke the pivot on volume.' : `Buy above pivot ${R(pivot)}.`}`,
+          entry: R(pivot * 1.001), stop: R(lastLow * 0.995), target: R(pivot * 1.001 + 2 * (pivot * 1.001 - lastLow * 0.995)) });
+      }
+    }
+    // --- pullback to 20 EMA in a trend ---
+    if (I.e20[i] > I.e50[i] && I.e50[i] > I.e200[i] && Math.min(l[i], l[i - 1]) <= I.e20[i] * 1.01 && c[i] > I.e20[i] && I.rsi[i] > 40 && I.rsi[i] < 62)
+      add({ n: 'Pullback to 20 EMA in uptrend', k: 'TREND', b: 1, q: 64 + (c[i] > o[i] ? 8 : 0) + (I.adx[i] > 25 ? 8 : 0), note: 'Trend intact; price dipped to the 20 EMA and held. Low-risk continuation entry.', entry: R(h[i]), stop: R(Math.min(l[i], l[i - 1]) - 0.2 * at), target: R(h[i] + 2 * (h[i] - Math.min(l[i], l[i - 1]) + 0.2 * at)) });
+    if (I.e20[i] < I.e50[i] && I.e50[i] < I.e200[i] && Math.max(h[i], h[i - 1]) >= I.e20[i] * 0.99 && c[i] < I.e20[i] && I.rsi[i] < 60)
+      add({ n: 'Rally into 20 EMA in downtrend', k: 'TREND', b: -1, q: 62 + (c[i] < o[i] ? 8 : 0) + (I.adx[i] > 25 ? 8 : 0), note: 'Downtrend intact; bounce failed at the 20 EMA.', entry: R(l[i]), stop: R(Math.max(h[i], h[i - 1]) + 0.2 * at), target: R(l[i] - 2 * (Math.max(h[i], h[i - 1]) + 0.2 * at - l[i])) });
+    // --- oversold in uptrend ---
+    if (I.rsi[i] < 32 && c[i] > I.e200[i] && I.e50[i] > I.e200[i]) add({ n: 'Oversold dip in long-term uptrend', k: 'MR', b: 1, q: 58 + (c[i] > o[i] ? 8 : 0), note: `RSI ${I.rsi[i] | 0} while above the 200 EMA: mean-reversion bounce setup.`, entry: R(h[i]), stop: R(l[i] - 0.5 * at), target: R(I.e20[i]) });
+    return out.sort((a, b) => b.q - a.q);
+  };
+  function setupScore(I, i) {
+    const s = E.setups(I, i, 1e-9); if (!s.length) return NaN;
+    const bull = Math.max(0, ...s.filter(x => x.b > 0).map(x => x.q)), bear = Math.max(0, ...s.filter(x => x.b < 0).map(x => x.q));
+    return (bull - bear) / 85;
+  }
+
   // ---------- horizons ----------
   const H = {
     intraday: { label: 'Intraday', dur: 'Today only — square off by close', riskAtr: 0.35, t1: 1.5, t2: 2.5, hold: 1 },
@@ -101,7 +194,8 @@
   E.HORIZONS = H;
 
   // factor = [weight, value -1..1, bullish text, bearish text]
-  function factors(I, i, hz) {
+  function factors(I, i, hz, ex) {
+    ex = ex || {};
     const D = I.D, C = D.c, c = C[i], f = [];
     const add = (w, x, up, dn) => { if (ok(x)) f.push([w, clamp(x), up, dn]); };
     const sgn = x => x > 0 ? 1 : x < 0 ? -1 : 0;
@@ -142,16 +236,25 @@
       add(1.5, roc(250) / 40, `+${roc(250).toFixed(0)}% over 1 year`, `${roc(250).toFixed(0)}% over 1 year`);
       add(1, (c / hi52 - 0.725) / 0.125, 'Near 52-week high', 'Far below 52-week high');
     }
+    if (hz !== 'long' && hz !== 'intraday') { const ss = ex.noSetup ? NaN : setupScore(I, i); if (ok(ss) && ss !== 0) add(hz === 'medium' ? 1 : 1.75, ss, 'Active bullish setup (SMC / VCP / trend)', 'Active bearish setup (SMC / trend)'); }
+    if (ok(ex.news) && ex.news !== 0 && hz !== 'long') add(hz === 'intraday' ? 1.5 : 1, ex.news, 'Positive news flow', 'Negative news flow');
     return f;
   }
   function combine(f) {
     let s = 0, w = 0; for (const x of f) { s += x[0] * x[1]; w += x[0]; }
     return w ? s / w : 0;
   }
-  function intradayFactors(I, i, intra) {
+  function intradayFactors(I, i, intra, ex) {
     const f = [], add = (w, x, up, dn) => { if (ok(x)) f.push([w, clamp(x), up, dn]); };
-    add(1, combine(factors(I, i, 'swing')), 'Daily trend supportive', 'Daily trend against');
-    if (!intra || !intra.c.length) return f;
+    add(1, combine(factors(I, i, 'swing', { noSetup: true })), 'Daily trend supportive', 'Daily trend against');
+    if (ex && ok(ex.news) && ex.news !== 0) add(1.5, ex.news, 'Positive news today', 'Negative news today');
+    if (!intra || !intra.c.length) { // no 5-min bars (scanner): use today's daily bar
+      const D = I.D, rg = D.h[i] - D.l[i], chg = (D.c[i] / D.c[i - 1] - 1) * 100, vx = I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN;
+      add(2, rg > 0 ? 2 * (D.c[i] - D.l[i]) / rg - 1 : NaN, 'Closing near the day high', 'Closing near the day low');
+      add(1.5, chg / 2, `Up ${chg.toFixed(2)}% today`, `Down ${Math.abs(chg).toFixed(2)}% today`);
+      add(1, ok(vx) ? clamp((vx - 1) * Math.sign(chg)) : NaN, `Volume ${ok(vx) ? vx.toFixed(1) : ''}× normal behind the move`, `Volume ${ok(vx) ? vx.toFixed(1) : ''}× normal behind the drop`);
+      return f;
+    }
     const T = intra, n = T.c.length, last = T.c[n - 1];
     // today's bars
     const day = T.day[n - 1]; let s0 = n - 1; while (s0 > 0 && T.day[s0 - 1] === day) s0--;
@@ -319,7 +422,8 @@
     const hz = {};
     for (const k of Object.keys(H)) {
       if ((k === 'medium' && I.n < 160) || (k === 'long' && I.n < 210)) { hz[k] = { na: true, label: H[k].label, dur: H[k].dur }; continue; }
-      const f = k === 'intraday' ? intradayFactors(I, i, opts.intra) : factors(I, i, k);
+      const ex = { news: opts.news };
+      const f = k === 'intraday' ? intradayFactors(I, i, opts.intra, ex) : factors(I, i, k, ex);
       const score = toScore(combine(f)), act = action(score, k, opts.canShort);
       const why = f.map(x => ({ w: x[0] * x[1], t: x[1] >= 0 ? x[2] : x[3] })).filter(x => Math.abs(x.w) > 0.2).sort((a, b) => Math.abs(b.w) - Math.abs(a.w)).slice(0, 4);
       const lv = act.d ? levels(I, i, k, act.d, tick, price) : null;
@@ -330,11 +434,11 @@
     const wts = { intraday: 0.15, swing: 0.3, short: 0.25, medium: 0.2, long: 0.1 };
     let s = 0, w = 0; for (const k in wts) if (!hz[k].na) { s += wts[k] * hz[k].score; w += wts[k]; }
     const overall = Math.round(s / w);
-    const pats = E.patterns(I, tick), cross = E.emaCross(I);
+    const pats = E.patterns(I, tick), cross = E.emaCross(I), sets = E.setups(I, i, tick);
     const hi52 = maxIn(D.h, i - 251, i), lo52 = minIn(D.l, i - 251, i);
     const res = {
       price, prev: D.c[i - 1], chg: (price / D.c[i - 1] - 1) * 100, overall, overallAction: action(overall, 'swing', opts.canShort).a,
-      horizons: hz, patterns: pats, cross,
+      horizons: hz, patterns: pats, cross, setups: sets,
       stats: { rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
       I,
     };
@@ -357,7 +461,7 @@
     const r = E.analyze(D, Object.assign({}, opts, { backtest: false }));
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
-    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: H2.swing, short: H2.short, intraday: H2.intraday, long: H2.long, medium: H2.medium, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
+    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: H2.swing, short: H2.short, intraday: H2.intraday, long: H2.long, medium: H2.medium, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = E; else root.Engine = E;

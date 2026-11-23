@@ -76,8 +76,8 @@ function render() {
   ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker })[S.tab]();
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
 }
-function rowHTML(sym, name, price, chg, sc, lbl, tags = '') {
-  return `<div class="row" data-sym="${esc(sym)}">${sc != null ? badge(sc, lbl) : ''}<div class="nm"><div class="s">${esc(sym)}</div><div class="f">${esc(name)}</div>${tags}</div>
+function rowHTML(sym, name, price, chg, sc, lbl, tags = '', rank, bear) {
+  return `<div class="row" data-sym="${esc(sym)}">${rank ? `<div class="rk">${rank}</div>` : ''}${sc != null ? (bear ? `<div class="sc b-1">${sc}<small>${esc(lbl || '')}</small></div>` : badge(sc, lbl)) : ''}<div class="nm"><div class="s">${esc(sym)}</div><div class="f">${esc(name)}</div>${tags}</div>
   <div class="px">${price != null ? cur() + fmt(price) : ''}<small>${chg != null ? pct(chg) : ''}</small></div></div>`;
 }
 function bindRows(el) { el.querySelectorAll('.row[data-sym]').forEach(r => r.onclick = () => openDetail(r.dataset.sym)); }
@@ -88,12 +88,14 @@ function vHome() {
   v.innerHTML = `<div class="search"><input id="q" placeholder="Search ${S.mkt === 'IN' ? 'any NSE stock or index' : 'any global stock, e.g. AAPL'}" autocomplete="off"></div>
   <div id="sres"></div>${S.mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in for live prices.' : 'Connect your mStock account for exchange-accurate live prices. Tap to set up.'}</div>`) : ''}
   <div class="idx" id="idx">${m.idx().map(x => `<div class="card" data-sym="${x[0]}"><div class="n">${x[1]}</div><div class="p" id="ix_${x[0]}"><span class="spin"></span></div><div id="ixc_${x[0]}" style="font-size:12px"></div></div>`).join('')}</div>
-  <h3>Top setups today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
+  <div class="chips" id="quick">${[['top', '⭐ Top rated'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['intra', '⚡ Intraday'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
+  <h3>Top rated today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
   <h3>Watchlist</h3><div id="wl">${S.saved[S.mkt].length ? '<div class="list">' + S.saved[S.mkt].map(s => rowHTML(s, nameOf(s), null, null, null)).join('') + '</div>' : '<div class="empty">Tap ☆ on any stock to save it here.</div>'}</div>
   <h3>Popular</h3><div class="chips" style="flex-wrap:wrap">${(S.mkt === 'IN' ? window.SEED_IN.slice(0, 24) : window.US_LIST.slice(0, 24)).map(x => `<button data-sym="${x[0]}">${x[0]}</button>`).join('')}</div>
   ${S.mkt === 'IN' && S.nse.seed ? '<p class="note">Showing a starter list. The full NSE list loads in the installed app build.</p>' : S.mkt === 'IN' ? `<p class="note">${S.nse.eq.length.toLocaleString()} NSE stocks · ${Object.keys(S.nse.fo || {}).length} F&O stocks · list from ${S.nse.updated}</p>` : ''}`;
   v.querySelectorAll('.idx .card, .chips button').forEach(b => b.onclick = () => openDetail(b.dataset.sym));
   bindRows(v); $('#goScan').onclick = () => { S.tab = 'scan'; render(); runScan(); };
+  v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.q; S.tab = 'scan'; render(); if (!S.scan[S.mkt]) runScan(); });
   setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = () => $('#gear').click();
   m.idx().forEach(async x => {
     try { const { meta } = await chart(x[2], '1d', '5m'); const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose;
@@ -103,13 +105,15 @@ function vHome() {
 }
 function picksHTML(sc) {
   if (!sc || !sc.rows) return '<div class="empty">Run a scan to rank stocks by setup quality.</div>';
-  const top = sc.rows.filter(r => r.swing && r.swing.score >= 58).sort((a, b) => b.swing.score - a.swing.score).slice(0, 6);
-  return `<div class="list">${top.map(r => rowHTML(r.sym, nameOf(r.sym), r.price, r.chg, r.swing.score, shortAct(r.swing.action), tagsOf(r))).join('') || '<div class="empty">No strong buys in the last scan.</div>'}</div><p class="note">Swing scores from scan at ${new Date(sc.at).toLocaleTimeString()}.</p>`;
+  const top = rated(sc.rows, 'top').filter(x => x.rating >= 58).slice(0, 8);
+  return `<div class="list">${top.map((x, k) => rowHTML(x.r.sym, nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('') || '<div class="empty">No strong buys in the last scan.</div>'}</div><p class="note">Ranked by rating (trend + momentum + setups + news) · scan at ${new Date(sc.at).toLocaleTimeString()}.</p>`;
 }
 function tagsOf(r) {
   const t = [];
   (r.cross || []).slice(0, 1).forEach(c => t.push(`<span class="tag ${c.dir > 0 ? 'p' : 'n'}">${esc(c.name.split(' ')[0])} ${c.days ? '~' + Math.max(1, Math.round(c.days)) + 'd' : 'crossed'}</span>`));
-  (r.patterns || []).filter(p => p.b).slice(0, 2).forEach(p => t.push(`<span class="tag ${p.b > 0 ? 'p' : 'n'}">${esc(p.n)}</span>`));
+  (r.setups || []).slice(0, 2).forEach(s => t.push(`<span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.n.replace(/^SMC: /, 'SMC ').replace(' (Minervini template)', ''))}</span>`));
+  if (!(r.setups || []).length) (r.patterns || []).filter(p => p.b).slice(0, 1).forEach(p => t.push(`<span class="tag ${p.b > 0 ? 'p' : 'n'}">${esc(p.n)}</span>`));
+  if (r.news && r.news.n && Math.abs(r.news.s) >= 0.15) t.push(`<span class="tag ${r.news.s > 0 ? 'p' : 'n'}">📰 ${r.news.s > 0 ? 'Positive' : 'Negative'} news</span>`);
   return t.length ? `<div>${t.join('')}</div>` : '';
 }
 function setupSearch() {
@@ -146,7 +150,26 @@ async function dailyQuick(sym, mkt, Q) {
   return q;
 }
 // ---------- scanner ----------
-const FILTERS = [['buy', 'Top buys'], ['intra', 'Intraday movers'], ['cross', 'EMA cross soon'], ['pat', 'Patterns'], ['sell', 'Top sells'], ['all', 'All']];
+const FILTERS = [['top', '⭐ Top rated'], ['swing', 'Swing buys'], ['intra', 'Intraday'], ['setups', 'SMC / VCP'], ['cross', 'EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
+const newsAdj = r => r.news && r.news.n ? Math.round(8 * r.news.s) : 0;
+const clamp100 = x => Math.max(0, Math.min(100, Math.round(x)));
+// Every list is ranked by the rating it displays, highest first.
+function rated(rows, f) {
+  const ok = rows.filter(Boolean), out = [];
+  for (const r of ok) {
+    const na = newsAdj(r), bull = (r.setups || []).filter(s => s.b > 0);
+    let x = null;
+    if (f === 'top') x = { rating: clamp100(r.overall + na), label: shortAct(r.act) };
+    else if (f === 'swing' && r.swing.score >= 58) x = { rating: clamp100(r.swing.score + na), label: shortAct(r.swing.action) };
+    else if (f === 'intra' && r.intraday && r.intraday.score >= 58) x = { rating: clamp100(r.intraday.score + 1.5 * na), label: 'INTRA' };
+    else if (f === 'setups' && bull.length) x = { rating: clamp100(bull[0].q + (r.swing.score - 50) / 10 + na / 2), label: bull[0].k };
+    else if (f === 'cross' && (r.cross || []).some(c => c.dir > 0)) x = { rating: clamp100(r.short.score + na), label: 'X-OVER' };
+    else if (f === 'news' && r.news && r.news.n) x = { rating: clamp100(50 + 50 * r.news.s), label: r.news.s > 0.15 ? 'POS' : r.news.s < -0.15 ? 'NEG' : 'MIXED' };
+    else if (f === 'sell' && r.swing.score <= 42) x = { rating: clamp100(100 - r.swing.score - na), label: 'SELL', bear: true };
+    if (x) out.push(Object.assign(x, { r }));
+  }
+  return out.sort((a, b) => b.rating - a.rating || b.r.overall - a.r.overall);
+}
 function universes() {
   if (S.mkt === 'US') return [['us', `US large caps (${window.US_LIST.length})`]];
   const fo = Object.keys(S.nse.fo || {}).length;
@@ -159,29 +182,27 @@ function uniSyms(u) {
   return window.SEED_IN.map(x => x[0]);
 }
 function vScan() {
-  const sc = S.scan[S.mkt], f = S.scanFilter || 'buy';
+  const sc = S.scan[S.mkt], f = S.scanFilter || 'top';
   $('#view').innerHTML = `<div class="card"><div style="display:flex;gap:8px"><select id="uni" style="flex:1">${universes().map(u => `<option value="${u[0]}" ${sc && sc.uni === u[0] ? 'selected' : ''}>${u[1]}</option>`).join('')}</select><button class="btn" id="run">Scan</button></div>
   <div class="prog" id="prog" style="display:none"><div style="width:0"></div></div><div class="note" id="pmsg">${sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'}` : 'Scores every stock on 5 time frames, patterns and EMA crosses.'}</div></div>
-  <div class="chips">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
+  <div class="chips sticky">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
   $('#run').onclick = runScan;
   document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.f; vScan(); });
   drawScan();
 }
-function filterRows(rows, f) {
-  const ok = rows.filter(Boolean);
-  if (f === 'buy') return ok.filter(r => r.swing.score >= 58).sort((a, b) => b.swing.score - a.swing.score).map(r => [r, r.swing]);
-  if (f === 'sell') return ok.filter(r => r.swing.score <= 42).sort((a, b) => a.swing.score - b.swing.score).map(r => [r, r.swing]);
-  if (f === 'intra') return ok.filter(r => Math.abs(r.chg) > 0.8 && r.volx > 1.2).sort((a, b) => Math.abs(b.chg) * b.volx - Math.abs(a.chg) * a.volx).map(r => [r, r.intraday]);
-  if (f === 'cross') return ok.filter(r => r.cross.some(c => c.dir > 0)).sort((a, b) => (Math.min(...a.cross.filter(c => c.dir > 0).map(c => c.days)) - Math.min(...b.cross.filter(c => c.dir > 0).map(c => c.days))) || b.short.score - a.short.score).map(r => [r, r.short]);
-  if (f === 'pat') return ok.filter(r => r.patterns.some(p => p.b)).sort((a, b) => b.swing.score - a.swing.score).map(r => [r, r.swing]);
-  return ok.sort((a, b) => b.overall - a.overall).map(r => [r, { score: r.overall, action: r.act }]);
-}
 function drawScan() {
   const sc = S.scan[S.mkt], el = $('#sl'); if (!el) return;
-  if (!sc) { el.innerHTML = '<div class="empty">Pick a universe and tap Scan.</div>'; return; }
-  const rows = filterRows(sc.rows, S.scanFilter || 'buy').slice(0, 80);
-  el.innerHTML = rows.length ? `<div class="list">${rows.map(([r, h]) => rowHTML(r.sym, nameOf(r.sym), r.price, r.chg, h.score, shortAct(h.action), tagsOf(r))).join('')}</div>` : '<div class="empty">Nothing matches this filter right now.</div>';
+  if (!sc) { el.innerHTML = '<div class="empty">Pick a list and tap <b>Scan</b>.<br>Every stock is rated 0–100; lists are ranked highest first.</div>'; return; }
+  const f = S.scanFilter || 'top', rows = rated(sc.rows, f).slice(0, 100);
+  el.innerHTML = rows.length ? `<div class="list">${rows.map((x, k) => rowHTML(x.r.sym, nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1, x.bear)).join('')}</div>` : `<div class="empty">Nothing in "${FILTERS.find(z => z[0] === f)[1]}" right now.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
   bindRows(el);
+}
+async function enrichNews(mkt, rows) { // news for the strongest candidates, then re-rank
+  if (!window.News) return;
+  const pick = [...rated(rows, 'top').slice(0, 25), ...rated(rows, 'sell').slice(0, 10), ...rated(rows, 'setups').slice(0, 10)].map(x => x.r);
+  const uniq = [...new Set(pick)];
+  await pool(uniq, 4, async r => { try { const n = await News.get(ySym(r.sym, mkt), nameOf(r.sym, mkt), mkt === 'IN'); r.news = { s: +(n.score * Math.min(1, n.n / 3)).toFixed(2), n: n.n, top: (n.items.find(i => i.s) || {}).title || '' }; } catch (e) {} },
+    (d, n) => { const m = $('#pmsg'); if (m && S.mkt === mkt) m.textContent = `Reading news ${d}/${n}…`; });
 }
 async function runScan() {
   const sel = $('#uni'), uni = sel ? sel.value : (S.mkt === 'US' ? 'us' : 'large'), syms = uniSyms(uni), mkt = S.mkt;
@@ -194,7 +215,10 @@ async function runScan() {
     return q.err ? null : Object.assign({ sym }, q);
   }, (d, n) => { const p = $('#prog div'); if (p) p.style.width = (100 * d / n) + '%'; const m = $('#pmsg'); if (m) m.textContent = `Scanning ${d}/${n}…`; });
   const good = rows.filter(Boolean);
-  S.scan[mkt] = { at: Date.now(), uni, rows: good, src: Q ? 'mStock live prices' : 'Yahoo Finance' }; store.set('scan', S.scan);
+  S.scan[mkt] = { at: Date.now(), uni, rows: good, src: Q ? 'mStock live prices' : 'Yahoo Finance' };
+  if (S.tab === 'scan' && S.mkt === mkt) drawScan();
+  await enrichNews(mkt, good);
+  S.scan[mkt].at = Date.now(); store.set('scan', S.scan);
   if (S.tab === 'scan' && S.mkt === mkt) { vScan(); if (!good.length) $('#pmsg').textContent = 'Could not load data. Live data works in the installed Android app (browsers block it).'; }
 }
 
@@ -204,8 +228,8 @@ function vFno() {
   $('#view').innerHTML = `<h3>Indices</h3><div class="list">${window.IDX_IN.map(x => rowHTML(x[0], x[1] + (foLot(x[0]) ? ' · lot ' + foLot(x[0]) : ''), null, null, null)).join('')}</div>
   <h3>F&O stock setups <a id="fscan">${lots ? 'Scan F&O stocks' : ''}</a></h3>
   ${!lots ? '<div class="warn">F&O list and lot sizes load in the installed app build.</div>' : ''}
-  ${fo ? `<div class="chips"><button class="on">Long ideas</button></div><div class="list">${fo.filter(r => r.swing.score >= 60).sort((a, b) => b.swing.score - a.swing.score).slice(0, 25).map(r => rowHTML(r.sym, `Lot ${foLot(r.sym)} · ${nameOf(r.sym)}`, r.price, r.chg, r.swing.score, shortAct(r.swing.action), tagsOf(r))).join('')}</div>
-     <h3>Short ideas</h3><div class="list">${fo.filter(r => r.swing.score <= 40).sort((a, b) => a.swing.score - b.swing.score).slice(0, 25).map(r => rowHTML(r.sym, `Lot ${foLot(r.sym)} · ${nameOf(r.sym)}`, r.price, r.chg, r.swing.score, shortAct(r.swing.action), tagsOf(r))).join('')}</div>`
+  ${fo ? `<h3>Long ideas · highest rated first</h3><div class="list">${rated(fo, 'swing').slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'LONG', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No long setups.</div>'}</div>
+     <h3>Short ideas · strongest first</h3><div class="list">${rated(fo, 'sell').slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'SHORT', tagsOf(x.r), k + 1, true)).join('') || '<div class="empty">No short setups.</div>'}</div>`
     : '<div class="empty">Scan the F&O list to rank futures longs and shorts.</div>'}
   <p class="note">Signals are on the underlying. Option premiums, OI and IV are not available from free data, so check the option chain in your broker before trading. Options can lose 100% quickly.</p>`;
   bindRows($('#view'));
@@ -215,14 +239,15 @@ function vFno() {
 // ---------- saved ----------
 function vSaved() {
   const L = S.saved[S.mkt];
-  $('#view').innerHTML = L.length ? `<div class="list" id="svl">${L.map(s => rowHTML(s, nameOf(s), null, null, null)).join('')}</div><p class="note">Live scores load below.</p>` : '<div class="empty">Nothing saved yet. Open any stock and tap ☆.</div>';
+  $('#view').innerHTML = L.length ? `<div class="list" id="svl">${L.map(s => rowHTML(s, nameOf(s), null, null, null)).join('')}</div><p class="note">Overall rating, highest first.</p>` : '<div class="empty">Nothing saved yet. Open any stock and tap ☆.</div>';
   bindRows($('#view'));
   const mkt = S.mkt;
+  const got = {};
   msQuotes(L, mkt).then(Q => pool(L, 4, async sym => {
     const q = await dailyQuick(sym, mkt, Q);
     const row = document.querySelector(`#svl .row[data-sym="${CSS.escape(sym)}"]`);
-    if (row && !q.err) { row.outerHTML = rowHTML(sym, nameOf(sym), q.price, q.chg, q.swing.score, shortAct(q.swing.action), tagsOf(q)); bindRows($('#svl')); }
-  }));
+    if (row && !q.err) { got[sym] = q.overall; row.outerHTML = rowHTML(sym, nameOf(sym), q.price, q.chg, q.overall, shortAct(q.act), tagsOf(q)); bindRows($('#svl')); }
+  })).then(() => { const box = $('#svl'); if (!box || S.tab !== 'saved') return; [...box.children].sort((a, b) => (got[b.dataset.sym] ?? -1) - (got[a.dataset.sym] ?? -1)).forEach(n => box.appendChild(n)); });
 }
 
 // ---------- broker (mStock) ----------
@@ -290,9 +315,11 @@ async function loadDetail() {
     catch (e) { msErr = msErr || e.message; }
   }
   const fno = mkt === 'IN' && isFno(sym);
-  const A = Engine.analyze(d.D, { intra: it && it.D, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
+  let news = S.detail.news;
+  if (!news || Date.now() - news.at > 5 * 60e3) { try { news = Object.assign(await News.get(ys, nameOf(sym, mkt), mkt === 'IN'), { at: Date.now() }); } catch (e) { news = { items: [], score: 0, n: 0, err: e.message, at: Date.now() }; } }
+  const A = Engine.analyze(d.D, { intra: it && it.D, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym), news: news.n ? news.score * Math.min(1, news.n / 3) : 0 });
   if (prev && !A.err) A.chg = (A.price / prev - 1) * 100;
-  Object.assign(S.detail, { A, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now(), src, msErr });
+  Object.assign(S.detail, { A, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now(), src, msErr, news });
 }
 async function vDetail() {
   const v = $('#view'), { sym } = S.detail;
@@ -334,8 +361,11 @@ function drawDetail(isRefresh) {
    ${A.fno && h.dir && (k === 'intraday' || k === 'swing') ? `<div class="sub" style="margin-top:6px">Futures: ${h.dir > 0 ? 'BUY' : 'SELL'} 1 lot${A.fno.lot ? ` (${A.fno.lot} qty) · risk ≈ ${c}${fmt(Math.abs(L.entry - L.stop) * A.fno.lot, 0)}` : ''}</div>` : ''}`
      : '<div class="sub">No clear edge. Wait for the score to move above 58 (buy) or below 42 (sell).</div>'}
    <ul class="why">${h.why.map(w => `<li>${w.w > 0 ? '<span class="up">✓</span>' : '<span class="dn">✗</span>'} ${esc(w.t)}</li>`).join('')}</ul>`}</div>
-  <div class="card"><div class="chips" style="margin:0 0 8px"><button data-c="daily" class="${S.chartMode === 'daily' ? 'on' : ''}">6 months</button><button data-c="intra" class="${S.chartMode === 'intra' ? 'on' : ''}">Today 5-min</button></div><canvas id="cv" height="260"></canvas>
-  <div class="note" style="margin-top:6px">${S.chartMode === 'daily' ? '<span style="color:#4c9aff">— EMA 20</span> · <span style="color:#f5b301">— EMA 50</span> · <span style="color:#c084fc">— EMA 200</span> · ' : '<span style="color:#f5b301">— VWAP</span> · '}dashed = stop / targets of the selected time frame</div></div>
+  <div class="card pvcard"><div class="pvhead"><b>Chart</b><span class="note">Daily · EMA 20/50/200 · levels</span><button class="btn sm" id="openChart">⛶ Live chart</button></div><div id="pv" class="pv"></div><div class="note" style="margin-top:6px">Tap the chart for full screen: 1m → monthly, EMAs, VWAP, RSI, MACD, free scrolling.</div></div>
+  <h3>Setups <span class="note">SMC · VCP · trend</span></h3><div class="card">${A.setups.length ? A.setups.map(s => `<div class="setup"><div class="sh"><span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.k)}</span><b>${esc(s.n.replace(/^SMC: /, ''))}</b><span class="q ${s.q >= 70 ? 'up' : s.q >= 55 ? 'wa' : 'mu'}">${s.q}</span></div>
+     <div class="qbar"><i style="width:${s.q}%;background:${s.b > 0 ? 'var(--up)' : 'var(--dn)'}"></i></div><div class="x">${esc(s.note)}</div>
+     ${s.entry ? `<div class="lv3"><span>Entry <b>${fmt(s.entry)}</b></span><span>SL <b class="dn">${fmt(s.stop)}</b></span><span>Target <b class="up">${fmt(s.target)}</b></span></div>` : ''}</div>`).join('') : '<div class="note">No SMC, VCP or trend setup active on the daily chart today.</div>'}</div>
+  <h3>News <span class="note">${newsHead(S.detail.news)}</span></h3><div class="card">${newsHTML(S.detail.news)}</div>
   ${A.fno ? `<h3>F&O</h3><div class="card"><div class="kv"><div><div class="l">Lot size</div><div class="v">${A.fno.lot || '–'}</div></div><div><div class="l">ATM strike (approx.)</div><div class="v">${fmt(A.fno.atm, 0)}</div></div>
    <div><div class="l">Expected 1-day move</div><div class="v">±${fmt(A.fno.moveDay)}</div></div><div><div class="l">Expected 1-week move</div><div class="v">±${fmt(A.fno.moveWeek)}</div></div></div>
    <p style="margin:10px 0 4px;font-weight:700">${esc(A.fno.idea)}</p><p class="note">Use the underlying's stop and targets above to exit the option. Strike gaps are approximate, so confirm in the option chain. Buy near-expiry options only on high scores; time decay is brutal.</p></div>` : ''}
@@ -348,42 +378,39 @@ function drawDetail(isRefresh) {
    <div><div class="l">EMA 20 / 50</div><div class="v">${fmt(st.e20, 0)} / ${fmt(st.e50, 0)}</div></div><div><div class="l">EMA 200</div><div class="v">${fmt(st.e200, 0)}</div></div></div>
   <p class="note" style="margin-top:14px">Scores are technical only (price, volume, trend, momentum, patterns), not fundamentals or news. "Win odds" come from this stock's own last ~3 years of signals. They describe the past, not a promise. Data: Yahoo Finance (may be delayed). Not investment advice.</p>`;
   document.querySelectorAll('[data-h]').forEach(b => b.onclick = () => { S.hz = b.dataset.h; drawDetail(); });
-  document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { S.chartMode = b.dataset.c; drawDetail(); });
-  drawChart();
+  const oc = () => ChartView.open({ sym: S.detail.sym, mkt: S.detail.mkt, levels: (A.horizons[S.hz] || {}).levels });
+  $('#openChart').onclick = oc; $('#pv').onclick = oc;
+  drawPreview();
 }
-function drawChart() {
-  const { A, D, intra } = S.detail, cv = $('#cv'); if (!cv) return;
-  const dpr = devicePixelRatio || 1, W = cv.clientWidth, Hh = 260; cv.width = W * dpr; cv.height = Hh * dpr;
-  const g = cv.getContext('2d'); g.scale(dpr, dpr);
-  let B, lines = [];
-  if (S.chartMode === 'intra' && intra) {
-    const day = intra.day[intra.day.length - 1]; const idx = intra.day.map((d, i) => d === day ? i : -1).filter(i => i >= 0);
-    B = idx.map(i => ({ o: intra.o[i], h: intra.h[i], l: intra.l[i], c: intra.c[i], v: intra.v[i] }));
-    let pv = 0, vv = 0; lines.push({ col: '#f5b301', a: B.map(b => { pv += (b.h + b.l + b.c) / 3 * b.v; vv += b.v; return vv ? pv / vv : b.c; }) });
-  } else {
-    const n = D.c.length, s = Math.max(0, n - 126);
-    B = []; for (let i = s; i < n; i++) B.push({ o: D.o[i], h: D.h[i], l: D.l[i], c: D.c[i] });
-    const I = A.I; lines = [['e20', '#4c9aff'], ['e50', '#f5b301'], ['e200', '#c084fc']].map(([k, col]) => ({ col, a: I[k].slice(s) }));
-  }
-  if (!B.length) { g.fillStyle = '#8a97a6'; g.fillText('No intraday bars yet today.', 12, 24); return; }
-  const L = A.horizons[S.hz] && A.horizons[S.hz].levels;
-  let hi = Math.max(...B.map(b => b.h)), lo = Math.min(...B.map(b => b.l));
-  if (L) { hi = Math.max(hi, L.t1, L.stop); lo = Math.min(lo, L.t1, L.stop); }
-  const pad = (hi - lo) * 0.06; hi += pad; lo -= pad;
-  const left = 4, right = 54, top = 8, bot = 14, cw = (W - left - right) / B.length;
-  const y = v => top + (hi - v) / (hi - lo) * (Hh - top - bot), x = i => left + i * cw + cw / 2;
-  g.font = '10px system-ui'; g.fillStyle = '#8a97a6';
-  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4; g.strokeStyle = '#1e2935'; g.beginPath(); g.moveTo(left, y(v)); g.lineTo(W - right, y(v)); g.stroke(); g.fillText(fmt(v), W - right + 4, y(v) + 3); }
-  B.forEach((b, i) => { const u = b.c >= b.o; g.strokeStyle = g.fillStyle = u ? '#22c55e' : '#ef4444'; g.beginPath(); g.moveTo(x(i), y(b.h)); g.lineTo(x(i), y(b.l)); g.stroke();
-    g.fillRect(x(i) - Math.max(0.5, cw * 0.35), Math.min(y(b.o), y(b.c)), Math.max(1, cw * 0.7), Math.max(1, Math.abs(y(b.o) - y(b.c)))); });
-  lines.forEach(Ln => { g.strokeStyle = Ln.col; g.lineWidth = 1.3; g.beginPath(); let st = false; Ln.a.forEach((v, i) => { if (!isFinite(v)) return; st ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)); st = true; }); g.stroke(); g.lineWidth = 1; });
-  if (L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2'], [L.entry, '#8a97a6', 'E']].forEach(([v, col, t]) => {
-    if (v > hi || v < lo) return; g.strokeStyle = col; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(left, y(v)); g.lineTo(W - right, y(v)); g.stroke(); g.setLineDash([]); g.fillStyle = col; g.fillText(t, left + 2, y(v) - 3); });
+function newsHead(N) {
+  if (!N || !N.n) return N && N.err ? 'unavailable' : 'no rated headlines';
+  const s = N.score; return `${s > 0.15 ? '<span class="up">Positive</span>' : s < -0.15 ? '<span class="dn">Negative</span>' : 'Neutral'} · ${N.n} headlines`;
 }
+function ago(t) { const m = (Date.now() - t) / 6e4; return m < 60 ? Math.max(1, m | 0) + 'm' : m < 1440 ? (m / 60 | 0) + 'h' : (m / 1440 | 0) + 'd'; }
+function newsHTML(N) {
+  if (!N || !N.items.length) return `<div class="note">${N && N.err ? 'News could not be loaded (works in the installed app).' : 'No recent news found.'}</div>`;
+  return N.items.slice(0, 10).map(it => `<a class="news" href="${esc(it.url)}" target="_blank" rel="noopener"><i class="${it.s > 0 ? 'p' : it.s < 0 ? 'n' : ''}"></i><div><div class="nt">${esc(it.title)}</div><div class="x">${esc(it.src || '')} · ${it.t ? ago(it.t) + ' ago' : ''}</div></div></a>`).join('')
+    + '<div class="note" style="margin-top:6px">Green = positive keywords, red = negative. Sentiment nudges ratings by up to ±8 points.</div>';
+}
+function drawPreview() {
+  const el = $('#pv'); if (!el || !window.LightweightCharts) return;
+  const { A, D, mkt } = S.detail; el.innerHTML = '';
+  const LW = window.LightweightCharts, ch = LW.createChart(el, { autoSize: true, height: 230, layout: { background: { color: '#0d131a' }, textColor: '#8a97a6', fontSize: 10, attributionLogo: false },
+    grid: { vertLines: { visible: false }, horzLines: { color: '#141c26' } }, rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false },
+    handleScroll: false, handleScale: false, crosshair: { mode: 2 } });
+  const n = D.c.length, s0 = Math.max(0, n - 130), B = [];
+  for (let i = s0; i < n; i++) B.push({ time: D.t[i], open: D.o[i], high: D.h[i], low: D.l[i], close: D.c[i] });
+  const cs = ch.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444', wickUpColor: '#22c55e', wickDownColor: '#ef4444', borderVisible: false });
+  cs.setData(B);
+  [['e20', '#4c9aff'], ['e50', '#f5b301'], ['e200', '#c084fc']].forEach(([k, color]) => { const ls = ch.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); ls.setData(B.map((b, j) => ({ time: b.time, value: A.I[k][s0 + j] })).filter(p => isFinite(p.value))); });
+  const L = (A.horizons[S.hz] || {}).levels; if (L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2']].forEach(([price, color, title]) => cs.createPriceLine({ price, color, lineStyle: 2, lineWidth: 1, title }));
+  ch.timeScale().fitContent();
+}
+window.App = { ySym, chart, fmt, marketOpen };
 
 // ---------- boot ----------
 document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.mkt = b.dataset.m; store.set('mkt', S.mkt); if (S.tab === 'detail' || (S.tab === 'fno' && S.mkt === 'US')) S.tab = 'home'; render(); });
 document.querySelectorAll('.nav button').forEach(b => b.onclick = () => { if (b.dataset.t === 'desk') { location.href = 'desk.html'; return; } S.tab = b.dataset.t; render(); });
 $('#gear').onclick = () => { if (S.tab !== 'broker') S.prevTab = S.tab; S.tab = 'broker'; render(); };
-addEventListener('resize', () => { if (S.tab === 'detail' && S.detail && S.detail.A) drawChart(); });
+
 loadNSE().then(render);
