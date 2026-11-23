@@ -98,10 +98,12 @@ function vHome() {
   const m = MK[S.mkt], sc = S.scan[S.mkt];
   const v = $('#view');
   v.innerHTML = `<div class="search"><input id="q" placeholder="Search ${S.mkt === 'IN' ? 'any NSE stock or index' : 'any global stock, e.g. AAPL'}" autocomplete="off"></div>
-  <div id="sres"></div>${S.mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in for live prices.' : 'Connect your mStock account for exchange-accurate live prices. Tap to set up.'}</div>`) : ''}
+  <div id="sres"></div>${S.mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : (store.get('hideMsBan', false) && !MS.cfg().apiKey ? '' : `<div class="slim" id="msBan"><span>🔌 ${MS.cfg().apiKey ? 'mStock session expired: tap to log in' : 'Connect mStock for exact live prices'}</span>${MS.cfg().apiKey ? '' : '<b id="msBanX">✕</b>'}</div>`)) : ''}
+  <div class="regime" id="regime"><span class="spin"></span></div>
   <div class="idx" id="idx">${m.idx().map(x => `<div class="card" data-sym="${x[0]}"><div class="n">${x[1]}</div><div class="p" id="ix_${x[0]}"><span class="spin"></span></div><div id="ixc_${x[0]}" style="font-size:12px"></div></div>`).join('')}</div>
-  <div class="chips wrap" id="quick">${[['top', '⭐ Overall'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
-  <div class="card regime" id="regime"><span class="spin"></span></div>
+  <div class="tiles" id="quick">${[['top', '⭐', 'Top rated'], ['leaders', '🏆', 'Leaders'], ['breakout', '🚀', 'Breakouts'], ['patterns', '📐', 'Patterns'], ['intraday', '⚡', 'Intraday'], ['swing', '📈', 'Swing']].map(x => `<button data-q="${x[0]}"><b>${x[1]}</b><span>${x[2]}</span></button>`).join('')}</div>
+  <button class="morelists" id="moreLists">All lists · near breakout, SMC/VCP, EMA cross, news, sells, short/medium/long ›</button>
+
   ${S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length ? `<h3>Browse stocks</h3><div class="card"><div class="pick2" style="margin:0"><label><span>Market cap</span><select id="hbSize">${SIZES.map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
    <label><span>Sector</span><select id="hbSec"><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div><button class="btn w" id="hbGo" style="margin-top:10px">Show stocks</button></div>` : ''}
   <h3>Top rated today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
@@ -113,15 +115,16 @@ function vHome() {
   v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.q; go('scan'); if (!S.scan[S.mkt]) runScan(); });
   const hb = $('#hbGo'); if (hb) hb.onclick = () => { const size = $('#hbSize').value; S.uni = { size, sector: size === 'FO' ? '' : $('#hbSec').value }; store.set('uni', S.uni); go('scan'); };
   const rg = S.regime[S.mkt]; if (rg) { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(rg.v); } else regime(S.mkt).then(v => { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(v); });
-  setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = () => $('#gear').click();
+  $('#moreLists').onclick = () => go('scan');
+  setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = e => { if (e.target.id === 'msBanX') { store.set('hideMsBan', true); mb.remove(); return; } go('broker'); };
   m.idx().forEach(async x => {
     try { const { meta } = await chart(x[2], '1d', '5m'); const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose;
       $('#ix_' + x[0]).textContent = fmt(p); $('#ixc_' + x[0]).innerHTML = pct((p / pc - 1) * 100); } catch (e) { const el = $('#ix_' + x[0]); if (el) el.innerHTML = '<span class="mu" style="font-size:12px">offline</span>'; }
   });
   if (!navigator.onLine) v.insertAdjacentHTML('afterbegin', '<div class="warn">You are offline.</div>');
 }
-function regimeHTML(v) { const t = v >= 60 ? ['up', 'Uptrend', 'longs get +' + Math.round((v - 50) / 10)] : v <= 40 ? ['dn', 'Downtrend', 'longs get ' + Math.round((v - 50) / 10)] : ['wa', 'Sideways', 'no adjustment'];
-  return `<div style="display:flex;justify-content:space-between;align-items:center"><div><div class="note">Market trend (${S.mkt === 'IN' ? 'Nifty 50' : 'S&P 500'})</div><b class="${t[0]}">${t[1]} · ${v}</b></div><div class="note" style="text-align:right">Ratings: ${t[2]}</div></div>`; }
+function regimeHTML(v) { const t = v >= 60 ? ['up', 'Uptrend'] : v <= 40 ? ['dn', 'Downtrend'] : ['wa', 'Sideways'];
+  return `<span class="note">Market trend · ${S.mkt === 'IN' ? 'Nifty 50' : 'S&P 500'}</span><b class="${t[0]}">● ${t[1]} <span class="mu">${v}/100</span></b>`; }
 function picksHTML(sc) {
   if (!sc || !sc.rows) return '<div class="empty">Run a scan to rank stocks by setup quality.</div>';
   const top = rated(sc.rows, 'top').filter(x => x.rating >= 58).slice(0, 8);
@@ -199,6 +202,7 @@ async function dailyQuick(sym, mkt, Q) {
 }
 // ---------- scanner ----------
 const FILTERS = [['top', '⭐ Overall'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
+const FGROUPS = [['Ranking', ['top', 'leaders', 'sell']], ['Setups', ['breakout', 'near', 'patterns', 'setups', 'cross', 'news']], ['Trading style', ['intraday', 'swing', 'short', 'medium', 'long']]];
 const HZ = ['intraday', 'swing', 'short', 'medium', 'long'], HZL = { intraday: 'INTRA', swing: 'SWING', short: 'SHORT', medium: 'MEDIUM', long: 'LONG' };
 // Overall lists show the overall rating; a horizon list (Swing, Intraday…) shows only stocks rated BUY on that
 // horizon, ranked by that horizon's rating, high → low. The stock page opens on the same horizon with the same number.
@@ -255,10 +259,10 @@ function vScan() {
    <label><span>Sector</span><select id="selSec" ${!hasCat || S.uni.size === 'FO' ? 'disabled' : ''}><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div>` : ''}
   <div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><b>${esc(uniLabel())}</b><div class="note">${syms.length.toLocaleString()} stocks${missing.length && sc ? ` · ${missing.length} not scanned yet` : ''}</div></div>
    <button class="btn" id="run" ${S.scanning ? 'disabled' : ''}>${S.scanning ? '<span class="spin"></span>' : missing.length < syms.length && sc ? `Scan ${missing.length ? missing.length + ' new' : 'again'}` : 'Scan'}</button></div>
-  <div class="prog" id="prog" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div><div class="note" id="pmsg">${S.scanning ? S.scanMsg || 'Scanning…' : sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'} · keeps running if you leave the app (until you swipe it away)` : 'Rates every stock 0–100. Same number as on the stock page.'}</div></div>
-  <div class="chips wrap">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
+  <div class="prog" id="prog" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div><div class="note" id="pmsg">${S.scanning ? S.scanMsg || 'Scanning…' : sc ? `Last scan ${new Date(sc.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo'}` : 'Rates every stock 0–100 · keeps running in the background'}</div></div>
+  <label class="showsel"><span>Show</span><select id="selF">${FGROUPS.map(([g, ks]) => `<optgroup label="${g}">${ks.map(k => { const x = FILTERS.find(z => z[0] === k); return `<option value="${k}" ${k === f ? 'selected' : ''}>${x[1]}</option>`; }).join('')}</optgroup>`).join('')}</select></label><div id="sl"></div>`;
   $('#run').onclick = () => runScan(missing.length && sc && missing.length < syms.length ? missing : syms);
-  document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.f; vScan(); });
+  $('#selF').onchange = e => { S.scanFilter = e.target.value; drawScan(); };
   const ss = $('#selSize'); if (ss) ss.onchange = () => { S.uni = { size: ss.value, sector: ss.value === 'FO' ? '' : S.uni.sector }; store.set('uni', S.uni); vScan(); };
   const se = $('#selSec'); if (se) se.onchange = () => { S.uni.sector = se.value; store.set('uni', S.uni); vScan(); };
   drawScan();
