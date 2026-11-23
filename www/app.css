@@ -107,3 +107,13 @@ h3 .note{text-transform:none;letter-spacing:0;font-weight:500}
 .regime{padding:10px 12px}
 .dh .star{margin-left:6px}
 .nav button{min-height:56px}
+/* v5 */
+.pick2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.pick2 label{display:flex;flex-direction:column;gap:4px}.pick2 span{font-size:11px;color:var(--mu);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.pick2 select{width:100%;padding:11px 10px;font-size:15px;border-radius:11px;background:var(--pn)}
+.chips.wrap{flex-wrap:wrap;overflow:visible}.chips.wrap button{padding:7px 11px}
+.ohead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.cp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.cp>div{border:1px solid var(--ln);background:var(--pn2);border-radius:12px;padding:8px;text-align:center;display:flex;flex-direction:column}
+.cp>div.on{border-color:var(--ac)}.cp span{font-size:11px;color:var(--mu);font-weight:700}.cp b{font-size:26px}.cp small{font-size:11px;color:var(--mu)}
+.optOpen{display:block;margin-top:8px;color:var(--ac);cursor:pointer}
+.ipo{cursor:pointer}.ipo .s{font-weight:800;font-size:15px}.ipo .rk{display:inline;color:var(--mu);font-size:12px}
+.ipog{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}.ipog>div{background:var(--pn2);border-radius:9px;padding:6px 7px;min-width:0}.ipog span{display:block;font-size:10px;color:var(--mu);font-weight:700;text-transform:uppercase}.ipog b{font-size:12.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

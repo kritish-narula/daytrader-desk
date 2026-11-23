@@ -79,18 +79,25 @@
       const csv = await this._req('GET', 'instruments/scriptmaster');
       const text = typeof csv === 'string' ? csv : JSON.stringify(csv);
       const lines = text.split(/\r?\n/), hd = lines[0].split(',').map(x => x.trim().toLowerCase());
-      const ix = n => hd.indexOf(n), iTok = ix('instrument_token'), iSym = ix('tradingsymbol'), iEx = ix('exchange'), iSeg = ix('segment'), iTyp = ix('instrument_type'), iName = ix('name');
+      const ix = n => hd.indexOf(n), iTok = ix('instrument_token'), iSym = ix('tradingsymbol'), iEx = ix('exchange'), iSeg = ix('segment'), iTyp = ix('instrument_type'), iName = ix('name'), iExp = ix('expiry'), iStk = ix('strike'), iLot = ix('lot_size');
       if (iTok < 0 || iSym < 0) throw new Error('Unexpected script master format');
-      const eq = {}, idx = {};
+      const eq = {}, idx = {}, opt = { NIFTY: [], BANKNIFTY: [] }, today = istDay();
       for (let k = 1; k < lines.length; k++) {
         const r = lines[k].split(','); if (r.length < hd.length - 1) continue;
         const ex = (r[iEx] || '').trim(), ts = (r[iSym] || '').trim(), seg = (r[iSeg] || '').toUpperCase(), typ = (r[iTyp] || '').toUpperCase();
+        if (ex === 'NFO' && (typ === 'CE' || typ === 'PE')) {
+          const nm = ((r[iName] || '') + '').trim().toUpperCase().replace(/"/g, '');
+          if (opt[nm]) { const e = new Date(Date.parse((r[iExp] || '').trim())); const ed = isFinite(e) ? e.toISOString().slice(0, 10) : '';
+            if (ed && ed >= today) opt[nm].push([ts, r[iTok].trim(), ed, +r[iStk], typ, +(r[iLot] || 0)]); }
+          continue;
+        }
         if (ex !== 'NSE') continue;
         if (/IND/.test(seg) || /IND/.test(typ)) { idx[((r[iName] || ts) + '').trim().toUpperCase()] = [ts, r[iTok].trim()]; continue; }
         const base = ts.replace(/-EQ$/, '');
         if (/-EQ$/.test(ts) || !eq[base]) eq[base] = [ts, r[iTok].trim()];
       }
-      const out = { day: istDay(), eq, idx };
+      for (const k in opt) { const exps = [...new Set(opt[k].map(x => x[2]))].sort().slice(0, 2); opt[k] = opt[k].filter(x => exps.includes(x[2])); }
+      const out = { day: istDay(), eq, idx, opt };
       set('map', out); return out;
     },
     async key(sym) { // "NSE:RELIANCE-EQ"
@@ -101,6 +108,17 @@
       return { k: `NSE:${sym}-EQ`, tok: null };
     },
 
+    // Index option contract nearest to a strike on the nearest expiry: {k, ts, exp, strike, type, lot}
+    async option(name, strike, type, nth = 0) {
+      const m = await this.map(), L = (m.opt || {})[name] || []; if (!L.length) return null;
+      const exp = [...new Set(L.map(x => x[2]))].sort()[nth] || L[0][2];
+      let best = null; for (const x of L) if (x[2] === exp && x[4] === type && (!best || Math.abs(x[3] - strike) < Math.abs(best[3] - strike))) best = x;
+      return best && { k: 'NFO:' + best[0], ts: best[0], tok: best[1], exp: best[2], strike: best[3], type: best[4], lot: best[5] };
+    },
+    async optionQuotes(list) { // list of option() results -> {key: quote}
+      const part = list.filter(Boolean).map(o => ['i', o.k]); if (!part.length) return {};
+      return (await this._req('GET', 'instruments/quote/ohlc', { params: part })) || {};
+    },
     // Live quotes for many symbols: {SYM: {last_price, ohlc:{open,high,low,close(prev)}}}
     async quotes(syms) {
       const keys = await Promise.all(syms.map(s => this.key(s))), out = {};

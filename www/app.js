@@ -81,9 +81,9 @@ function render() {
   clearInterval(S.timer); S.timer = null;
   document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mkt));
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
-  $('#navFno').style.display = S.mkt === 'IN' ? '' : 'none'; updBell();
+  $('#navFno').style.display = S.mkt === 'IN' ? '' : 'none'; $('#navIpo').style.display = S.mkt === 'IN' ? '' : 'none'; updBell();
   setLive(); window.scrollTo(0, 0);
-  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, settings: vSettings })[S.tab]();
+  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, settings: vSettings, ipo: vIpo })[S.tab]();
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
 }
 function rowHTML(sym, name, price, chg, sc, lbl, tags = '', rank, bear) {
@@ -99,10 +99,10 @@ function vHome() {
   v.innerHTML = `<div class="search"><input id="q" placeholder="Search ${S.mkt === 'IN' ? 'any NSE stock or index' : 'any global stock, e.g. AAPL'}" autocomplete="off"></div>
   <div id="sres"></div>${S.mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in for live prices.' : 'Connect your mStock account for exchange-accurate live prices. Tap to set up.'}</div>`) : ''}
   <div class="idx" id="idx">${m.idx().map(x => `<div class="card" data-sym="${x[0]}"><div class="n">${x[1]}</div><div class="p" id="ix_${x[0]}"><span class="spin"></span></div><div id="ixc_${x[0]}" style="font-size:12px"></div></div>`).join('')}</div>
-  <div class="chips" id="quick">${[['top', '⭐ Overall'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
+  <div class="chips wrap" id="quick">${[['top', '⭐ Overall'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
   <div class="card regime" id="regime"><span class="spin"></span></div>
-  ${S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length ? `<h3>Browse</h3><div class="chips">${SIZES.slice(0, 5).map(x => `<button data-browse="${x[0]}|">${x[1]}</button>`).join('')}</div>
-   <div class="chips">${sectors().slice(0, 14).map(s => `<button data-browse="ALL|${esc(s)}">${esc(secName(s))}</button>`).join('')}</div>` : ''}
+  ${S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length ? `<h3>Browse stocks</h3><div class="card"><div class="pick2" style="margin:0"><label><span>Market cap</span><select id="hbSize">${SIZES.map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
+   <label><span>Sector</span><select id="hbSec"><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div><button class="btn w" id="hbGo" style="margin-top:10px">Show stocks</button></div>` : ''}
   <h3>Top rated today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
   <h3>Watchlist</h3><div id="wl">${S.saved[S.mkt].length ? '<div class="list">' + S.saved[S.mkt].map(s => rowHTML(s, nameOf(s), null, null, null)).join('') + '</div>' : '<div class="empty">Tap ☆ on any stock to save it here.</div>'}</div>
   <h3>Popular</h3><div class="chips" style="flex-wrap:wrap">${(S.mkt === 'IN' ? window.SEED_IN.slice(0, 24) : window.US_LIST.slice(0, 24)).map(x => `<button data-sym="${x[0]}">${x[0]}</button>`).join('')}</div>
@@ -110,7 +110,7 @@ function vHome() {
   v.querySelectorAll('.idx .card, .chips button').forEach(b => b.onclick = () => openDetail(b.dataset.sym));
   bindRows(v); $('#goScan').onclick = () => { go('scan'); runScan(); };
   v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.q; go('scan'); if (!S.scan[S.mkt]) runScan(); });
-  v.querySelectorAll('[data-browse]').forEach(b => b.onclick = () => { const [size, sector] = b.dataset.browse.split('|'); S.uni = { size, sector: sector || '' }; store.set('uni', S.uni); go('scan'); });
+  const hb = $('#hbGo'); if (hb) hb.onclick = () => { const size = $('#hbSize').value; S.uni = { size, sector: size === 'FO' ? '' : $('#hbSec').value }; store.set('uni', S.uni); go('scan'); };
   const rg = S.regime[S.mkt]; if (rg) { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(rg.v); } else regime(S.mkt).then(v => { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(v); });
   setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = () => $('#gear').click();
   m.idx().forEach(async x => {
@@ -233,16 +233,16 @@ function uniLabel(sel = S.uni) { return S.mkt === 'US' ? 'US large caps' : `${(S
 function vScan() {
   const sc = S.scan[S.mkt], f = S.scanFilter || 'top', hasCat = S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length > 0;
   const syms = uniSyms(), have = sc ? new Set(sc.rows.map(r => r.sym)) : new Set(), missing = syms.filter(s => !have.has(s));
-  $('#view').innerHTML = `${S.mkt === 'IN' ? `<div class="chips">${SIZES.filter(x => hasCat || !['M', 'S', 'U'].includes(x[0])).map(x => `<button data-size="${x[0]}" class="${S.uni.size === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
-   ${hasCat && !['ALL', 'FO'].includes(S.uni.size) || (hasCat && S.uni.size === 'ALL') ? `<div class="chips"><button data-sec="" class="${!S.uni.sector ? 'on' : ''}">All sectors</button>${sectors().map(s => `<button data-sec="${esc(s)}" class="${S.uni.sector === s ? 'on' : ''}">${esc(secName(s))}</button>`).join('')}</div>` : ''}` : ''}
+  $('#view').innerHTML = `${S.mkt === 'IN' ? `<div class="pick2"><label><span>Market cap</span><select id="selSize">${SIZES.filter(x => hasCat || !['M', 'S', 'U'].includes(x[0])).map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
+   <label><span>Sector</span><select id="selSec" ${!hasCat || S.uni.size === 'FO' ? 'disabled' : ''}><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div>` : ''}
   <div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><b>${esc(uniLabel())}</b><div class="note">${syms.length.toLocaleString()} stocks${missing.length && sc ? ` · ${missing.length} not scanned yet` : ''}</div></div>
    <button class="btn" id="run" ${S.scanning ? 'disabled' : ''}>${S.scanning ? '<span class="spin"></span>' : missing.length < syms.length && sc ? `Scan ${missing.length ? missing.length + ' new' : 'again'}` : 'Scan'}</button></div>
   <div class="prog" id="prog" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div><div class="note" id="pmsg">${S.scanning ? S.scanMsg || 'Scanning…' : sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'} · keeps running if you leave the app (until you swipe it away)` : 'Rates every stock 0–100. Same number as on the stock page.'}</div></div>
-  <div class="chips sticky">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
+  <div class="chips wrap">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
   $('#run').onclick = () => runScan(missing.length && sc && missing.length < syms.length ? missing : syms);
   document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.f; vScan(); });
-  document.querySelectorAll('[data-size]').forEach(b => b.onclick = () => { S.uni = { size: b.dataset.size, sector: b.dataset.size === 'FO' ? '' : S.uni.sector }; store.set('uni', S.uni); vScan(); });
-  document.querySelectorAll('[data-sec]').forEach(b => b.onclick = () => { S.uni.sector = b.dataset.sec; store.set('uni', S.uni); vScan(); });
+  const ss = $('#selSize'); if (ss) ss.onchange = () => { S.uni = { size: ss.value, sector: ss.value === 'FO' ? '' : S.uni.sector }; store.set('uni', S.uni); vScan(); };
+  const se = $('#selSec'); if (se) se.onchange = () => { S.uni.sector = se.value; store.set('uni', S.uni); vScan(); };
   drawScan();
 }
 function drawScan() {
@@ -303,15 +303,96 @@ async function runScan(syms) {
 function vFno() {
   const sc = S.scan.IN, foSet = new Set(Object.keys(S.nse.fo || {})), lots = foSet.size;
   const fo0 = sc ? sc.rows.filter(r => foSet.has(r.sym)) : [], fo = fo0.length ? fo0 : null;
-  $('#view').innerHTML = `<h3>Indices</h3><div class="list">${window.IDX_IN.map(x => rowHTML(x[0], x[1] + (foLot(x[0]) ? ' · lot ' + foLot(x[0]) : ''), null, null, null)).join('')}</div>
+  $('#view').innerHTML = `<h3>Index options · call or put? <a id="optRef">Refresh</a></h3><div id="optBox">${['NIFTY', 'BANKNIFTY'].map(s => `<div class="card" id="opt_${s}"><span class="spin"></span> ${s}…</div>`).join('')}</div>
+  <h3>Indices</h3><div class="list">${window.IDX_IN.map(x => rowHTML(x[0], x[1] + (foLot(x[0]) ? ' · lot ' + foLot(x[0]) : ''), null, null, null)).join('')}</div>
   <h3>F&O stock setups <a id="fscan">${lots ? (fo ? 'Rescan' : 'Scan F&O stocks') : ''}</a></h3>
   ${!lots ? '<div class="warn">F&O list and lot sizes load in the installed app build.</div>' : ''}
   ${fo ? `<h3>Long ideas · highest rated first</h3><div class="list">${rated(fo, 'top', 'IN').filter(x => x.rating >= 58).slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'LONG', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No long setups.</div>'}</div>
      <h3>Short ideas · lowest rating first</h3><div class="list">${rated(fo, 'sell', 'IN').slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'SHORT', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No short setups.</div>'}</div>`
     : '<div class="empty">Scan the F&O list to rank futures longs and shorts.</div>'}
-  <p class="note">Signals are on the underlying. Option premiums, OI and IV are not available from free data, so check the option chain in your broker before trading. Options can lose 100% quickly.</p>`;
+  <p class="note">Call/put ratings come from the index's intraday + swing signals. Live premiums need mStock (⚙️). Open interest and IV aren't included, so check the option chain before trading. Option buyers can lose 100% quickly.</p>`;
   bindRows($('#view'));
+  const loadOpts = () => ['NIFTY', 'BANKNIFTY'].forEach(s => indexOption(s).then(o => { const el = $('#opt_' + s); if (el) el.outerHTML = optCard(o); bindOpt(); }).catch(e => { const el = $('#opt_' + s); if (el) el.innerHTML = `<b>${s}</b><div class="note dn">Could not analyse: ${esc(e.message)}</div>`; }));
+  loadOpts(); $('#optRef').onclick = () => { ['NIFTY', 'BANKNIFTY'].forEach(s => { const el = $('#opt_' + s); if (el) el.innerHTML = '<span class="spin"></span>'; }); loadOpts(); };
+  if (marketOpen('IN')) S.timer = setInterval(loadOpts, 60000);
   const b = $('#fscan'); if (b) b.onclick = () => { S.uni = { size: 'FO', sector: '' }; store.set('uni', S.uni); go('scan'); runScan(); };
+}
+
+// ---------- index options (NIFTY / BANKNIFTY) ----------
+function istMins() { const p = {}; for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())) p[x.type] = x.value; return +p.hour * 60 + +p.minute; }
+async function indexOption(sym) {
+  const ys = ySym(sym, 'IN'), open = marketOpen('IN');
+  const [d, it] = await Promise.all([chart(ys, '2y', '1d'), chart(ys, '5d', '5m').catch(() => null)]);
+  const A = Engine.analyze(d.D, { intra: open && it ? it.D : null, tick: 0.05, canShort: true, backtest: true, price: d.meta.regularMarketPrice, fnoSym: sym, lot: foLot(sym) });
+  if (A.err) throw new Error(A.err);
+  const row = Object.assign({ sym }, rowFromA(A)), ctx = { regime: 50, news: 0, canShort: true };
+  const ri = Engine.hzRating(row.intraday, 'intraday', ctx), rs = Engine.hzRating(row.swing, 'swing', ctx);
+  const wI = open ? 0.6 : 0.3, bull = Math.round(wI * ri.rating + (1 - wI) * rs.rating);
+  const late = open && istMins() >= 870; // after 2:30 PM: time decay hurts fresh option buys
+  let ce = bull, pe = 100 - bull; if (late) { ce = Math.max(0, ce - 10); pe = Math.max(0, pe - 10); }
+  const side = ce >= 65 ? 'CE' : pe >= 65 ? 'PE' : null, step = Engine.strikeStep(sym, A.price), atm = Math.round(A.price / step) * step;
+  const H = A.horizons, src = open && H.intraday.levels && H.intraday.dir === (side === 'CE' ? 1 : -1) ? H.intraday : H.swing;
+  const L = side && src.levels && src.dir === (side === 'CE' ? 1 : -1) ? src.levels : null;
+  const o = { sym, A, ce, pe, side, atm, step, L, late, open, why: (open ? H.intraday : H.swing).why, hzUsed: src.label };
+  if (window.MS && MS.ok()) { // live premiums from mStock
+    try {
+      const [c1, p1] = await Promise.all([MS.option(sym, atm, 'CE'), MS.option(sym, atm, 'PE')]);
+      const q = await MS.optionQuotes([c1, p1]);
+      o.prem = { CE: c1 && q[c1.k] ? +q[c1.k].last_price : null, PE: p1 && q[p1.k] ? +q[p1.k].last_price : null }; o.exp = (c1 || p1 || {}).exp; o.ts = { CE: c1 && c1.ts, PE: p1 && p1.ts }; o.optLot = (c1 || {}).lot;
+    } catch (e) { o.premErr = e.message; }
+  }
+  return o;
+}
+function optCard(o) {
+  const A = o.A, verdict = o.side === 'CE' ? 'BUY CALL' : o.side === 'PE' ? 'BUY PUT' : 'NO TRADE';
+  const vc = o.side === 'CE' ? 'up' : o.side === 'PE' ? 'dn' : 'wa', L = o.L, prem = o.prem && o.side ? o.prem[o.side] : null;
+  const pm = (x) => prem && L ? Math.max(0.05, prem + 0.5 * (x - L.entry) * (o.side === 'CE' ? 1 : -1)) : null;
+  return `<div class="card opt" id="opt_${o.sym}"><div class="ohead"><div><b>${o.sym === 'NIFTY' ? 'Nifty 50' : 'Bank Nifty'}</b> <span class="mu">${fmt(A.price)} ${pct(A.chg)}</span></div><span class="pill ${o.side === 'CE' ? 'b1' : o.side === 'PE' ? 'b-1' : 'b0'}">${verdict}</span></div>
+   <div class="cp"><div class="${o.side === 'CE' ? 'on' : ''}"><span>CALL (CE)</span><b class="${o.ce >= 65 ? 'up' : o.ce <= 40 ? 'dn' : 'wa'}">${o.ce}</b><small>${o.ce >= 65 ? 'Buy' : 'Don\'t buy'}</small></div><div class="${o.side === 'PE' ? 'on' : ''}"><span>PUT (PE)</span><b class="${o.pe >= 65 ? 'up' : o.pe <= 40 ? 'dn' : 'wa'}">${o.pe}</b><small>${o.pe >= 65 ? 'Buy' : 'Don\'t buy'}</small></div></div>
+   ${o.side ? `<div class="sub" style="margin:8px 0 4px">Strike <b>${fmt(o.atm, 0)} ${o.side}</b> (ATM)${o.exp ? ` · expiry <b>${o.exp}</b>` : ' · nearest weekly expiry'}${o.optLot ? ` · lot ${o.optLot}` : foLot(o.sym) ? ` · lot ${foLot(o.sym)}` : ''}</div>
+     ${prem ? `<div class="lv">${[['Premium', prem], ['Prem SL', pm(L.stop)], ['Prem T1', pm(L.t1)], ['Prem T2', pm(L.t2)]].map(([l, x]) => `<div><div class="l">${l}</div><div class="v">${x ? fmt(x) : '–'}</div></div>`).join('')}</div><div class="note">Premium live from mStock${o.ts ? ' (' + esc(o.ts[o.side]) + ')' : ''}. SL/targets ≈ index move × 0.5 delta.</div>` : ''}
+     ${L ? `<div class="lv3" style="margin-top:6px"><span>${o.sym} entry <b>${fmt(L.entry)}</b></span><span>SL <b class="dn">${fmt(L.stop)}</b></span><span>T1 <b class="up">${fmt(L.t1)}</b></span><span>T2 <b class="up">${fmt(L.t2)}</b></span></div><div class="note">Exit the option when the index hits these levels (${esc(o.hzUsed.toLowerCase())} plan).</div>` : ''}
+     ${!prem ? `<div class="note">${o.premErr ? 'mStock premium error: ' + esc(o.premErr) : 'Connect mStock (⚙️) to see the live option premium and premium-based SL/targets.'}</div>` : ''}`
+   : `<div class="sub" style="margin-top:8px">Neither side is rated 65+. Buying options without an edge loses to time decay, so wait.</div>`}
+   ${o.late ? '<div class="warn" style="margin:8px 0 0">After 2:30 PM: theta decay is fastest, so ratings are cut by 10. Prefer no fresh option buys.</div>' : ''}
+   ${!o.open ? '<div class="note" style="margin-top:6px">Market closed. This is the setup for the next session, mostly from the daily (swing) trend.</div>' : ''}
+   <ul class="why">${o.why.slice(0, 4).map(w => `<li>${w.w > 0 ? '<span class="up">▲</span>' : '<span class="dn">▼</span>'} ${esc(w.t)}</li>`).join('')}</ul>
+   <a class="note optOpen" data-sym="${o.sym}">Full analysis & live chart ›</a></div>`;
+}
+function bindOpt() { document.querySelectorAll('.optOpen').forEach(a => a.onclick = () => openDetail(a.dataset.sym, 'intraday')); }
+
+// ---------- IPOs ----------
+async function vIpo() {
+  const v = $('#view');
+  v.innerHTML = `<h3>IPOs · grey market premium <a id="ipoRef">Refresh</a></h3><div id="ipoBody"><div class="empty"><span class="spin"></span> Loading live GMP…</div></div>
+   <p class="note">GMP is unofficial and unregulated grey-market data. It changes daily and does not guarantee the listing price. Rating = GMP % + GMP trend + news + market trend − SME risk. Not investment advice.</p>`;
+  $('#ipoRef').onclick = () => { S.ipo = null; vIpo(); };
+  try {
+    if (!S.ipo || Date.now() - S.ipo.at > 10 * 60e3) S.ipo = await IPO.load();
+    await regime('IN');
+    const snap = store.get('ipoGmp', {}), today = new Date().toISOString().slice(0, 10);
+    const L = S.ipo.list.map(x => { const k = x.name.toLowerCase(), prevE = snap[k]; const prev = prevE && prevE.d !== today ? prevE.g : prevE && prevE.pg;
+      const n = S.news['IPO:' + k]; return Object.assign(x, { R: IPO.rate(x, { prevGmp: prev, news: n ? n.s : 0, regime: (S.regime.IN || {}).v }) }); });
+    for (const x of L) { const k = x.name.toLowerCase(), e = snap[k]; snap[k] = e && e.d === today ? e : { g: x.gmp, d: today, pg: e ? e.g : undefined }; snap[k].g = x.gmp; }
+    store.set('ipoGmp', snap);
+    const live = L.filter(x => !/closed|listed/i.test(x.status)).sort((a, b) => b.R.rating - a.R.rating), done = L.filter(x => /closed|listed/i.test(x.status)).sort((a, b) => b.R.gmpPct - a.R.gmpPct);
+    for (const x of live) if (x.R.rating >= 70) Alerts.evaluate({ sym: 'IPO ' + x.name, mkt: 'IN', price: x.price, rating: x.R.rating, action: x.R.action, setups: [{ n: `IPO ${x.R.action}`, b: 1, q: x.R.rating }] }, true);
+    Alerts.save(); Alerts.flush();
+    const card = (x, k) => `<div class="card ipo" data-ipo="${esc(x.name)}"><div class="ohead"><div style="min-width:0"><div class="s">${k ? `<span class="rk">${k}</span> ` : ''}${esc(x.name)}</div><div class="note">${x.sme ? '<span class="tag n">SME</span>' : '<span class="tag">Mainboard</span>'} ${esc(x.status)} · ${esc(x.dates)}</div></div>
+      <div class="sc ${x.R.rating >= 58 ? 'b1' : x.R.rating <= 44 ? 'b-1' : 'b0'}">${x.R.rating}<small>${esc(x.R.action.split(' ')[0])}</small></div></div>
+      <div class="ipog"><div><span>GMP</span><b class="${x.gmp > 0 ? 'up' : x.gmp < 0 ? 'dn' : ''}">${x.gmp > 0 ? '+' : ''}₹${fmt(x.gmp, 0)} · ${x.R.gmpPct.toFixed(1)}%</b></div><div><span>Price band</span><b>${esc(x.priceBand || '–')}</b></div><div><span>Est. listing</span><b>${esc(x.est || '–')}</b></div></div>
+      <div class="ipox" style="display:none"><div class="pill ${x.R.rating >= 58 ? 'b1' : x.R.rating <= 44 ? 'b-1' : 'b0'}" style="display:inline-block;margin:8px 0">${esc(x.R.action)}</div>
+      <ul class="why">${x.R.why.map(w => `<li>${w[0] >= 0 ? '<span class="up">▲</span>' : '<span class="dn">▼</span>'} ${esc(w[1])}</li>`).join('')}</ul><div class="inews note"><span class="spin"></span> News…</div></div></div>`;
+    $('#ipoBody').innerHTML = `${live.length ? `<p class="note">Open & upcoming · highest rating first · ${esc(S.ipo.src)} · ${new Date(S.ipo.at).toLocaleTimeString()}</p>${live.map((x, k) => card(x, k + 1)).join('')}` : '<div class="empty">No open or upcoming IPOs right now.</div>'}
+      ${done.length ? `<h3>Closed / listing soon</h3>${done.map(x => card(x)).join('')}` : ''}`;
+    document.querySelectorAll('.ipo').forEach(c => c.onclick = async () => {
+      const box = c.querySelector('.ipox'); const openNow = box.style.display === 'none'; box.style.display = openNow ? '' : 'none'; if (!openNow || c._news) return; c._news = 1;
+      const name = c.dataset.ipo, el = c.querySelector('.inews');
+      try { const N = await News.get(name + ' IPO', name + ' IPO', true); S.news['IPO:' + name.toLowerCase()] = { s: +(N.score * Math.min(1, N.n / 3)).toFixed(2), n: N.n, at: Date.now() }; store.set('news', S.news);
+        el.innerHTML = `<b>News ${newsHead(N)}</b>` + newsHTML(N); el.querySelectorAll('a').forEach(a => a.onclick = e => e.stopPropagation()); }
+      catch (e) { el.textContent = 'News unavailable.'; }
+    });
+  } catch (e) { $('#ipoBody').innerHTML = `<div class="warn">Could not load IPO data (${esc(e.message)}). It works in the installed app; browsers block these sites.</div>`; }
 }
 
 // ---------- saved ----------
@@ -394,8 +475,9 @@ function vSettings() {
    <div class="srow"><div><b>Alert on non-saved stocks at rating</b></div><select id="strong">${[70, 75, 80, 85].map(x => `<option ${P.strong == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
   <h3>Scanner</h3><div class="card">
    <div class="srow"><div><b>Skip illiquid stocks</b><div class="note">Average daily value traded below</div></div><select id="liq">${(S.mkt === 'IN' ? [[0, 'Off'], [1e6, '₹10 lakh'], [1e7, '₹1 Cr'], [5e7, '₹5 Cr'], [1e8, '₹10 Cr']] : [[0, 'Off'], [1e6, '$1M'], [5e6, '$5M'], [2e7, '$20M']]).map(x => `<option value="${x[0]}" ${S.minTurnover[S.mkt] == x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></div></div>
+  <h3>Tools</h3><div class="list"><div class="row" id="goDesk"><div class="nm"><div class="s">🧪 ORB Desk</div><div class="f">Opening-range breakout + 10,000-replay Time Machine</div></div><div class="px">›</div></div></div>
   <p class="note">DayTrader Desk · analysis only, never places orders. Not investment advice.</p>`;
-  $('#back').onclick = back; $('#goBroker').onclick = () => go('broker');
+  $('#back').onclick = back; $('#goBroker').onclick = () => go('broker'); $('#goDesk').onclick = () => { location.href = 'desk.html'; };
   $('#pinBtn').onclick = async () => { const p1 = await pinPad(pin ? 'New PIN (4–8 digits)' : 'Choose a PIN (4–8 digits)'); if (!p1) return; const p2 = await pinPad('Enter it again'); if (p1 !== p2) return toast('PINs did not match.');
     if (pin) { const old = await pinPad('Current PIN'); if (!old) return; try { await Sec.unlock(old); } catch (e) { return toast(e.message); } }
     try { await Sec.setPin(p1); store.set('pinLen', p1.length); toast('PIN set. Your mStock key is now encrypted.'); } catch (e) { toast(e.message); } vSettings(); };
@@ -588,7 +670,7 @@ function drawPreview() {
 window.App = { ySym, chart, fmt, marketOpen };
 
 // ---------- boot ----------
-document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.mkt = b.dataset.m; store.set('mkt', S.mkt); if (['detail', 'broker'].includes(S.tab) || (S.tab === 'fno' && S.mkt === 'US')) { S.stack = []; S.tab = 'home'; } render(); });
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.mkt = b.dataset.m; store.set('mkt', S.mkt); if (['detail', 'broker'].includes(S.tab) || (['fno', 'ipo'].includes(S.tab) && S.mkt === 'US')) { S.stack = []; S.tab = 'home'; } render(); });
 document.querySelectorAll('.nav button').forEach(b => b.onclick = () => { if (b.dataset.t === 'desk') { location.href = 'desk.html'; return; } S.stack = []; S.tab = b.dataset.t; render(); });
 $('#gear').onclick = () => go('settings');
 $('#bell').onclick = () => go('alerts');
