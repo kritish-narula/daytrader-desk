@@ -49,6 +49,7 @@
 
   // Rating 0–100 for applying. Inputs: GMP %, GMP trend vs our last snapshot, SME risk, news, market trend.
   function rate(x, ctx = {}) {
+    if (!(x.price > 0)) return { rating: 50, action: 'AWAITING PRICE', gmpPct: 0, why: [[0, 'Price band not announced yet, so GMP can\'t be judged']] };
     const g = isFinite(x.price) && x.price > 0 ? 100 * x.gmp / x.price : 0;
     const why = [];
     let s = g >= 40 ? 34 : g >= 25 ? 26 : g >= 15 ? 18 : g >= 8 ? 10 : g >= 3 ? 3 : g > 0 ? -4 : g === 0 ? -12 : -25;
