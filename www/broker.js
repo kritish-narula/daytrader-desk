@@ -5,8 +5,9 @@
 (function () {
   const BASE = 'https://api.mstock.trade/openapi/typea/';
   const K = 'dtd2_ms_';
-  const get = k => { try { return JSON.parse(localStorage.getItem(K + k)); } catch (e) { return null; } };
-  const set = (k, v) => { try { v == null ? localStorage.removeItem(K + k) : localStorage.setItem(K + k, JSON.stringify(v)); } catch (e) {} };
+  // credentials go through the encrypted vault when an app PIN is set (security.js)
+  const get = k => window.Sec ? Sec.get(k) : (() => { try { return JSON.parse(localStorage.getItem(K + k)); } catch (e) { return null; } })();
+  const set = (k, v) => window.Sec ? Sec.set(k, v) : (() => { try { v == null ? localStorage.removeItem(K + k) : localStorage.setItem(K + k, JSON.stringify(v)); } catch (e) {} })();
   const istDay = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
   const istStamp = d => { // "YYYY-MM-DD HH:MM:SS" in IST
     const p = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(d)) p[x.type] = x.value;

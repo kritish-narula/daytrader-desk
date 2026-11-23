@@ -8,7 +8,12 @@ Stock analysis app for India (NSE, all listed stocks + F&O) and global markets.
 - **Setups**: SMC (break of structure, change of character, order blocks, fair value gaps, liquidity sweeps), VCP (volatility contraction pattern), Minervini Stage 2 trend template, pullback to 20 EMA, oversold dip in uptrend. Each has a quality score, entry, stop and target, and feeds the ratings.
 - **News**: Yahoo Finance + Google News headlines with positive/negative sentiment; moves ratings by up to ±8.
 - **Live chart**: full screen, 1m/2m/3m/5m/15m/30m/1h/4h/1D/1W/1M, live ticks, EMA 9/10/20/50/100/200, VWAP, Bollinger, Supertrend, volume, RSI, MACD, SL/target lines. Free pan in any direction or sideways-only with auto-fit; pinch zoom; drag either axis to stretch. Charts by TradingView Lightweight Charts (Apache-2.0).
-- **Ranking**: every list is sorted by the rating it shows, highest first.
+- **One rating, everywhere**: each stock gets an overall rating plus a rating per horizon (intraday, swing, short, medium, long). Each = technical signal blended with how that exact signal performed on that stock (backtest), plus market trend (Nifty/S&P) and news. Lists and the stock page always show the same number.
+- **Horizon lists**: Swing, Intraday, Short, Medium, Long each show only stocks rated BUY for that horizon, highest first. Sells are lowest-rated first.
+- **Browse by size and sector**: large / mid / small / micro cap (NSE index files), F&O, and sectors (IT, Auto, Finance, Pharma, FMCG, Metals…). Scan once, then filter instantly.
+- **Background scans**: a scan keeps running when you leave the app; swiping the app out of Recents stops it.
+- **Alerts**: phone notifications for new strong buys, SMC/VCP setups, EMA crosses, strong news and price alerts; optional background watch of saved stocks every 5 min in market hours.
+- **Security**: app PIN (AES-256-GCM encrypted mStock credentials, PBKDF2 210k), auto-lock, optional screenshot/Recents blocking, no Android backup, WebView debugging off, content security policy.
 - **Patterns**: engulfing, hammer, shooting star, inside bar, NR7, 20-day breakout/breakdown, 52-week-high breakout, bull/bear flag, double bottom/top, trend structure, Supertrend flips — with pattern targets and invalidation levels.
 - **EMA cross forecast**: 9/21, 20/50, 50/200 crosses that just happened or are projected within days.
 - **Scanner**: large caps, all F&O stocks, or all NSE; filters for top buys, intraday movers, EMA cross soon, patterns, top sells.

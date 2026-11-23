@@ -479,9 +479,21 @@
     return { rating: r, action: a, signal: Math.round(signal), edge: edge == null ? null : Math.round(edge), regAdj, newsAdj, bt };
   };
 
-  // Scan: same history + same swing backtest as the stock page, no intraday bars
+  // per-horizon rating: that horizon's signal blended with how that signal performed on this stock (its own backtest)
+  E.hzRating = function (h, hz, ctx = {}) {
+    if (!h || h.na) return null;
+    const P = H[hz], bt = h.bt; let edge = null, ew = 0;
+    if (bt && bt.n >= 6) { const p = (bt.wins + 1) / (bt.n + 2), ev = p * P.t1 - (1 - p); edge = clamp(50 + 40 * ev, 0, 100); ew = Math.min(0.45, bt.n / 60); }
+    let r = edge == null ? 50 + (h.score - 50) * (hz === 'intraday' ? 1 : 0.85) : (1 - ew) * h.score + ew * edge;
+    const regAdj = hz === 'long' ? 0 : Math.round(clamp(((ok(ctx.regime) ? ctx.regime : 50) - 50) / 10, -5, 5));
+    const newsAdj = hz === 'long' ? 0 : Math.round((hz === 'intraday' ? 10 : 8) * clamp(ok(ctx.news) ? ctx.news : 0));
+    r = Math.round(clamp(r + regAdj + newsAdj, 0, 100));
+    const a = action(r, hz, ctx.canShort);
+    return { rating: r, action: a.a, dir: a.d, noShort: a.noShort, signal: h.score, edge: edge == null ? null : Math.round(edge), regAdj, newsAdj, bt };
+  };
+  // Scan: same history + same backtests as the stock page, no intraday bars
   E.quick = function (D, opts = {}) {
-    const r = E.analyze(D, Object.assign({}, opts, { backtest: 'swing' }));
+    const r = E.analyze(D, Object.assign({}, opts, { backtest: true }));
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
     const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt } : h;

@@ -7,7 +7,8 @@ const MK = {
   IN: { name: 'India', tz: 'Asia/Kolkata', open: 555, close: 930, cur: '₹', tick: 0.05, idx: () => window.IDX_IN },
   US: { name: 'Global', tz: 'America/New_York', open: 570, close: 960, cur: '$', tick: 0.01, idx: () => window.IDX_US },
 };
-const S = { mkt: store.get('mkt', 'IN'), tab: 'home', nse: null, saved: store.get('saved', { IN: [], US: [] }), scan: store.get('scan', {}), detail: null, hz: 'swing', chartMode: 'daily', timer: null };
+const S = { mkt: store.get('mkt', 'IN'), tab: 'home', stack: [], nse: null, saved: store.get('saved', { IN: [], US: [] }), scan: store.get('scan', {}), detail: null, hz: 'swing', timer: null,
+  news: store.get('news', {}), regime: {}, uni: store.get('uni', { size: 'L', sector: '' }), minTurnover: store.get('minTurnover', { IN: 1e7, US: 5e6 }), scanning: false };
 
 // ---------- symbols ----------
 async function loadNSE() {
@@ -66,21 +67,31 @@ const badge = (sc, lbl) => `<div class="sc ${cls(sc)}">${sc}<small>${esc(lbl || 
 const shortAct = a => ({ 'STRONG BUY': 'S.BUY', 'BUY': 'BUY', 'HOLD / WAIT': 'HOLD', 'SELL': 'SELL', 'STRONG SELL': 'S.SELL', 'SELL / EXIT': 'EXIT', 'AVOID': 'AVOID' }[a] || a);
 function setLive() { const on = marketOpen(); $('#live').className = 'live' + (on ? ' on' : ''); $('#live span').textContent = on ? 'Market open' : 'Closed'; }
 
+// ---------- navigation (also driven by the phone's back button) ----------
+function go(tab) { if (tab !== S.tab) S.stack.push(S.tab); if (S.stack.length > 20) S.stack.shift(); S.tab = tab; render(); }
+function back() {
+  if (window.ChartView && document.querySelector('.cfull')) { ChartView.close(); return true; }
+  const sr = $('#sres'); if (sr && sr.innerHTML) { $('#q').value = ''; sr.innerHTML = ''; return true; }
+  if (S.stack.length) { S.tab = S.stack.pop(); render(); return true; }
+  if (S.tab !== 'home') { S.tab = 'home'; render(); return true; }
+  return false;
+}
 // ---------- views ----------
 function render() {
   clearInterval(S.timer); S.timer = null;
   document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mkt));
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
-  $('#navFno').style.display = S.mkt === 'IN' ? '' : 'none';
+  $('#navFno').style.display = S.mkt === 'IN' ? '' : 'none'; updBell();
   setLive(); window.scrollTo(0, 0);
-  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker })[S.tab]();
+  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, settings: vSettings })[S.tab]();
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
 }
 function rowHTML(sym, name, price, chg, sc, lbl, tags = '', rank, bear) {
   return `<div class="row" data-sym="${esc(sym)}">${rank ? `<div class="rk">${rank}</div>` : ''}${sc != null ? (bear ? `<div class="sc b-1">${sc}<small>${esc(lbl || '')}</small></div>` : badge(sc, lbl)) : ''}<div class="nm"><div class="s">${esc(sym)}</div><div class="f">${esc(name)}</div>${tags}</div>
   <div class="px">${price != null ? cur() + fmt(price) : ''}<small>${chg != null ? pct(chg) : ''}</small></div></div>`;
 }
-function bindRows(el) { el.querySelectorAll('.row[data-sym]').forEach(r => r.onclick = () => openDetail(r.dataset.sym)); }
+function bindRows(el, hz) { el.querySelectorAll('.row[data-sym]').forEach(r => r.onclick = () => openDetail(r.dataset.sym, hz)); }
+function upsertRow(mkt, row) { const sc = S.scan[mkt]; if (!sc) return; const i = sc.rows.findIndex(r => r.sym === row.sym); if (i >= 0) sc.rows[i] = Object.assign(sc.rows[i], row); }
 
 function vHome() {
   const m = MK[S.mkt], sc = S.scan[S.mkt];
@@ -88,14 +99,19 @@ function vHome() {
   v.innerHTML = `<div class="search"><input id="q" placeholder="Search ${S.mkt === 'IN' ? 'any NSE stock or index' : 'any global stock, e.g. AAPL'}" autocomplete="off"></div>
   <div id="sres"></div>${S.mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in for live prices.' : 'Connect your mStock account for exchange-accurate live prices. Tap to set up.'}</div>`) : ''}
   <div class="idx" id="idx">${m.idx().map(x => `<div class="card" data-sym="${x[0]}"><div class="n">${x[1]}</div><div class="p" id="ix_${x[0]}"><span class="spin"></span></div><div id="ixc_${x[0]}" style="font-size:12px"></div></div>`).join('')}</div>
-  <div class="chips" id="quick">${[['top', '⭐ Top rated'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['intra', '⚡ Intraday'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
+  <div class="chips" id="quick">${[['top', '⭐ Overall'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
+  <div class="card regime" id="regime"><span class="spin"></span></div>
+  ${S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length ? `<h3>Browse</h3><div class="chips">${SIZES.slice(0, 5).map(x => `<button data-browse="${x[0]}|">${x[1]}</button>`).join('')}</div>
+   <div class="chips">${sectors().slice(0, 14).map(s => `<button data-browse="ALL|${esc(s)}">${esc(secName(s))}</button>`).join('')}</div>` : ''}
   <h3>Top rated today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
   <h3>Watchlist</h3><div id="wl">${S.saved[S.mkt].length ? '<div class="list">' + S.saved[S.mkt].map(s => rowHTML(s, nameOf(s), null, null, null)).join('') + '</div>' : '<div class="empty">Tap ☆ on any stock to save it here.</div>'}</div>
   <h3>Popular</h3><div class="chips" style="flex-wrap:wrap">${(S.mkt === 'IN' ? window.SEED_IN.slice(0, 24) : window.US_LIST.slice(0, 24)).map(x => `<button data-sym="${x[0]}">${x[0]}</button>`).join('')}</div>
   ${S.mkt === 'IN' && S.nse.seed ? '<p class="note">Showing a starter list. The full NSE list loads in the installed app build.</p>' : S.mkt === 'IN' ? `<p class="note">${S.nse.eq.length.toLocaleString()} NSE stocks · ${Object.keys(S.nse.fo || {}).length} F&O stocks · list from ${S.nse.updated}</p>` : ''}`;
   v.querySelectorAll('.idx .card, .chips button').forEach(b => b.onclick = () => openDetail(b.dataset.sym));
-  bindRows(v); $('#goScan').onclick = () => { S.tab = 'scan'; render(); runScan(); };
-  v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.q; S.tab = 'scan'; render(); if (!S.scan[S.mkt]) runScan(); });
+  bindRows(v); $('#goScan').onclick = () => { go('scan'); runScan(); };
+  v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.q; go('scan'); if (!S.scan[S.mkt]) runScan(); });
+  v.querySelectorAll('[data-browse]').forEach(b => b.onclick = () => { const [size, sector] = b.dataset.browse.split('|'); S.uni = { size, sector: sector || '' }; store.set('uni', S.uni); go('scan'); });
+  const rg = S.regime[S.mkt]; if (rg) { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(rg.v); } else regime(S.mkt).then(v => { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(v); });
   setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = () => $('#gear').click();
   m.idx().forEach(async x => {
     try { const { meta } = await chart(x[2], '1d', '5m'); const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose;
@@ -103,10 +119,12 @@ function vHome() {
   });
   if (!navigator.onLine) v.insertAdjacentHTML('afterbegin', '<div class="warn">You are offline.</div>');
 }
+function regimeHTML(v) { const t = v >= 60 ? ['up', 'Uptrend', 'longs get +' + Math.round((v - 50) / 10)] : v <= 40 ? ['dn', 'Downtrend', 'longs get ' + Math.round((v - 50) / 10)] : ['wa', 'Sideways', 'no adjustment'];
+  return `<div style="display:flex;justify-content:space-between;align-items:center"><div><div class="note">Market trend (${S.mkt === 'IN' ? 'Nifty 50' : 'S&P 500'})</div><b class="${t[0]}">${t[1]} · ${v}</b></div><div class="note" style="text-align:right">Ratings: ${t[2]}</div></div>`; }
 function picksHTML(sc) {
   if (!sc || !sc.rows) return '<div class="empty">Run a scan to rank stocks by setup quality.</div>';
   const top = rated(sc.rows, 'top').filter(x => x.rating >= 58).slice(0, 8);
-  return `<div class="list">${top.map((x, k) => rowHTML(x.r.sym, nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('') || '<div class="empty">No strong buys in the last scan.</div>'}</div><p class="note">Ranked by rating (trend + momentum + setups + news) · scan at ${new Date(sc.at).toLocaleTimeString()}.</p>`;
+  return `<div class="list">${top.map((x, k) => rowHTML(x.r.sym, nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('') || '<div class="empty">No buys rated 58+ in the last scan.</div>'}</div><p class="note">Rating = signal × proven edge on that stock + market trend + news · scan at ${new Date(sc.at).toLocaleTimeString()}.</p>`;
 }
 function tagsOf(r) {
   const t = [];
@@ -137,12 +155,32 @@ function setupSearch() {
   };
 }
 
+// ---------- unified rating: the same number everywhere ----------
+const nkey = (mkt, sym) => mkt + ':' + sym;
+function newsOf(mkt, sym) { const n = S.news[nkey(mkt, sym)]; return n && Date.now() - n.at < 6 * 3600e3 ? n : null; }
+function putNews(mkt, sym, N) { S.news[nkey(mkt, sym)] = { s: +(N.score * Math.min(1, N.n / 3)).toFixed(2), n: N.n, top: (N.items.find(i => i.s) || {}).title || '', at: Date.now() }; store.set('news', S.news); }
+async function regime(mkt) { // market trend from the index: nudges ratings ±5
+  const r = S.regime[mkt]; if (r && Date.now() - r.at < 15 * 60e3) return r.v;
+  try { const { D } = await chart(mkt === 'IN' ? '^NSEI' : '^GSPC', '2y', '1d'); const q = Engine.quick(D, { tick: 0.05 }); const v = Engine.rating(q).signal; S.regime[mkt] = { v, at: Date.now() }; return v; }
+  catch (e) { return 50; }
+}
+function rateRow(r, mkt = S.mkt) {
+  if (!r || r.err) return null;
+  const isIdx = mkt === 'IN' ? window.IDX_IN.some(x => x[0] === r.sym) : false, n = newsOf(mkt, r.sym);
+  return Engine.rating(r, { regime: isIdx ? 50 : (S.regime[mkt] || {}).v, news: n ? n.s : 0 });
+}
+function hzRate(r, hz, mkt = S.mkt) {
+  if (!r || !r[hz] || r[hz].na) return null;
+  const n = newsOf(mkt, r.sym), isIdx = mkt === 'IN' && window.IDX_IN.some(x => x[0] === r.sym);
+  return Engine.hzRating(r[hz], hz, { regime: isIdx ? 50 : (S.regime[mkt] || {}).v, news: n ? n.s : 0, canShort: mkt === 'US' || isFno(r.sym) });
+}
+const actLabel = a => ({ 'STRONG BUY': 'S.BUY', 'BUY': 'BUY', 'HOLD / WAIT': 'HOLD', 'SELL / AVOID': 'SELL', 'STRONG SELL': 'S.SELL', 'SELL': 'SELL', 'SELL / EXIT': 'EXIT', 'AVOID': 'AVOID' }[a] || a);
 async function msQuotes(syms, mkt) {
   if (mkt !== 'IN' || !window.MS || !MS.ok()) return null;
   try { return await MS.quotes(syms); } catch (e) { MS.lastError = e.message; return null; }
 }
 async function dailyQuick(sym, mkt, Q) {
-  const { D, meta } = await chart(ySym(sym, mkt), '1y', '1d');
+  const { D, meta } = await chart(ySym(sym, mkt), '2y', '1d');
   let price = meta.regularMarketPrice, prev = null;
   const o = Q && MS.overlay(D, Q[sym]); if (o) { price = o.price; prev = o.prev; }
   const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price });
@@ -150,90 +188,130 @@ async function dailyQuick(sym, mkt, Q) {
   return q;
 }
 // ---------- scanner ----------
-const FILTERS = [['top', '⭐ Top rated'], ['swing', 'Swing buys'], ['intra', 'Intraday'], ['setups', 'SMC / VCP'], ['cross', 'EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
-const newsAdj = r => r.news && r.news.n ? Math.round(8 * r.news.s) : 0;
-const clamp100 = x => Math.max(0, Math.min(100, Math.round(x)));
-// Every list is ranked by the rating it displays, highest first.
-function rated(rows, f) {
-  const ok = rows.filter(Boolean), out = [];
-  for (const r of ok) {
-    const na = newsAdj(r), bull = (r.setups || []).filter(s => s.b > 0);
-    let x = null;
-    if (f === 'top') x = { rating: clamp100(r.overall + na), label: shortAct(r.act) };
-    else if (f === 'swing' && r.swing.score >= 58) x = { rating: clamp100(r.swing.score + na), label: shortAct(r.swing.action) };
-    else if (f === 'intra' && r.intraday && r.intraday.score >= 58) x = { rating: clamp100(r.intraday.score + 1.5 * na), label: 'INTRA' };
-    else if (f === 'setups' && bull.length) x = { rating: clamp100(bull[0].q + (r.swing.score - 50) / 10 + na / 2), label: bull[0].k };
-    else if (f === 'cross' && (r.cross || []).some(c => c.dir > 0)) x = { rating: clamp100(r.short.score + na), label: 'X-OVER' };
-    else if (f === 'news' && r.news && r.news.n) x = { rating: clamp100(50 + 50 * r.news.s), label: r.news.s > 0.15 ? 'POS' : r.news.s < -0.15 ? 'NEG' : 'MIXED' };
-    else if (f === 'sell' && r.swing.score <= 42) x = { rating: clamp100(100 - r.swing.score - na), label: 'SELL', bear: true };
-    if (x) out.push(Object.assign(x, { r }));
+const FILTERS = [['top', '⭐ Overall'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
+const HZ = ['intraday', 'swing', 'short', 'medium', 'long'], HZL = { intraday: 'INTRA', swing: 'SWING', short: 'SHORT', medium: 'MEDIUM', long: 'LONG' };
+// Overall lists show the overall rating; a horizon list (Swing, Intraday…) shows only stocks rated BUY on that
+// horizon, ranked by that horizon's rating, high → low. The stock page opens on the same horizon with the same number.
+function rated(rows, f, mkt = S.mkt) {
+  const out = [], minT = S.minTurnover[mkt] || 0;
+  for (const r of rows) {
+    if (!r || r.err) continue;
+    if (minT && r.turnover != null && r.turnover < minT) continue;
+    if (HZ.includes(f)) {
+      const Rh = hzRate(r, f, mkt); if (!Rh || Rh.rating < 58) continue;
+      out.push({ r, rating: Rh.rating, label: HZL[f], R: Rh, sub: `${actLabel(Rh.action)} · signal ${Rh.signal}${Rh.edge != null ? ' · edge ' + Rh.edge : ''}`, hz: f });
+      continue;
+    }
+    const R = rateRow(r, mkt); if (!R) continue;
+    const n = newsOf(mkt, r.sym), bull = (r.setups || []).filter(s => s.b > 0);
+    const ok = f === 'top' ? true : f === 'setups' ? bull.length > 0 : f === 'cross' ? (r.cross || []).some(c => c.dir > 0)
+      : f === 'news' ? n && Math.abs(n.s) >= 0.15 : f === 'sell' ? R.rating <= 42 : true;
+    if (!ok) continue;
+    const sub = f === 'setups' ? `${bull[0].n.replace(/^SMC: /, 'SMC ')} · quality ${bull[0].q}` : f === 'news' ? (n.top || '') : '';
+    out.push({ r, rating: R.rating, label: actLabel(R.action), R, sub, hz: 'overall' });
   }
-  return out.sort((a, b) => b.rating - a.rating || b.r.overall - a.r.overall);
+  return out.sort(f === 'sell' ? (a, b) => a.rating - b.rating : (a, b) => b.rating - a.rating || a.r.sym.localeCompare(b.r.sym));
 }
-function universes() {
-  if (S.mkt === 'US') return [['us', `US large caps (${window.US_LIST.length})`]];
-  const fo = Object.keys(S.nse.fo || {}).length;
-  return [['large', `Large caps (${window.SEED_IN.length})`], ...(fo ? [['fo', `F&O stocks (${fo})`]] : []), ['all', `All NSE (${S.nse.eq.length}, slow)`]];
+const SIZES = [['L', 'Large cap'], ['M', 'Mid cap'], ['S', 'Small cap'], ['U', 'Micro cap'], ['FO', 'F&O'], ['ALL', 'All NSE']];
+const SECTOR_ICON = { 'Information Technology': '💻 IT', 'Automobile and Auto Components': '🚗 Auto', 'Financial Services': '🏦 Finance', 'Healthcare': '💊 Pharma & Health', 'Fast Moving Consumer Goods': '🛒 FMCG', 'Capital Goods': '🏭 Capital goods',
+  'Metals & Mining': '⛏️ Metals', 'Oil Gas & Consumable Fuels': '🛢️ Oil & gas', 'Power': '⚡ Power', 'Chemicals': '🧪 Chemicals', 'Realty': '🏢 Realty', 'Consumer Durables': '📺 Consumer durables', 'Construction': '🏗️ Construction',
+  'Construction Materials': '🧱 Cement', 'Telecommunication': '📡 Telecom', 'Textiles': '🧵 Textiles', 'Services': '🧰 Services', 'Consumer Services': '🛍️ Consumer services', 'Media Entertainment & Publication': '🎬 Media', 'Diversified': '🔀 Diversified', 'Forest Materials': '🌲 Forest materials', 'Utilities': '🚰 Utilities' };
+const secName = s => SECTOR_ICON[s] || s;
+function sectors() { const c = {}; for (const k in (S.nse.cat || {})) { const s = S.nse.cat[k][1]; if (s) c[s] = (c[s] || 0) + 1; } return Object.entries(c).sort((a, b) => b[1] - a[1]).map(x => x[0]); }
+function uniSyms(sel = S.uni, mkt = S.mkt) {
+  if (mkt === 'US') return window.US_LIST.map(x => x[0]);
+  const cat = S.nse.cat || {}, hasCat = Object.keys(cat).length > 0;
+  let L;
+  if (sel.size === 'FO') L = Object.keys(S.nse.fo || {});
+  else if (sel.size === 'ALL') L = S.nse.eq.map(x => x[0]);
+  else if (hasCat) L = Object.keys(cat).filter(s => cat[s][0] === sel.size);
+  else L = window.SEED_IN.map(x => x[0]);
+  if (sel.sector && hasCat) L = L.filter(s => cat[s] && cat[s][1] === sel.sector);
+  return L;
 }
-function uniSyms(u) {
-  if (u === 'us') return window.US_LIST.map(x => x[0]);
-  if (u === 'fo') return Object.keys(S.nse.fo);
-  if (u === 'all') return S.nse.eq.map(x => x[0]);
-  return window.SEED_IN.map(x => x[0]);
-}
+function uniLabel(sel = S.uni) { return S.mkt === 'US' ? 'US large caps' : `${(SIZES.find(x => x[0] === sel.size) || [, 'Stocks'])[1]}${sel.sector ? ' · ' + secName(sel.sector) : ''}`; }
 function vScan() {
-  const sc = S.scan[S.mkt], f = S.scanFilter || 'top';
-  $('#view').innerHTML = `<div class="card"><div style="display:flex;gap:8px"><select id="uni" style="flex:1">${universes().map(u => `<option value="${u[0]}" ${sc && sc.uni === u[0] ? 'selected' : ''}>${u[1]}</option>`).join('')}</select><button class="btn" id="run">Scan</button></div>
-  <div class="prog" id="prog" style="display:none"><div style="width:0"></div></div><div class="note" id="pmsg">${sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'}` : 'Scores every stock on 5 time frames, patterns and EMA crosses.'}</div></div>
+  const sc = S.scan[S.mkt], f = S.scanFilter || 'top', hasCat = S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length > 0;
+  const syms = uniSyms(), have = sc ? new Set(sc.rows.map(r => r.sym)) : new Set(), missing = syms.filter(s => !have.has(s));
+  $('#view').innerHTML = `${S.mkt === 'IN' ? `<div class="chips">${SIZES.filter(x => hasCat || !['M', 'S', 'U'].includes(x[0])).map(x => `<button data-size="${x[0]}" class="${S.uni.size === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
+   ${hasCat && !['ALL', 'FO'].includes(S.uni.size) || (hasCat && S.uni.size === 'ALL') ? `<div class="chips"><button data-sec="" class="${!S.uni.sector ? 'on' : ''}">All sectors</button>${sectors().map(s => `<button data-sec="${esc(s)}" class="${S.uni.sector === s ? 'on' : ''}">${esc(secName(s))}</button>`).join('')}</div>` : ''}` : ''}
+  <div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><b>${esc(uniLabel())}</b><div class="note">${syms.length.toLocaleString()} stocks${missing.length && sc ? ` · ${missing.length} not scanned yet` : ''}</div></div>
+   <button class="btn" id="run" ${S.scanning ? 'disabled' : ''}>${S.scanning ? '<span class="spin"></span>' : missing.length < syms.length && sc ? `Scan ${missing.length ? missing.length + ' new' : 'again'}` : 'Scan'}</button></div>
+  <div class="prog" id="prog" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div><div class="note" id="pmsg">${S.scanning ? S.scanMsg || 'Scanning…' : sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'} · keeps running if you leave the app (until you swipe it away)` : 'Rates every stock 0–100. Same number as on the stock page.'}</div></div>
   <div class="chips sticky">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
-  $('#run').onclick = runScan;
+  $('#run').onclick = () => runScan(missing.length && sc && missing.length < syms.length ? missing : syms);
   document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.f; vScan(); });
+  document.querySelectorAll('[data-size]').forEach(b => b.onclick = () => { S.uni = { size: b.dataset.size, sector: b.dataset.size === 'FO' ? '' : S.uni.sector }; store.set('uni', S.uni); vScan(); });
+  document.querySelectorAll('[data-sec]').forEach(b => b.onclick = () => { S.uni.sector = b.dataset.sec; store.set('uni', S.uni); vScan(); });
   drawScan();
 }
 function drawScan() {
   const sc = S.scan[S.mkt], el = $('#sl'); if (!el) return;
-  if (!sc) { el.innerHTML = '<div class="empty">Pick a list and tap <b>Scan</b>.<br>Every stock is rated 0–100; lists are ranked highest first.</div>'; return; }
-  const f = S.scanFilter || 'top', rows = rated(sc.rows, f).slice(0, 100);
-  el.innerHTML = rows.length ? `<div class="list">${rows.map((x, k) => rowHTML(x.r.sym, nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1, x.bear)).join('')}</div>` : `<div class="empty">Nothing in "${FILTERS.find(z => z[0] === f)[1]}" right now.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
-  bindRows(el);
+  if (!sc) { el.innerHTML = '<div class="empty">Pick a group and tap <b>Scan</b>.<br>Lists are ranked by rating, highest first.</div>'; return; }
+  const inUni = new Set(uniSyms()), f = S.scanFilter || 'top';
+  const rows = rated(sc.rows.filter(r => inUni.has(r.sym)), f).slice(0, 150);
+  el.innerHTML = rows.length ? `<p class="note">Scan from ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' (prices move; the stock page is live)' : ''}. ${f === 'sell' ? 'Lowest overall rating first = strongest sell.' : HZ.includes(f) ? `Stocks rated BUY for ${FILTERS.find(z => z[0] === f)[1].replace(/^\W+ /, '')}, highest ${f} rating first.` : 'Highest overall rating first.'}</p><div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
+    : `<div class="empty">Nothing in "${FILTERS.find(z => z[0] === f)[1]}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
+  bindRows(el, HZ.includes(f) ? f : 'overall');
 }
 async function enrichNews(mkt, rows) { // news for the strongest candidates, then re-rank
   if (!window.News) return;
-  const pick = [...rated(rows, 'top').slice(0, 25), ...rated(rows, 'sell').slice(0, 10), ...rated(rows, 'setups').slice(0, 10)].map(x => x.r);
-  const uniq = [...new Set(pick)];
-  await pool(uniq, 4, async r => { try { const n = await News.get(ySym(r.sym, mkt), nameOf(r.sym, mkt), mkt === 'IN'); r.news = { s: +(n.score * Math.min(1, n.n / 3)).toFixed(2), n: n.n, top: (n.items.find(i => i.s) || {}).title || '' }; } catch (e) {} },
-    (d, n) => { const m = $('#pmsg'); if (m && S.mkt === mkt) m.textContent = `Reading news ${d}/${n}…`; });
+  const pick = [...rated(rows, 'top', mkt).slice(0, 25), ...rated(rows, 'sell', mkt).slice(0, 10), ...rated(rows, 'setups', mkt).slice(0, 10)].map(x => x.r);
+  const uniq = [...new Set(pick)].filter(r => !newsOf(mkt, r.sym));
+  await pool(uniq, 4, async r => { try { putNews(mkt, r.sym, await News.get(ySym(r.sym, mkt), nameOf(r.sym, mkt), mkt === 'IN')); } catch (e) {} },
+    (d, n) => scanProgress(mkt, null, `Reading news ${d}/${n}…`));
 }
-async function runScan() {
-  const sel = $('#uni'), uni = sel ? sel.value : (S.mkt === 'US' ? 'us' : 'large'), syms = uniSyms(uni), mkt = S.mkt;
-  if (uni === 'all' && !confirm(`Scan all ${syms.length} stocks? This takes several minutes and a lot of data.`)) return;
-  const pg = $('#prog'); if (pg) pg.style.display = '';
-  const m0 = $('#pmsg'); if (m0 && mkt === 'IN' && window.MS && MS.ok()) m0.textContent = 'Getting live prices from mStock…';
-  const Q = await msQuotes(syms, mkt);
-  const rows = await pool(syms, 6, async sym => {
-    const q = await dailyQuick(sym, mkt, Q);
-    return q.err ? null : Object.assign({ sym }, q);
-  }, (d, n) => { const p = $('#prog div'); if (p) p.style.width = (100 * d / n) + '%'; const m = $('#pmsg'); if (m) m.textContent = `Scanning ${d}/${n}…`; });
-  const good = rows.filter(Boolean);
-  S.scan[mkt] = { at: Date.now(), uni, rows: good, src: Q ? 'mStock live prices' : 'Yahoo Finance' };
-  if (S.tab === 'scan' && S.mkt === mkt) drawScan();
-  await enrichNews(mkt, good);
-  S.scan[mkt].at = Date.now(); store.set('scan', S.scan);
-  if (S.tab === 'scan' && S.mkt === mkt) { vScan(); if (!good.length) $('#pmsg').textContent = 'Could not load data. Live data works in the installed Android app (browsers block it).'; }
+function scanProgress(mkt, pct, msg) {
+  if (pct != null) S.scanPct = pct; S.scanMsg = msg;
+  if (S.mkt !== mkt || S.tab !== 'scan') return;
+  const p = $('#prog div'); if (p && pct != null) p.style.width = pct + '%'; const m = $('#pmsg'); if (m) m.textContent = msg;
+}
+async function runScan(syms) {
+  if (S.scanning) return;
+  const mkt = S.mkt; syms = syms || uniSyms();
+  if (syms.length > 800 && !confirm(`Scan ${syms.length} stocks? It takes a few minutes. You can leave the app; it keeps scanning until you swipe it out of Recents.`)) return;
+  S.scanning = true; S.scanPct = 0; if (S.tab === 'scan') vScan();
+  Alerts.keepAlive(true, `Scanning ${syms.length} stocks…`);
+  try {
+    await regime(mkt);
+    scanProgress(mkt, 0, mkt === 'IN' && window.MS && MS.ok() ? 'Getting live prices from mStock…' : 'Starting…');
+    const Q = await msQuotes(syms, mkt);
+    let lastPing = 0;
+    const rows = await pool(syms, 6, async sym => { const q = await dailyQuick(sym, mkt, Q); return q.err ? null : Object.assign({ sym }, q); },
+      (d, n) => { scanProgress(mkt, 100 * d / n, `Scanning ${d}/${n}…`); if (d - lastPing >= 150) { lastPing = d; Alerts.keepAlive(true, `Scanning ${d}/${n} stocks…`); } });
+    const good = rows.filter(Boolean), prev = S.scan[mkt];
+    const merged = new Map((prev ? prev.rows : []).map(r => [r.sym, r])); good.forEach(r => merged.set(r.sym, r));
+    S.scan[mkt] = { at: Date.now(), rows: [...merged.values()], src: Q ? 'mStock live prices' : 'Yahoo Finance' };
+    if (S.tab === 'scan' && S.mkt === mkt) drawScan();
+    await enrichNews(mkt, good);
+    S.scan[mkt].at = Date.now(); store.set('scan', S.scan);
+    // alerts on fresh results
+    const watched = new Set(S.saved[mkt]);
+    for (const r of good) { const R = rateRow(r, mkt); if (R) Alerts.evaluate({ sym: r.sym, mkt, price: r.price, rating: R.rating, action: R.action, setups: r.setups, cross: r.cross, news: newsOf(mkt, r.sym) }, watched.has(r.sym)); }
+    Alerts.save(); Alerts.flush();
+    const top = rated(good, 'top', mkt)[0];
+    if (document.hidden && good.length) Alerts.notifyNow && Alerts.notifyNow('Scan complete', `${good.length} stocks rated${top ? ` · top: ${top.r.sym} ${top.rating}` : ''}`);
+    if (!good.length) scanProgress(mkt, 100, 'Could not load data. Check your internet connection.');
+  } finally {
+    S.scanning = false; Alerts.keepAlive(!!Alerts.prefs().watch, 'Watching your saved stocks');
+    if (S.tab === 'scan' && S.mkt === mkt) vScan();
+    if (S.tab === 'home' && S.mkt === mkt) render();
+  }
 }
 
 // ---------- F&O ----------
 function vFno() {
-  const sc = S.scan.IN, fo = sc && sc.uni === 'fo' ? sc.rows.filter(Boolean) : null, lots = Object.keys(S.nse.fo || {}).length;
+  const sc = S.scan.IN, foSet = new Set(Object.keys(S.nse.fo || {})), lots = foSet.size;
+  const fo0 = sc ? sc.rows.filter(r => foSet.has(r.sym)) : [], fo = fo0.length ? fo0 : null;
   $('#view').innerHTML = `<h3>Indices</h3><div class="list">${window.IDX_IN.map(x => rowHTML(x[0], x[1] + (foLot(x[0]) ? ' · lot ' + foLot(x[0]) : ''), null, null, null)).join('')}</div>
-  <h3>F&O stock setups <a id="fscan">${lots ? 'Scan F&O stocks' : ''}</a></h3>
+  <h3>F&O stock setups <a id="fscan">${lots ? (fo ? 'Rescan' : 'Scan F&O stocks') : ''}</a></h3>
   ${!lots ? '<div class="warn">F&O list and lot sizes load in the installed app build.</div>' : ''}
-  ${fo ? `<h3>Long ideas · highest rated first</h3><div class="list">${rated(fo, 'swing').slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'LONG', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No long setups.</div>'}</div>
-     <h3>Short ideas · strongest first</h3><div class="list">${rated(fo, 'sell').slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'SHORT', tagsOf(x.r), k + 1, true)).join('') || '<div class="empty">No short setups.</div>'}</div>`
+  ${fo ? `<h3>Long ideas · highest rated first</h3><div class="list">${rated(fo, 'top', 'IN').filter(x => x.rating >= 58).slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'LONG', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No long setups.</div>'}</div>
+     <h3>Short ideas · lowest rating first</h3><div class="list">${rated(fo, 'sell', 'IN').slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'SHORT', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No short setups.</div>'}</div>`
     : '<div class="empty">Scan the F&O list to rank futures longs and shorts.</div>'}
   <p class="note">Signals are on the underlying. Option premiums, OI and IV are not available from free data, so check the option chain in your broker before trading. Options can lose 100% quickly.</p>`;
   bindRows($('#view'));
-  const b = $('#fscan'); if (b) b.onclick = async () => { b.innerHTML = '<span class="spin"></span>'; S.tab = 'scan'; render(); $('#uni').value = 'fo'; await runScan(); };
+  const b = $('#fscan'); if (b) b.onclick = () => { S.uni = { size: 'FO', sector: '' }; store.set('uni', S.uni); go('scan'); runScan(); };
 }
 
 // ---------- saved ----------
@@ -243,11 +321,13 @@ function vSaved() {
   bindRows($('#view'));
   const mkt = S.mkt;
   const got = {};
-  msQuotes(L, mkt).then(Q => pool(L, 4, async sym => {
+  regime(mkt).then(() => msQuotes(L, mkt)).then(Q => pool(L, 4, async sym => {
     const q = await dailyQuick(sym, mkt, Q);
     const row = document.querySelector(`#svl .row[data-sym="${CSS.escape(sym)}"]`);
-    if (row && !q.err) { got[sym] = q.overall; row.outerHTML = rowHTML(sym, nameOf(sym), q.price, q.chg, q.overall, shortAct(q.act), tagsOf(q)); bindRows($('#svl')); }
-  })).then(() => { const box = $('#svl'); if (!box || S.tab !== 'saved') return; [...box.children].sort((a, b) => (got[b.dataset.sym] ?? -1) - (got[a.dataset.sym] ?? -1)).forEach(n => box.appendChild(n)); });
+    const R = rateRow(Object.assign({ sym }, q), mkt);
+    if (R) { Alerts.evaluate({ sym, mkt, price: q.price, rating: R.rating, action: R.action, setups: q.setups, cross: q.cross, news: newsOf(mkt, sym) }, true); upsertRow(mkt, Object.assign({ sym }, q)); }
+    if (row && R) { got[sym] = R.rating; row.outerHTML = rowHTML(sym, nameOf(sym), q.price, q.chg, R.rating, actLabel(R.action), tagsOf(q)); bindRows($('#svl')); }
+  })).then(() => { const box = $('#svl'); if (!box || S.tab !== 'saved') return; [...box.children].sort((a, b) => (got[b.dataset.sym] ?? -1) - (got[a.dataset.sym] ?? -1)).forEach(n => box.appendChild(n)); Alerts.save(); Alerts.flush(); });
 }
 
 // ---------- broker (mStock) ----------
@@ -269,8 +349,8 @@ function vBroker() {
    <div id="bmsg" class="note" style="margin-top:8px"></div></div>
   ${ok ? '<div class="card"><button class="btn g w" id="testQ">Test: fetch RELIANCE live price</button><div id="tmsg" class="note" style="margin-top:8px"></div></div>' : ''}
   <div class="card"><button class="btn g w" id="lout">Log out</button><button class="btn g w" id="forget" style="margin-top:8px;color:var(--dn)">Remove key & data from this phone</button></div>
-  <div class="warn">🔒 Your key, client ID and the day's session token are stored only inside this app on this phone. They are never uploaded, never put in the APK, and the password is never stored. Don't share screenshots of this screen. mStock recommends a server for API keys; this on-device setup is for your personal phone only.</div>`;
-  $('#back').onclick = () => { S.tab = S.prevTab || 'home'; render(); };
+  <div class="warn">🔒 Your key and the day's session token stay inside this app on this phone. ${Sec.hasPin() ? 'They are encrypted with your app PIN (AES-256).' : '<b>Set an app PIN in Settings to encrypt them.</b>'} The password is never stored and nothing is uploaded.</div>`;
+  $('#back').onclick = back;
   const msg = (t, bad) => { $('#bmsg').innerHTML = `<span class="${bad ? 'dn' : 'up'}">${esc(t)}</span>`; };
   const saveCfg = () => { const n = { apiKey: $('#apik').value.trim(), user: $('#usr').value.trim(), checksum: ($('#cks').value || 'L').trim(), totp: $('#totp').checked }; MS.saveCfg(n); return n; };
   $('#saveK').onclick = () => { const n = saveCfg(); msg(n.apiKey ? 'Key saved on this phone.' : 'Enter your API key first.', !n.apiKey); };
@@ -297,34 +377,126 @@ function vBroker() {
   setLive();
 }
 
+// ---------- settings ----------
+function vSettings() {
+  const P = Alerts.prefs(), pin = Sec.hasPin(), secure = store.get('secure', false), al = store.get('autolock', 60);
+  $('#view').innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">Settings</div><div class="f">Data · security · alerts</div></div></div>
+  <h3>Live data</h3><div class="list"><div class="row" id="goBroker"><div class="nm"><div class="s">🔌 mStock (Mirae Asset)</div><div class="f">${esc(MS.status())}</div></div><div class="px">›</div></div></div>
+  <h3>Security</h3><div class="card">
+   <div class="srow"><div><b>App PIN</b><div class="note">${pin ? 'On · locks the app and encrypts your mStock key' : 'Off · anyone with your phone can open the app'}</div></div><button class="btn sm ${pin ? 'g' : ''}" id="pinBtn">${pin ? 'Change' : 'Set PIN'}</button></div>
+   ${pin ? `<div class="srow"><div><b>Auto-lock</b><div class="note">Lock after the app is in the background for</div></div><select id="autolock">${[[0, 'Immediately'], [60, '1 min'], [300, '5 min'], [1800, '30 min']].map(x => `<option value="${x[0]}" ${al == x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></div>
+   <div class="srow"><div><b>Remove PIN</b></div><button class="btn sm g" id="pinOff">Remove</button></div>` : ''}
+   <div class="srow"><div><b>Hide in Recents & block screenshots</b><div class="note">Stops other apps and screen recorders from seeing your data</div></div><input type="checkbox" class="tg" id="secure" ${secure ? 'checked' : ''}></div>
+   <div class="srow"><div><b>Erase everything on this phone</b><div class="note">Key, session, watchlist, scans, alerts</div></div><button class="btn sm g" id="wipe" style="color:var(--dn)">Erase</button></div></div>
+  <h3>Alerts</h3><div class="card">
+   <div class="srow"><div><b>Phone notifications</b><div class="note">New strong buys, SMC/VCP setups, EMA crosses, big news, price alerts</div></div><input type="checkbox" class="tg" id="notify" ${P.notify ? 'checked' : ''}></div>
+   <div class="srow"><div><b>Background watch</b><div class="note">Re-checks your saved stocks every 5 min in market hours while the app is in Recents. Swiping the app away stops it.</div></div><input type="checkbox" class="tg" id="watch" ${P.watch ? 'checked' : ''}></div>
+   <div class="srow"><div><b>Alert on non-saved stocks at rating</b></div><select id="strong">${[70, 75, 80, 85].map(x => `<option ${P.strong == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
+  <h3>Scanner</h3><div class="card">
+   <div class="srow"><div><b>Skip illiquid stocks</b><div class="note">Average daily value traded below</div></div><select id="liq">${(S.mkt === 'IN' ? [[0, 'Off'], [1e6, '₹10 lakh'], [1e7, '₹1 Cr'], [5e7, '₹5 Cr'], [1e8, '₹10 Cr']] : [[0, 'Off'], [1e6, '$1M'], [5e6, '$5M'], [2e7, '$20M']]).map(x => `<option value="${x[0]}" ${S.minTurnover[S.mkt] == x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></div></div>
+  <p class="note">DayTrader Desk · analysis only, never places orders. Not investment advice.</p>`;
+  $('#back').onclick = back; $('#goBroker').onclick = () => go('broker');
+  $('#pinBtn').onclick = async () => { const p1 = await pinPad(pin ? 'New PIN (4–8 digits)' : 'Choose a PIN (4–8 digits)'); if (!p1) return; const p2 = await pinPad('Enter it again'); if (p1 !== p2) return toast('PINs did not match.');
+    if (pin) { const old = await pinPad('Current PIN'); if (!old) return; try { await Sec.unlock(old); } catch (e) { return toast(e.message); } }
+    try { await Sec.setPin(p1); store.set('pinLen', p1.length); toast('PIN set. Your mStock key is now encrypted.'); } catch (e) { toast(e.message); } vSettings(); };
+  const po = $('#pinOff'); if (po) po.onclick = async () => { const p = await pinPad('Current PIN'); if (!p) return; try { await Sec.removePin(p); toast('PIN removed.'); } catch (e) { toast(e.message); } vSettings(); };
+  const alx = $('#autolock'); if (alx) alx.onchange = () => store.set('autolock', +alx.value);
+  $('#secure').onchange = e => { store.set('secure', e.target.checked); Alerts.setSecure(e.target.checked); };
+  $('#wipe').onclick = () => { if (confirm('Erase all app data on this phone? This cannot be undone.')) { MS.logout(); Sec.wipeAll(); location.reload(); } };
+  $('#notify').onchange = async e => { Alerts.setPrefs({ notify: e.target.checked }); if (e.target.checked && !(await Alerts.requestPermission())) toast('Allow notifications for DayTrader Desk in Android settings.'); };
+  $('#watch').onchange = async e => { Alerts.setPrefs({ watch: e.target.checked }); if (e.target.checked) { await Alerts.requestPermission(); startWatch(); toast('Background watch on.'); } else stopWatch(); };
+  $('#strong').onchange = e => Alerts.setPrefs({ strong: +e.target.value });
+  $('#liq').onchange = e => { S.minTurnover[S.mkt] = +e.target.value; store.set('minTurnover', S.minTurnover); };
+}
+// ---------- alerts ----------
+function vAlerts() {
+  const L = Alerts.list();
+  $('#view').innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">Alerts</div><div class="f">${Alerts.prefs().watch ? '● Background watch on' : 'Background watch off · turn on in Settings'}</div></div>${L.length ? '<button class="btn sm g" id="aclr">Clear</button>' : ''}</div>
+  ${L.length ? `<div class="list">${L.map(a => `<div class="row" data-asym="${esc(a.sym)}" data-amkt="${a.mkt}"><div class="aic ${a.read ? '' : 'new'}">${/down|news/.test(a.kind) && /negative|downgraded|below/.test(a.title) ? '🔻' : a.kind.startsWith('p') ? '⏰' : a.kind.startsWith('x') ? '✂️' : a.kind.startsWith('set') ? '🧭' : a.kind === 'news' ? '📰' : '⭐'}</div><div class="nm"><div class="s" style="font-size:14px">${esc(a.title)}</div><div class="f" style="white-space:normal">${esc(a.body)}</div></div><div class="px note">${ago(a.t)}</div></div>`).join('')}</div>`
+    : '<div class="empty">No alerts yet.<br>They appear after scans, on saved stocks and when price alerts hit.</div>'}`;
+  $('#back').onclick = back; const c = $('#aclr'); if (c) c.onclick = () => { Alerts.clear(); vAlerts(); };
+  document.querySelectorAll('[data-asym]').forEach(r => r.onclick = () => { S.mkt = r.dataset.amkt; store.set('mkt', S.mkt); openDetail(r.dataset.asym); });
+  Alerts.markRead();
+}
+function updBell() { const b = $('#bell'); if (!b) return; const n = Alerts.unread(); b.dataset.n = n > 9 ? '9+' : n || ''; }
+function toast(msg) { let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); } t.textContent = msg; t.className = 'show'; clearTimeout(t._h); t._h = setTimeout(() => t.className = '', 3200); }
+function pinPad(title, lockMode) {
+  return new Promise(res => {
+    const o = document.createElement('div'); o.className = 'lock'; let v = '';
+    o.innerHTML = `<div class="lk"><div class="lkt">🔒</div><div class="lkh">${esc(title)}</div><div class="dots" id="dots"></div><div class="lkm" id="lkm"></div>
+      <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, lockMode ? '' : '✕', 0, '⌫'].map(k => `<button data-k="${k}" ${k === '' ? 'style="visibility:hidden"' : ''}>${k}</button>`).join('')}</div>${lockMode ? '' : '<button class="btn w" id="pinOk">OK</button>'}</div>`;
+    document.body.appendChild(o);
+    const draw = () => { o.querySelector('#dots').innerHTML = Array.from({ length: lockMode ? (store.get('pinLen', 0) || 4) : Math.max(4, v.length) }, (_, i) => `<i class="${i < v.length ? 'f' : ''}"></i>`).join(''); };
+    const done = val => { o.remove(); res(val); };
+    o.querySelectorAll('[data-k]').forEach(b => b.onclick = async () => {
+      const k = b.dataset.k; if (k === '✕') return done(null); if (k === '⌫') v = v.slice(0, -1); else if (v.length < 8) v += k; draw();
+      if (lockMode && v.length === (store.get('pinLen', 0) || 4)) { try { await Sec.unlock(v); done(v); } catch (e) { o.querySelector('#lkm').textContent = e.message; v = ''; draw(); } }
+    });
+    const ok = o.querySelector('#pinOk'); if (ok) ok.onclick = () => /^\d{4,8}$/.test(v) ? done(v) : (o.querySelector('#lkm').textContent = 'Use 4–8 digits');
+    o._close = () => done(null); draw();
+  });
+}
+async function lockScreen() { if (!Sec.hasPin() || document.querySelector('.lock')) return; Sec.lock(); await pinPad('Enter your PIN', true); render(); }
+// ---------- background watch ----------
+let watchTimer = null;
+function startWatch() { stopWatch(true); Alerts.keepAlive(true, 'Watching your saved stocks'); watchTimer = setInterval(watchTick, 5 * 60e3); }
+function stopWatch(keep) { clearInterval(watchTimer); watchTimer = null; if (!keep && !S.scanning) Alerts.keepAlive(false); }
+async function watchTick() {
+  if (S.scanning) return;
+  for (const mkt of ['IN', 'US']) {
+    if (!marketOpen(mkt) || !S.saved[mkt].length) continue;
+    await regime(mkt); const Q = await msQuotes(S.saved[mkt], mkt);
+    await pool(S.saved[mkt], 3, async sym => { const q = await dailyQuick(sym, mkt, Q); if (q.err) return; const row = Object.assign({ sym }, q); upsertRow(mkt, row); const R = rateRow(row, mkt);
+      Alerts.evaluate({ sym, mkt, price: q.price, rating: R.rating, action: R.action, setups: q.setups, cross: q.cross, news: newsOf(mkt, sym) }, true); });
+  }
+  Alerts.save(); Alerts.flush(); updBell();
+}
+
 // ---------- detail ----------
-function openDetail(sym) { S.detail = { sym, mkt: S.mkt }; S.prevTab = S.tab === 'detail' ? S.prevTab : S.tab; S.tab = 'detail'; S.chartMode = 'daily'; render(); }
+function openDetail(sym, hz) { S.detail = { sym, mkt: S.mkt }; S.hz = hz || 'overall'; go('detail'); }
+function rowFromA(A) { // same shape as a scan row, so the list shows the same rating
+  const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt } : h, H = A.horizons;
+  return { price: A.price, chg: A.chg, overall: A.overall, act: A.overallAction, swing: slim(H.swing), short: slim(H.short), intraday: slim(H.intraday), medium: slim(H.medium), long: slim(H.long),
+    horizons: { swing: slim(H.swing), short: slim(H.short), medium: slim(H.medium), long: slim(H.long) }, turnover: A.stats.turnover, patterns: A.patterns.map(p => ({ n: p.n, b: p.b })), setups: A.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: A.cross, volx: A.stats.volx, rsi: A.stats.rsi };
+}
 async function loadDetail() {
   const { sym, mkt } = S.detail, ys = ySym(sym, mkt), useMS = mkt === 'IN' && window.MS && MS.ok();
   let d = null, it = null, src = 'Yahoo Finance', msErr = null, prev = null;
-  if (useMS) {
-    try {
-      const [D, I] = await Promise.all([MS.candles(sym, 'day', 730), MS.candles(sym, '5minute', 6).catch(() => null)]);
-      if (D.c.length >= 60) { d = { D, meta: {} }; it = I && { D: I }; src = 'mStock'; }
-    } catch (e) { msErr = e.message; }
+  // same daily history as the scanner (Yahoo 2y) so the rating matches the list; mStock adds the live price
+  try { d = await chart(ys, '2y', '1d'); } catch (e) {
+    if (!useMS) throw e;
+    try { const D = await MS.candles(sym, 'day', 730); d = { D, meta: {} }; src = 'mStock'; } catch (e2) { throw e; }
   }
-  if (!d) [d, it] = await Promise.all([chart(ys, '2y', '1d'), chart(ys, '5d', '5m').catch(() => null)]);
+  it = useMS ? await MS.candles(sym, '5minute', 6).then(D => ({ D })).catch(() => null) : null;
+  if (!it) it = await chart(ys, '5d', '5m').catch(() => null);
   let price = d.meta.regularMarketPrice || d.D.c[d.D.c.length - 1];
   if (useMS) {
     try { const q = (await MS.quotes([sym]))[sym]; const o = MS.overlay(d.D, q); if (o) { price = o.price; prev = o.prev; src = src === 'mStock' ? 'mStock live' : 'Yahoo history + mStock live price'; } }
-    catch (e) { msErr = msErr || e.message; }
+    catch (e) { msErr = e.message; }
   }
   const fno = mkt === 'IN' && isFno(sym);
   let news = S.detail.news;
-  if (!news || Date.now() - news.at > 5 * 60e3) { try { news = Object.assign(await News.get(ys, nameOf(sym, mkt), mkt === 'IN'), { at: Date.now() }); } catch (e) { news = { items: [], score: 0, n: 0, err: e.message, at: Date.now() }; } }
-  const A = Engine.analyze(d.D, { intra: it && it.D, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym), news: news.n ? news.score * Math.min(1, news.n / 3) : 0 });
+  if (!news || Date.now() - news.at > 5 * 60e3) { try { news = Object.assign(await News.get(ys, nameOf(sym, mkt), mkt === 'IN'), { at: Date.now() }); putNews(mkt, sym, news); } catch (e) { news = { items: [], score: 0, n: 0, err: e.message, at: Date.now() }; } }
+  await regime(mkt);
+  const A = Engine.analyze(d.D, { intra: it && marketOpen(mkt) ? it.D : null, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
   if (prev && !A.err) A.chg = (A.price / prev - 1) * 100;
-  Object.assign(S.detail, { A, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now(), src, msErr, news });
+  let R = null;
+  if (!A.err) { const row = Object.assign({ sym }, rowFromA(A)); R = rateRow(row, mkt); upsertRow(mkt, row); store.set('scan', S.scan);
+    Alerts.evaluate({ sym, mkt, price: A.price, rating: R.rating, action: R.action, setups: A.setups, cross: A.cross, news: newsOf(mkt, sym) }, S.saved[mkt].includes(sym)); Alerts.save(); Alerts.flush(); }
+  Object.assign(S.detail, { A, R, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now(), src, msErr, news });
 }
 async function vDetail() {
   const v = $('#view'), { sym } = S.detail;
-  v.innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">${esc(sym)}</div><div class="f">${esc(nameOf(sym))}</div></div><button class="star" id="star">${S.saved[S.mkt].includes(sym) ? '★' : '☆'}</button></div><div id="dbody"><div class="empty"><span class="spin"></span> Analysing ${esc(sym)}…</div></div>`;
-  $('#back').onclick = () => { S.tab = S.prevTab || 'home'; render(); };
+  v.innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">${esc(sym)}</div><div class="f">${esc(nameOf(sym))}</div></div><button class="star" id="palert" title="Price alert">⏰</button><button class="star" id="star">${S.saved[S.mkt].includes(sym) ? '★' : '☆'}</button></div><div id="dbody"><div class="empty"><span class="spin"></span> Analysing ${esc(sym)}…</div></div>`;
+  $('#back').onclick = back;
+  $('#palert').onclick = () => {
+    const pa = Alerts.priceAlert(S.mkt, sym), px = S.detail.A ? S.detail.A.price : '';
+    const a = prompt(`Alert when ${sym} goes ABOVE (now ${px}). Leave empty for none:`, pa.above || ''); if (a === null) return;
+    const b = prompt(`Alert when ${sym} goes BELOW. Leave empty for none:`, pa.below || ''); if (b === null) return;
+    Alerts.setPriceAlert(S.mkt, sym, { above: +a || null, below: +b || null }); Alerts.requestPermission();
+    if (!S.saved[S.mkt].includes(sym)) { S.saved[S.mkt].push(sym); store.set('saved', S.saved); $('#star').textContent = '★'; }
+    toast(+a || +b ? `Price alert set for ${sym}. Checked whenever the app refreshes it (keep Background watch on).` : 'Price alert removed.');
+  };
   $('#star').onclick = () => { const L = S.saved[S.mkt], i = L.indexOf(sym); i < 0 ? L.push(sym) : L.splice(i, 1); store.set('saved', S.saved); $('#star').textContent = i < 0 ? '★' : '☆'; };
   try { await loadDetail(); } catch (e) {
     $('#dbody').innerHTML = `<div class="warn">Could not load live data for ${esc(sym)} (${esc(e.message)}).<br>Live data works in the installed Android app; browsers block Yahoo Finance. Check the symbol if you're in the app.</div>`; return;
@@ -338,28 +510,35 @@ function ring(sc) {
   return `<div class="ring"><svg width="92" height="92"><circle cx="46" cy="46" r="40" stroke="#1e2935" stroke-width="9" fill="none"/><circle cx="46" cy="46" r="40" stroke="${col}" stroke-width="9" fill="none" stroke-linecap="round" stroke-dasharray="${c * sc / 100} ${c}"/></svg><div class="v">${sc}<small>/ 100</small></div></div>`;
 }
 function drawDetail(isRefresh) {
-  const { A, sym, meta, at } = S.detail, H = A.horizons, c = cur();
+  const { A, R, sym, meta, at } = S.detail, H = A.horizons, c = cur();
   if (A.err) { $('#dbody').innerHTML = `<div class="warn">${esc(A.err)}</div>`; return; }
-  const k = S.hz, h = H[k];
-  const hzChips = Object.keys(H).map(x => `<button data-h="${x}" class="${x === k ? 'on' : ''}"><span class="d" style="background:${H[x].na ? '#555' : H[x].dir > 0 ? 'var(--up)' : H[x].dir < 0 ? 'var(--dn)' : 'var(--wa)'}"></span>${H[x].label}</button>`).join('');
-  const L = h.levels, lvl = (l, x) => `<div><div class="l">${l}</div><div class="v">${fmt(x)}</div><div class="p">${L && l !== 'Entry' ? pct((x / L.entry - 1) * 100) : '&nbsp;'}</div></div>`;
-  const pillCls = h.dir > 0 ? 'b1' : h.dir < 0 ? 'b-1' : 'b0';
+  const row = Object.assign({ sym }, rowFromA(A)), RH = {};
+  for (const x of HZ) RH[x] = hzRate(row, x, S.detail.mkt);
+  const sel = S.hz === 'overall' || !RH[S.hz] ? 'overall' : S.hz;
+  const top = sel === 'overall' ? Object.assign({ label: 'Overall rating' }, R) : Object.assign({ label: H[sel].label + ' rating' }, RH[sel]);
+  const k = sel === 'overall' ? (HZ.filter(x => RH[x]).sort((a, b) => Math.abs(RH[b].rating - 50) - Math.abs(RH[a].rating - 50))[0] || 'swing') : sel, h = H[k], Rk = RH[k] || {};
+  // levels only when the edge-adjusted action agrees with the raw signal direction
+  const L = Rk.dir && h.levels && h.dir === Rk.dir ? h.levels : null;
+  const lvl = (l, x) => `<div><div class="l">${l}</div><div class="v">${fmt(x)}</div><div class="p">${L && l !== 'Entry' ? pct((x / L.entry - 1) * 100) : '&nbsp;'}</div></div>`;
+  const pillCls = Rk.dir > 0 ? 'b1' : Rk.dir < 0 ? 'b-1' : 'b0';
   const odds = h.bt && h.bt.odds != null ? `<b class="${h.bt.odds >= 50 ? 'up' : h.bt.odds >= 40 ? 'wa' : 'dn'}">${h.bt.odds}%</b> win odds <span class="mu">(${h.bt.wins}/${h.bt.n} past signals hit T1 before stop)</span>` : h.bt ? '<span class="mu">Too few past signals to estimate win odds</span>' : '';
   const st = A.stats;
   $('#dbody').innerHTML = `
   <div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-end"><div><div class="price">${c}${fmt(A.price)}</div><div>${pct(A.chg)} <span class="mu" style="font-size:12px">today · ${isRefresh ? 'updated ' : ''}${new Date(at).toLocaleTimeString()}</span></div><div style="font-size:11px;margin-top:3px" class="${/mStock/.test(S.detail.src) ? 'up' : 'mu'}">Source: ${esc(S.detail.src)}${S.detail.msErr ? ` <span class="wa">· mStock: ${esc(S.detail.msErr)}</span>` : ''}</div></div>
   <span class="live ${marketOpen(S.detail.mkt) ? 'on' : ''}"><i></i><span>${marketOpen(S.detail.mkt) ? 'Live · 30s' : 'Market closed'}</span></span></div></div>
-  <div class="card hero">${ring(A.overall)}<div><div class="sub">Overall setup score</div><div class="verdict ${cls(A.overall) === 'b1' ? 'up' : cls(A.overall) === 'b-1' ? 'dn' : 'wa'}">${A.overallAction}</div>
-  <div class="sub">${Object.values(H).filter(x => !x.na).map(x => `${x.label.split(' ')[0]} <b class="${x.dir > 0 ? 'up' : x.dir < 0 ? 'dn' : 'wa'}">${x.score}</b>`).join(' · ')}</div></div></div>
-  <h3>What to do</h3><div class="chips">${hzChips}</div>
+  <div class="card hero">${ring(top.rating)}<div style="flex:1;min-width:0"><div class="sub">${esc(top.label)}</div><div class="verdict ${cls(top.rating) === 'b1' ? 'up' : cls(top.rating) === 'b-1' ? 'dn' : 'wa'}">${top.action}</div>
+  <div class="sub">Signal <b>${top.signal}</b> · Proven edge <b class="${top.edge == null ? '' : top.edge >= 50 ? 'up' : 'dn'}">${top.edge == null ? 'n/a' : top.edge}</b>${top.bt ? ` <span class="mu">(${top.bt.wins}/${top.bt.n} wins)</span>` : ''} · Market <b>${top.regAdj >= 0 ? '+' : ''}${top.regAdj}</b> · News <b>${top.newsAdj >= 0 ? '+' : ''}${top.newsAdj}</b></div></div></div>
+  ${A.stats.turnover < (S.minTurnover[S.detail.mkt] || 0) ? `<div class="warn">⚠ Thinly traded: about ${c}${fmt(A.stats.turnover / (S.detail.mkt === 'IN' ? 1e7 : 1e6), 2)} ${S.detail.mkt === 'IN' ? 'Cr' : 'M'} a day. Wide spreads and slippage can wipe out the edge.</div>` : ''}
+  <div class="hzrow">${['overall', ...HZ].map(x => { const v = x === 'overall' ? R : RH[x]; return `<button data-h="${x}" class="hzc ${x === sel ? 'on' : ''}"><span>${x === 'overall' ? 'Overall' : H[x].label.replace(' term', '')}</span><b class="${!v ? 'mu' : v.rating >= 58 ? 'up' : v.rating <= 42 ? 'dn' : 'wa'}">${v ? v.rating : '–'}</b></button>`; }).join('')}</div>
+  <h3>What to do · ${esc(h.label)}${sel === 'overall' ? ' <span class="note">(strongest horizon)</span>' : ''}</h3>
   <div class="card hz">${h.na ? `<div class="empty">Not enough history for ${h.label.toLowerCase()} analysis.</div>` : `
-   <div class="top2"><span class="pill ${pillCls}">${h.action}</span><div style="flex:1"><div style="font-weight:800;font-size:18px">${h.score}<span class="mu" style="font-size:13px">/100 setup score</span></div><div class="sub">⏱ ${h.dur}</div></div></div>
-   <div class="meter"><i style="left:calc(${h.score}% - 2px)"></i></div>
-   <div style="font-size:13px;margin-top:6px">${odds}</div>${h.dir && h.bt && h.bt.odds != null && h.bt.odds < 100 / (1 + (h.levels ? h.levels.rr1 : 1.5)) ? `<div class="warn" style="margin:8px 0 0">⚠ Weak edge: on ${esc(S.detail.sym)} this signal hit Target 1 less often than the ${Math.round(100 / (1 + h.levels.rr1))}% needed to break even. Trade smaller, or wait for a pattern trigger.</div>` : ''}
+   <div class="top2"><span class="pill ${pillCls}">${Rk.action}</span><div style="flex:1"><div style="font-weight:800;font-size:18px">${Rk.rating}<span class="mu" style="font-size:13px">/100 ${esc(h.label.toLowerCase())} rating</span></div><div class="sub">⏱ ${h.dur}</div></div></div>
+   <div class="meter"><i style="left:calc(${Rk.rating}% - 2px)"></i></div>
+   <div style="font-size:13px;margin-top:6px">${odds}</div>${Rk.dir && h.bt && h.bt.odds != null && h.bt.odds < 100 / (1 + (h.levels ? h.levels.rr1 : 1.5)) ? `<div class="warn" style="margin:8px 0 0">⚠ Weak edge: on ${esc(S.detail.sym)} this signal hit Target 1 less often than the ${Math.round(100 / (1 + h.levels.rr1))}% needed to break even. Trade smaller, or wait for a pattern trigger.</div>` : ''}
    ${L ? `<div class="lv">${lvl('Entry', L.entry)}${lvl('Stop loss', L.stop)}${lvl('Target 1', L.t1)}${lvl('Target 2', L.t2)}</div>
-   <div class="sub">Risk ${L.riskPct.toFixed(1)}% · Reward:risk 1:${L.rr1} / 1:${L.rr2}${L.vwap ? ` · VWAP ${fmt(L.vwap)}` : ''}${h.noShort ? ' · Exit longs or avoid. Shorting needs F&O.' : ''}${k === 'intraday' && S.detail.mkt === 'IN' ? ' · Square off by 3:15 PM' : ''}</div>
-   ${A.fno && h.dir && (k === 'intraday' || k === 'swing') ? `<div class="sub" style="margin-top:6px">Futures: ${h.dir > 0 ? 'BUY' : 'SELL'} 1 lot${A.fno.lot ? ` (${A.fno.lot} qty) · risk ≈ ${c}${fmt(Math.abs(L.entry - L.stop) * A.fno.lot, 0)}` : ''}</div>` : ''}`
-     : '<div class="sub">No clear edge. Wait for the score to move above 58 (buy) or below 42 (sell).</div>'}
+   <div class="sub">Risk ${L.riskPct.toFixed(1)}% · Reward:risk 1:${L.rr1} / 1:${L.rr2}${L.vwap ? ` · VWAP ${fmt(L.vwap)}` : ''}${Rk.noShort ? ' · Exit longs or avoid. Shorting needs F&O.' : ''}${k === 'intraday' && S.detail.mkt === 'IN' ? ' · Square off by 3:15 PM' : ''}</div>
+   ${A.fno && Rk.dir && (k === 'intraday' || k === 'swing') ? `<div class="sub" style="margin-top:6px">Futures: ${Rk.dir > 0 ? 'BUY' : 'SELL'} 1 lot${A.fno.lot ? ` (${A.fno.lot} qty) · risk ≈ ${c}${fmt(Math.abs(L.entry - L.stop) * A.fno.lot, 0)}` : ''}</div>` : ''}`
+     : `<div class="sub">${Rk.dir ? 'Signal and backtest disagree on direction, so there are no levels. Stand aside.' : `No trade: ${Rk.rating} is in the wait zone (43–57). Wait for 58+ to buy or 42- to sell.`} Raw signal ${h.score}.</div>`}
    <ul class="why">${h.why.map(w => `<li>${w.w > 0 ? '<span class="up">✓</span>' : '<span class="dn">✗</span>'} ${esc(w.t)}</li>`).join('')}</ul>`}</div>
   <div class="card pvcard"><div class="pvhead"><b>Chart</b><span class="note">Daily · EMA 20/50/200 · levels</span><button class="btn sm" id="openChart">⛶ Live chart</button></div><div id="pv" class="pv"></div><div class="note" style="margin-top:6px">Tap the chart for full screen: 1m → monthly, EMAs, VWAP, RSI, MACD, free scrolling.</div></div>
   <h3>Setups <span class="note">SMC · VCP · trend</span></h3><div class="card">${A.setups.length ? A.setups.map(s => `<div class="setup"><div class="sh"><span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.k)}</span><b>${esc(s.n.replace(/^SMC: /, ''))}</b><span class="q ${s.q >= 70 ? 'up' : s.q >= 55 ? 'wa' : 'mu'}">${s.q}</span></div>
@@ -376,11 +555,11 @@ function drawDetail(isRefresh) {
    <div><div class="l">Daily range (ATR)</div><div class="v">${fmt(st.atr)} · ${st.atrPct.toFixed(1)}%</div></div><div><div class="l">Volume vs 20-day</div><div class="v">${isFinite(st.volx) ? st.volx.toFixed(1) + '×' : '–'}</div></div>
    <div><div class="l">52-week low</div><div class="v">${fmt(st.lo52)}</div></div><div><div class="l">52-week high</div><div class="v">${fmt(st.hi52)}</div></div>
    <div><div class="l">EMA 20 / 50</div><div class="v">${fmt(st.e20, 0)} / ${fmt(st.e50, 0)}</div></div><div><div class="l">EMA 200</div><div class="v">${fmt(st.e200, 0)}</div></div></div>
-  <p class="note" style="margin-top:14px">Scores are technical only (price, volume, trend, momentum, patterns), not fundamentals or news. "Win odds" come from this stock's own last ~3 years of signals. They describe the past, not a promise. Data: Yahoo Finance (may be delayed). Not investment advice.</p>`;
+  <p class="note" style="margin-top:14px">Rating = technical signal (trend, momentum, volume, SMC/VCP setups) blended with how that signal actually performed on this stock over ~3 years, plus market trend and news. Same number as in every list. It describes the past, not a promise. Not investment advice.</p>`;
   document.querySelectorAll('[data-h]').forEach(b => b.onclick = () => { S.hz = b.dataset.h; drawDetail(); });
-  const oc = () => ChartView.open({ sym: S.detail.sym, mkt: S.detail.mkt, levels: (A.horizons[S.hz] || {}).levels });
+  const oc = () => ChartView.open({ sym: S.detail.sym, mkt: S.detail.mkt, levels: L });
   $('#openChart').onclick = oc; $('#pv').onclick = oc;
-  drawPreview();
+  S.detail.levels = L; drawPreview();
 }
 function newsHead(N) {
   if (!N || !N.n) return N && N.err ? 'unavailable' : 'no rated headlines';
@@ -389,7 +568,7 @@ function newsHead(N) {
 function ago(t) { const m = (Date.now() - t) / 6e4; return m < 60 ? Math.max(1, m | 0) + 'm' : m < 1440 ? (m / 60 | 0) + 'h' : (m / 1440 | 0) + 'd'; }
 function newsHTML(N) {
   if (!N || !N.items.length) return `<div class="note">${N && N.err ? 'News could not be loaded (works in the installed app).' : 'No recent news found.'}</div>`;
-  return N.items.slice(0, 10).map(it => `<a class="news" href="${esc(it.url)}" target="_blank" rel="noopener"><i class="${it.s > 0 ? 'p' : it.s < 0 ? 'n' : ''}"></i><div><div class="nt">${esc(it.title)}</div><div class="x">${esc(it.src || '')} · ${it.t ? ago(it.t) + ' ago' : ''}</div></div></a>`).join('')
+  return N.items.slice(0, 10).map(it => `<a class="news" href="${/^https?:\/\//i.test(it.url || '') ? esc(it.url) : '#'}" target="_blank" rel="noopener noreferrer"><i class="${it.s > 0 ? 'p' : it.s < 0 ? 'n' : ''}"></i><div><div class="nt">${esc(it.title)}</div><div class="x">${esc(it.src || '')} · ${it.t ? ago(it.t) + ' ago' : ''}</div></div></a>`).join('')
     + '<div class="note" style="margin-top:6px">Green = positive keywords, red = negative. Sentiment nudges ratings by up to ±8 points.</div>';
 }
 function drawPreview() {
@@ -403,14 +582,29 @@ function drawPreview() {
   const cs = ch.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444', wickUpColor: '#22c55e', wickDownColor: '#ef4444', borderVisible: false });
   cs.setData(B);
   [['e20', '#4c9aff'], ['e50', '#f5b301'], ['e200', '#c084fc']].forEach(([k, color]) => { const ls = ch.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); ls.setData(B.map((b, j) => ({ time: b.time, value: A.I[k][s0 + j] })).filter(p => isFinite(p.value))); });
-  const L = (A.horizons[S.hz] || {}).levels; if (L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2']].forEach(([price, color, title]) => cs.createPriceLine({ price, color, lineStyle: 2, lineWidth: 1, title }));
+  const L = S.detail.levels; if (L) [[L.stop, '#ef4444', 'SL'], [L.t1, '#22c55e', 'T1'], [L.t2, '#22c55e', 'T2']].forEach(([price, color, title]) => cs.createPriceLine({ price, color, lineStyle: 2, lineWidth: 1, title }));
   ch.timeScale().fitContent();
 }
 window.App = { ySym, chart, fmt, marketOpen };
 
 // ---------- boot ----------
-document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.mkt = b.dataset.m; store.set('mkt', S.mkt); if (S.tab === 'detail' || (S.tab === 'fno' && S.mkt === 'US')) S.tab = 'home'; render(); });
-document.querySelectorAll('.nav button').forEach(b => b.onclick = () => { if (b.dataset.t === 'desk') { location.href = 'desk.html'; return; } S.tab = b.dataset.t; render(); });
-$('#gear').onclick = () => { if (S.tab !== 'broker') S.prevTab = S.tab; S.tab = 'broker'; render(); };
-
-loadNSE().then(render);
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.mkt = b.dataset.m; store.set('mkt', S.mkt); if (['detail', 'broker'].includes(S.tab) || (S.tab === 'fno' && S.mkt === 'US')) { S.stack = []; S.tab = 'home'; } render(); });
+document.querySelectorAll('.nav button').forEach(b => b.onclick = () => { if (b.dataset.t === 'desk') { location.href = 'desk.html'; return; } S.stack = []; S.tab = b.dataset.t; render(); });
+$('#gear').onclick = () => go('settings');
+$('#bell').onclick = () => go('alerts');
+Alerts.onChange(updBell);
+const CapApp = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.App;
+if (CapApp) {
+  CapApp.addListener('backButton', () => { const lk = document.querySelector('.lock'); if (lk) { if (lk._close && !Sec.hasPin()) lk._close(); else CapApp.minimizeApp(); return; } if (!back()) CapApp.minimizeApp(); });
+  CapApp.addListener('appStateChange', ({ isActive }) => {
+    if (!isActive) { S.bgAt = Date.now(); return; }
+    if (Sec.hasPin() && S.bgAt && Date.now() - S.bgAt >= store.get('autolock', 60) * 1000) lockScreen();
+    updBell(); if (S.tab === 'scan') vScan();
+  });
+}
+loadNSE().then(async () => {
+  if (store.get('secure', false)) Alerts.setSecure(true);
+  if (Sec.hasPin()) await pinPad('Enter your PIN', true);
+  render();
+  if (Alerts.prefs().watch) startWatch();
+});
