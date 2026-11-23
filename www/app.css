@@ -117,3 +117,7 @@ h3 .note{text-transform:none;letter-spacing:0;font-weight:500}
 .optOpen{display:block;margin-top:8px;color:var(--ac);cursor:pointer}
 .ipo{cursor:pointer}.ipo .s{font-weight:800;font-size:15px}.ipo .rk{display:inline;color:var(--mu);font-size:12px}
 .ipog{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}.ipog>div{background:var(--pn2);border-radius:9px;padding:6px 7px;min-width:0}.ipog span{display:block;font-size:10px;color:var(--mu);font-weight:700;text-transform:uppercase}.ipog b{font-size:12.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* v6 */
+.buyline{margin-top:10px;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.buyline b{font-size:19px;letter-spacing:.01em}.buyline span{font-size:12px;opacity:.85}
+.stk{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;font-variant-numeric:tabular-nums}.stk th{font-size:10px;text-transform:uppercase;color:var(--mu);text-align:left;padding:4px 4px;font-weight:700}
+.stk td{padding:8px 4px;border-top:1px solid var(--ln)}.stk tr.pick td{background:rgba(76,154,255,.1)}.stk tr.pick td:first-child{border-left:3px solid var(--ac)}

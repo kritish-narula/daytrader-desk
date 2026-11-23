@@ -173,6 +173,27 @@
       add({ n: 'Pullback to 20 EMA in uptrend', k: 'TREND', b: 1, q: 64 + (c[i] > o[i] ? 8 : 0) + (I.adx[i] > 25 ? 8 : 0), note: 'Trend intact; price dipped to the 20 EMA and held. Low-risk continuation entry.', entry: R(h[i]), stop: R(Math.min(l[i], l[i - 1]) - 0.2 * at), target: R(h[i] + 2 * (h[i] - Math.min(l[i], l[i - 1]) + 0.2 * at)) });
     if (I.e20[i] < I.e50[i] && I.e50[i] < I.e200[i] && Math.max(h[i], h[i - 1]) >= I.e20[i] * 0.99 && c[i] < I.e20[i] && I.rsi[i] < 60)
       add({ n: 'Rally into 20 EMA in downtrend', k: 'TREND', b: -1, q: 62 + (c[i] < o[i] ? 8 : 0) + (I.adx[i] > 25 ? 8 : 0), note: 'Downtrend intact; bounce failed at the 20 EMA.', entry: R(l[i]), stop: R(Math.max(h[i], h[i - 1]) + 0.2 * at), target: R(l[i] - 2 * (Math.max(h[i], h[i - 1]) + 0.2 * at - l[i])) });
+    // --- breakout family ---
+    const v20 = I.v20[i - 1], volx = v20 ? v[i] / v20 : 0, rngPos = h[i] > l[i] ? (c[i] - l[i]) / (h[i] - l[i]) : 0.5;
+    const lvl50 = maxIn(h, i - 50, i - 1), uptrend = c[i] > I.e50[i] && I.e50[i] > I.e200[i];
+    // clean breakout: close through a 50-day high on volume, strong close, not already stretched
+    if (c[i] > lvl50 && c[i - 1] <= lvl50 * 1.005 && volx >= 1.5 && rngPos >= 0.65 && (c[i] - lvl50) / at < 1.5)
+      add({ n: 'Clean volume breakout', k: 'BRK', b: 1, q: 64 + Math.min(10, (volx - 1.5) * 8) + (c[i] >= hi52 * 0.995 ? 8 : 0) + (uptrend ? 6 : -6), note: `Closed above the 50-day high ${R(lvl50)} on ${volx.toFixed(1)}× volume, near the day's high.`, entry: R(px), stop: R(Math.max(lvl50 - at, l[i] - 0.2 * at)), target: R(px + 2 * (px - Math.max(lvl50 - at, l[i] - 0.2 * at))) });
+    // near breakout: coiling just under a base high with shrinking range and quiet volume
+    const base = maxIn(h, i - 60, i - 3), dist = (base - c[i]) / c[i];
+    if (I.n > 80 && uptrend && dist >= 0 && dist <= 0.03) {
+      let a10 = 0, a50 = 0; for (let j = i - 9; j <= i; j++) a10 += (h[j] - l[j]) / c[j]; for (let j = i - 49; j <= i; j++) a50 += (h[j] - l[j]) / c[j]; a10 /= 10; a50 /= 50;
+      const vq = v.slice(i - 9, i + 1).reduce((x, y) => x + y, 0) / 10 < 0.9 * (I.v20[i] || 1e18), tight = a10 < 0.8 * a50;
+      if (tight || vq) add({ n: 'Near breakout (coiling under resistance)', k: 'PRE', b: 1, q: 58 + (tight ? 9 : 0) + (vq ? 7 : 0) + (base >= hi52 * 0.99 ? 6 : 0) + (dist < 0.015 ? 4 : 0),
+        note: `${(dist * 100).toFixed(1)}% below resistance ${R(base)}${tight ? ', ranges tightening' : ''}${vq ? ', volume drying up' : ''}. Buy only on a close above ${R(base)}.`, entry: R(base * 1.002), stop: R(minIn(l, i - 9, i) - 0.1 * at), target: R(base * 1.002 + 2 * (base * 1.002 - minIn(l, i - 9, i) + 0.1 * at)) });
+    }
+    // pocket pivot: up-day volume beats every down-day volume of the last 10 sessions, in an uptrend
+    let maxDn = 0; for (let j = i - 10; j < i; j++) if (c[j] < c[j - 1]) maxDn = Math.max(maxDn, v[j]);
+    if (uptrend && c[i] > c[i - 1] && maxDn > 0 && v[i] > maxDn && Math.abs(c[i] - I.e20[i]) / I.e20[i] < 0.05)
+      add({ n: 'Pocket pivot', k: 'BRK', b: 1, q: 62 + (rngPos > 0.7 ? 6 : 0) + (volx > 1.5 ? 6 : 0), note: `Up-day volume beat every down-day volume of the last 10 sessions: institutional buying near the 20 EMA.`, entry: R(px), stop: R(Math.min(l[i], I.e20[i]) - 0.3 * at), target: R(px + 2 * (px - Math.min(l[i], I.e20[i]) + 0.3 * at)) });
+    // gap and go / gap down
+    if (o[i] > h[i - 1] * 1.01 && c[i] > o[i] && volx > 1.5) add({ n: 'Gap-up and go', k: 'GAP', b: 1, q: 60 + (rngPos > 0.75 ? 8 : 0) + (uptrend ? 6 : 0), note: `Gapped above yesterday's high and kept rising on ${volx.toFixed(1)}× volume. Gap low ${R(h[i - 1])} should hold.`, entry: R(px), stop: R(h[i - 1] - 0.2 * at), target: R(px + 2 * (px - h[i - 1] + 0.2 * at)) });
+    if (o[i] < l[i - 1] * 0.99 && c[i] < o[i] && volx > 1.5) add({ n: 'Gap-down and go', k: 'GAP', b: -1, q: 60 + (rngPos < 0.25 ? 8 : 0) + (!uptrend ? 6 : 0), note: `Gapped below yesterday's low and kept falling on ${volx.toFixed(1)}× volume.`, entry: R(px), stop: R(l[i - 1] + 0.2 * at), target: R(px - 2 * (l[i - 1] + 0.2 * at - px)) });
     // --- oversold in uptrend ---
     if (I.rsi[i] < 32 && c[i] > I.e200[i] && I.e50[i] > I.e200[i]) add({ n: 'Oversold dip in long-term uptrend', k: 'MR', b: 1, q: 58 + (c[i] > o[i] ? 8 : 0), note: `RSI ${I.rsi[i] | 0} while above the 200 EMA: mean-reversion bounce setup.`, entry: R(h[i]), stop: R(l[i] - 0.5 * at), target: R(I.e20[i]) });
     return out.sort((a, b) => b.q - a.q);
@@ -445,7 +466,7 @@
     const res = {
       price, prev: D.c[i - 1], chg: (price / D.c[i - 1] - 1) * 100, overall, overallAction: action(overall, 'swing', opts.canShort).a,
       horizons: hz, patterns: pats, cross, setups: sets,
-      stats: { turnover: (() => { let s = 0, m = 0; for (let j = Math.max(0, i - 19); j <= i; j++) { s += D.c[j] * (D.v[j] || 0); m++; } return s / m; })(), rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
+      stats: { ret63: I.n > 63 ? (D.c[i] / D.c[i - 63] - 1) * 100 : NaN, ret126: I.n > 126 ? (D.c[i] / D.c[i - 126] - 1) * 100 : NaN, turnover: (() => { let s = 0, m = 0; for (let j = Math.max(0, i - 19); j <= i; j++) { s += D.c[j] * (D.v[j] || 0); m++; } return s / m; })(), rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
       I,
     };
     if (opts.fnoSym) {
@@ -497,7 +518,7 @@
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
     const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt } : h;
-    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
+    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = E; else root.Engine = E;

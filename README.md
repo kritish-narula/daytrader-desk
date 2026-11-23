@@ -14,8 +14,9 @@ Stock analysis app for India (NSE, all listed stocks + F&O) and global markets.
 - **Background scans**: a scan keeps running when you leave the app; swiping the app out of Recents stops it.
 - **Alerts**: phone notifications for new strong buys, SMC/VCP setups, EMA crosses, strong news and price alerts; optional background watch of saved stocks every 5 min in market hours.
 - **Security**: app PIN (AES-256-GCM encrypted mStock credentials, PBKDF2 210k), auto-lock, optional screenshot/Recents blocking, no Android backup, WebView debugging off, content security policy.
+- **Breakouts**: clean volume breakouts, near-breakout (coiling under resistance) candidates, pocket pivots, gap-and-go, filtered to stocks beating the index over 3 months (relative strength).
 - **IPOs**: live grey-market premium (ipowatch, ipoji fallback), GMP trend, news, market trend and SME risk combined into an apply rating; ranked highest first.
-- **Nifty / Bank Nifty options**: CALL and PUT rated 0–100 from intraday + swing signals, with BUY CALL / BUY PUT / NO TRADE, ATM strike, index SL/targets, and live premiums plus premium SL/targets when mStock is connected.
+- **Nifty / Bank Nifty / Sensex options**: names the exact contract to buy (e.g. BUY NIFTY 23100 CE) with safer ITM / balanced ATM / aggressive OTM alternatives and the reason for the pick; CALL and PUT rated 0–100 from intraday + swing signals, with BUY CALL / BUY PUT / NO TRADE, ATM strike, index SL/targets, and live premiums plus premium SL/targets when mStock is connected.
 - **Patterns**: engulfing, hammer, shooting star, inside bar, NR7, 20-day breakout/breakdown, 52-week-high breakout, bull/bear flag, double bottom/top, trend structure, Supertrend flips — with pattern targets and invalidation levels.
 - **EMA cross forecast**: 9/21, 20/50, 50/200 crosses that just happened or are projected within days.
 - **Scanner**: large caps, all F&O stocks, or all NSE; filters for top buys, intraday movers, EMA cross soon, patterns, top sells.
