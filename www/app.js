@@ -73,7 +73,8 @@ function render() {
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
   $('#navFno').style.display = S.mkt === 'IN' ? '' : 'none';
   setLive(); window.scrollTo(0, 0);
-  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail })[S.tab]();
+  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker })[S.tab]();
+  const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
 }
 function rowHTML(sym, name, price, chg, sc, lbl, tags = '') {
   return `<div class="row" data-sym="${esc(sym)}">${sc != null ? badge(sc, lbl) : ''}<div class="nm"><div class="s">${esc(sym)}</div><div class="f">${esc(name)}</div>${tags}</div>
@@ -85,7 +86,7 @@ function vHome() {
   const m = MK[S.mkt], sc = S.scan[S.mkt];
   const v = $('#view');
   v.innerHTML = `<div class="search"><input id="q" placeholder="Search ${S.mkt === 'IN' ? 'any NSE stock or index' : 'any global stock, e.g. AAPL'}" autocomplete="off"></div>
-  <div id="sres"></div>
+  <div id="sres"></div>${S.mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in for live prices.' : 'Connect your mStock account for exchange-accurate live prices. Tap to set up.'}</div>`) : ''}
   <div class="idx" id="idx">${m.idx().map(x => `<div class="card" data-sym="${x[0]}"><div class="n">${x[1]}</div><div class="p" id="ix_${x[0]}"><span class="spin"></span></div><div id="ixc_${x[0]}" style="font-size:12px"></div></div>`).join('')}</div>
   <h3>Top setups today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
   <h3>Watchlist</h3><div id="wl">${S.saved[S.mkt].length ? '<div class="list">' + S.saved[S.mkt].map(s => rowHTML(s, nameOf(s), null, null, null)).join('') + '</div>' : '<div class="empty">Tap ☆ on any stock to save it here.</div>'}</div>
@@ -93,7 +94,7 @@ function vHome() {
   ${S.mkt === 'IN' && S.nse.seed ? '<p class="note">Showing a starter list. The full NSE list loads in the installed app build.</p>' : S.mkt === 'IN' ? `<p class="note">${S.nse.eq.length.toLocaleString()} NSE stocks · ${Object.keys(S.nse.fo || {}).length} F&O stocks · list from ${S.nse.updated}</p>` : ''}`;
   v.querySelectorAll('.idx .card, .chips button').forEach(b => b.onclick = () => openDetail(b.dataset.sym));
   bindRows(v); $('#goScan').onclick = () => { S.tab = 'scan'; render(); runScan(); };
-  setupSearch();
+  setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = () => $('#gear').click();
   m.idx().forEach(async x => {
     try { const { meta } = await chart(x[2], '1d', '5m'); const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose;
       $('#ix_' + x[0]).textContent = fmt(p); $('#ixc_' + x[0]).innerHTML = pct((p / pc - 1) * 100); } catch (e) { const el = $('#ix_' + x[0]); if (el) el.innerHTML = '<span class="mu" style="font-size:12px">offline</span>'; }
@@ -132,6 +133,18 @@ function setupSearch() {
   };
 }
 
+async function msQuotes(syms, mkt) {
+  if (mkt !== 'IN' || !window.MS || !MS.ok()) return null;
+  try { return await MS.quotes(syms); } catch (e) { MS.lastError = e.message; return null; }
+}
+async function dailyQuick(sym, mkt, Q) {
+  const { D, meta } = await chart(ySym(sym, mkt), '1y', '1d');
+  let price = meta.regularMarketPrice, prev = null;
+  const o = Q && MS.overlay(D, Q[sym]); if (o) { price = o.price; prev = o.prev; }
+  const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price });
+  if (!q.err && prev) q.chg = (q.price / prev - 1) * 100;
+  return q;
+}
 // ---------- scanner ----------
 const FILTERS = [['buy', 'Top buys'], ['intra', 'Intraday movers'], ['cross', 'EMA cross soon'], ['pat', 'Patterns'], ['sell', 'Top sells'], ['all', 'All']];
 function universes() {
@@ -148,7 +161,7 @@ function uniSyms(u) {
 function vScan() {
   const sc = S.scan[S.mkt], f = S.scanFilter || 'buy';
   $('#view').innerHTML = `<div class="card"><div style="display:flex;gap:8px"><select id="uni" style="flex:1">${universes().map(u => `<option value="${u[0]}" ${sc && sc.uni === u[0] ? 'selected' : ''}>${u[1]}</option>`).join('')}</select><button class="btn" id="run">Scan</button></div>
-  <div class="prog" id="prog" style="display:none"><div style="width:0"></div></div><div class="note" id="pmsg">${sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks` : 'Scores every stock on 5 time frames, patterns and EMA crosses.'}</div></div>
+  <div class="prog" id="prog" style="display:none"><div style="width:0"></div></div><div class="note" id="pmsg">${sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'}` : 'Scores every stock on 5 time frames, patterns and EMA crosses.'}</div></div>
   <div class="chips">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
   $('#run').onclick = runScan;
   document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.f; vScan(); });
@@ -174,13 +187,14 @@ async function runScan() {
   const sel = $('#uni'), uni = sel ? sel.value : (S.mkt === 'US' ? 'us' : 'large'), syms = uniSyms(uni), mkt = S.mkt;
   if (uni === 'all' && !confirm(`Scan all ${syms.length} stocks? This takes several minutes and a lot of data.`)) return;
   const pg = $('#prog'); if (pg) pg.style.display = '';
+  const m0 = $('#pmsg'); if (m0 && mkt === 'IN' && window.MS && MS.ok()) m0.textContent = 'Getting live prices from mStock…';
+  const Q = await msQuotes(syms, mkt);
   const rows = await pool(syms, 6, async sym => {
-    const { D, meta } = await chart(ySym(sym, mkt), '1y', '1d');
-    const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price: meta.regularMarketPrice });
+    const q = await dailyQuick(sym, mkt, Q);
     return q.err ? null : Object.assign({ sym }, q);
   }, (d, n) => { const p = $('#prog div'); if (p) p.style.width = (100 * d / n) + '%'; const m = $('#pmsg'); if (m) m.textContent = `Scanning ${d}/${n}…`; });
   const good = rows.filter(Boolean);
-  S.scan[mkt] = { at: Date.now(), uni, rows: good }; store.set('scan', S.scan);
+  S.scan[mkt] = { at: Date.now(), uni, rows: good, src: Q ? 'mStock live prices' : 'Yahoo Finance' }; store.set('scan', S.scan);
   if (S.tab === 'scan' && S.mkt === mkt) { vScan(); if (!good.length) $('#pmsg').textContent = 'Could not load data. Live data works in the installed Android app (browsers block it).'; }
 }
 
@@ -203,22 +217,82 @@ function vSaved() {
   const L = S.saved[S.mkt];
   $('#view').innerHTML = L.length ? `<div class="list" id="svl">${L.map(s => rowHTML(s, nameOf(s), null, null, null)).join('')}</div><p class="note">Live scores load below.</p>` : '<div class="empty">Nothing saved yet. Open any stock and tap ☆.</div>';
   bindRows($('#view'));
-  pool(L, 4, async sym => {
-    const { D, meta } = await chart(ySym(sym), '1y', '1d');
-    const q = Engine.quick(D, { tick: MK[S.mkt].tick, canShort: S.mkt === 'US' || isFno(sym), price: meta.regularMarketPrice });
+  const mkt = S.mkt;
+  msQuotes(L, mkt).then(Q => pool(L, 4, async sym => {
+    const q = await dailyQuick(sym, mkt, Q);
     const row = document.querySelector(`#svl .row[data-sym="${CSS.escape(sym)}"]`);
     if (row && !q.err) { row.outerHTML = rowHTML(sym, nameOf(sym), q.price, q.chg, q.swing.score, shortAct(q.swing.action), tagsOf(q)); bindRows($('#svl')); }
-  });
+  }));
+}
+
+// ---------- broker (mStock) ----------
+function vBroker() {
+  const c = MS.cfg(), ok = MS.ok();
+  $('#view').innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">mStock live data</div><div class="f">Mirae Asset · Type A API</div></div></div>
+  <div class="card"><div style="display:flex;align-items:center;gap:10px"><span class="live ${ok ? 'on' : ''}"><i></i><span></span></span><b>${esc(MS.status())}</b></div>
+  <p class="note" style="margin:8px 0 0">${ok ? 'India prices, candles and scans now use mStock live data. Yahoo is the fallback.' : 'Log in once per trading day. mStock sessions expire daily.'}</p></div>
+  <div class="card"><h3 style="margin-top:0">1 · API key</h3>
+   <input id="apik" type="password" placeholder="mStock API key" value="${esc(c.apiKey)}" class="inp">
+   <label class="note"><input type="checkbox" id="totp" ${c.totp ? 'checked' : ''}> I use an authenticator app (TOTP) instead of SMS OTP</label>
+   <details style="margin-top:6px"><summary class="note">Advanced</summary><input id="cks" placeholder="checksum" value="${esc(c.checksum || 'L')}" class="inp"><p class="note">mStock's docs use "L" as the checksum. Change it only if mStock support tells you to.</p></details>
+   <button class="btn g w" id="saveK" style="margin-top:8px">Save key on this phone</button></div>
+  <div class="card"><h3 style="margin-top:0">2 · Log in</h3>
+   <input id="usr" placeholder="mStock client ID / username" value="${esc(c.user || '')}" class="inp" autocomplete="username">
+   <input id="pwd" type="password" placeholder="Password (never saved)" class="inp" autocomplete="current-password">
+   <button class="btn w" id="doLogin">${c.totp ? 'Log in' : 'Log in & send OTP'}</button>
+   <div id="otpBox" style="display:none;margin-top:10px"><input id="otp" inputmode="numeric" placeholder="${c.totp ? 'Authenticator code' : 'OTP from SMS'}" class="inp"><button class="btn w" id="doOtp">Verify</button></div>
+   <div id="bmsg" class="note" style="margin-top:8px"></div></div>
+  ${ok ? '<div class="card"><button class="btn g w" id="testQ">Test: fetch RELIANCE live price</button><div id="tmsg" class="note" style="margin-top:8px"></div></div>' : ''}
+  <div class="card"><button class="btn g w" id="lout">Log out</button><button class="btn g w" id="forget" style="margin-top:8px;color:var(--dn)">Remove key & data from this phone</button></div>
+  <div class="warn">🔒 Your key, client ID and the day's session token are stored only inside this app on this phone. They are never uploaded, never put in the APK, and the password is never stored. Don't share screenshots of this screen. mStock recommends a server for API keys; this on-device setup is for your personal phone only.</div>`;
+  $('#back').onclick = () => { S.tab = S.prevTab || 'home'; render(); };
+  const msg = (t, bad) => { $('#bmsg').innerHTML = `<span class="${bad ? 'dn' : 'up'}">${esc(t)}</span>`; };
+  const saveCfg = () => { const n = { apiKey: $('#apik').value.trim(), user: $('#usr').value.trim(), checksum: ($('#cks').value || 'L').trim(), totp: $('#totp').checked }; MS.saveCfg(n); return n; };
+  $('#saveK').onclick = () => { const n = saveCfg(); msg(n.apiKey ? 'Key saved on this phone.' : 'Enter your API key first.', !n.apiKey); };
+  $('#totp').onchange = () => { saveCfg(); vBroker(); };
+  $('#doLogin').onclick = async () => {
+    const n = saveCfg(); if (!n.apiKey || !n.user || !$('#pwd').value) return msg('Enter API key, client ID and password.', true);
+    const b = $('#doLogin'); b.disabled = true; b.innerHTML = '<span class="spin"></span>';
+    try { await MS.login(n.user, $('#pwd').value); $('#pwd').value = ''; $('#otpBox').style.display = ''; msg(n.totp ? 'Password OK. Enter your authenticator code.' : 'OTP sent to your registered mobile.'); $('#otp').focus(); }
+    catch (e) { msg('Login failed: ' + e.message, true); }
+    b.disabled = false; b.textContent = n.totp ? 'Log in' : 'Log in & send OTP';
+  };
+  $('#doOtp').onclick = async () => {
+    const code = $('#otp').value.trim(); if (!code) return;
+    try { MS.cfg().totp ? await MS.verifyTotp(code) : await MS.verifyOtp(code); msg('Connected. Live mStock data is on.'); setTimeout(vBroker, 700); }
+    catch (e) { msg('Verification failed: ' + e.message, true); }
+  };
+  const tq = $('#testQ'); if (tq) tq.onclick = async () => {
+    $('#tmsg').innerHTML = '<span class="spin"></span>';
+    try { const q = await MS.quotes(['RELIANCE']); const r = q.RELIANCE; $('#tmsg').innerHTML = r ? `<span class="up">RELIANCE ₹${r.last_price} (prev close ${r.ohlc ? r.ohlc.close : '–'})</span>` : '<span class="wa">Connected, but no quote returned for RELIANCE.</span>'; }
+    catch (e) { $('#tmsg').innerHTML = `<span class="dn">${esc(e.message)}</span>`; }
+  };
+  $('#lout').onclick = () => { MS.logout(); vBroker(); };
+  $('#forget').onclick = () => { if (confirm('Remove your mStock key and session from this phone?')) { MS.forget(); vBroker(); } };
+  setLive();
 }
 
 // ---------- detail ----------
 function openDetail(sym) { S.detail = { sym, mkt: S.mkt }; S.prevTab = S.tab === 'detail' ? S.prevTab : S.tab; S.tab = 'detail'; S.chartMode = 'daily'; render(); }
 async function loadDetail() {
-  const { sym, mkt } = S.detail, ys = ySym(sym, mkt);
-  const [d, it] = await Promise.all([chart(ys, '2y', '1d'), chart(ys, '5d', '5m').catch(() => null)]);
+  const { sym, mkt } = S.detail, ys = ySym(sym, mkt), useMS = mkt === 'IN' && window.MS && MS.ok();
+  let d = null, it = null, src = 'Yahoo Finance', msErr = null, prev = null;
+  if (useMS) {
+    try {
+      const [D, I] = await Promise.all([MS.candles(sym, 'day', 730), MS.candles(sym, '5minute', 6).catch(() => null)]);
+      if (D.c.length >= 60) { d = { D, meta: {} }; it = I && { D: I }; src = 'mStock'; }
+    } catch (e) { msErr = e.message; }
+  }
+  if (!d) [d, it] = await Promise.all([chart(ys, '2y', '1d'), chart(ys, '5d', '5m').catch(() => null)]);
+  let price = d.meta.regularMarketPrice || d.D.c[d.D.c.length - 1];
+  if (useMS) {
+    try { const q = (await MS.quotes([sym]))[sym]; const o = MS.overlay(d.D, q); if (o) { price = o.price; prev = o.prev; src = src === 'mStock' ? 'mStock live' : 'Yahoo history + mStock live price'; } }
+    catch (e) { msErr = msErr || e.message; }
+  }
   const fno = mkt === 'IN' && isFno(sym);
-  const A = Engine.analyze(d.D, { intra: it && it.D, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price: d.meta.regularMarketPrice, fnoSym: fno ? sym : null, lot: foLot(sym) });
-  Object.assign(S.detail, { A, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now() });
+  const A = Engine.analyze(d.D, { intra: it && it.D, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
+  if (prev && !A.err) A.chg = (A.price / prev - 1) * 100;
+  Object.assign(S.detail, { A, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now(), src, msErr });
 }
 async function vDetail() {
   const v = $('#view'), { sym } = S.detail;
@@ -246,7 +320,7 @@ function drawDetail(isRefresh) {
   const odds = h.bt && h.bt.odds != null ? `<b class="${h.bt.odds >= 50 ? 'up' : h.bt.odds >= 40 ? 'wa' : 'dn'}">${h.bt.odds}%</b> win odds <span class="mu">(${h.bt.wins}/${h.bt.n} past signals hit T1 before stop)</span>` : h.bt ? '<span class="mu">Too few past signals to estimate win odds</span>' : '';
   const st = A.stats;
   $('#dbody').innerHTML = `
-  <div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-end"><div><div class="price">${c}${fmt(A.price)}</div><div>${pct(A.chg)} <span class="mu" style="font-size:12px">today · ${isRefresh ? 'updated ' : ''}${new Date(at).toLocaleTimeString()}</span></div></div>
+  <div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-end"><div><div class="price">${c}${fmt(A.price)}</div><div>${pct(A.chg)} <span class="mu" style="font-size:12px">today · ${isRefresh ? 'updated ' : ''}${new Date(at).toLocaleTimeString()}</span></div><div style="font-size:11px;margin-top:3px" class="${/mStock/.test(S.detail.src) ? 'up' : 'mu'}">Source: ${esc(S.detail.src)}${S.detail.msErr ? ` <span class="wa">· mStock: ${esc(S.detail.msErr)}</span>` : ''}</div></div>
   <span class="live ${marketOpen(S.detail.mkt) ? 'on' : ''}"><i></i><span>${marketOpen(S.detail.mkt) ? 'Live · 30s' : 'Market closed'}</span></span></div></div>
   <div class="card hero">${ring(A.overall)}<div><div class="sub">Overall setup score</div><div class="verdict ${cls(A.overall) === 'b1' ? 'up' : cls(A.overall) === 'b-1' ? 'dn' : 'wa'}">${A.overallAction}</div>
   <div class="sub">${Object.values(H).filter(x => !x.na).map(x => `${x.label.split(' ')[0]} <b class="${x.dir > 0 ? 'up' : x.dir < 0 ? 'dn' : 'wa'}">${x.score}</b>`).join(' · ')}</div></div></div>
@@ -310,5 +384,6 @@ function drawChart() {
 // ---------- boot ----------
 document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.mkt = b.dataset.m; store.set('mkt', S.mkt); if (S.tab === 'detail' || (S.tab === 'fno' && S.mkt === 'US')) S.tab = 'home'; render(); });
 document.querySelectorAll('.nav button').forEach(b => b.onclick = () => { if (b.dataset.t === 'desk') { location.href = 'desk.html'; return; } S.tab = b.dataset.t; render(); });
+$('#gear').onclick = () => { if (S.tab !== 'broker') S.prevTab = S.tab; S.tab = 'broker'; render(); };
 addEventListener('resize', () => { if (S.tab === 'detail' && S.detail && S.detail.A) drawChart(); });
 loadNSE().then(render);

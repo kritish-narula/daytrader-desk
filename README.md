@@ -11,7 +11,9 @@ Stock analysis app for India (NSE, all listed stocks + F&O) and global markets.
 - **F&O**: lot sizes (from NSE), futures sizing, ATM strike and option idea, expected 1-day / 1-week move.
 - **ORB Desk**: the original opening-range-breakout + Time Machine tool from the MIT [day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill).
 
-Live data comes from Yahoo Finance through native HTTP in the Android app (no API keys). Browsers block it, so use the APK.
+**mStock (Mirae Asset) live data:** tap 🔌 in the app, enter your API key and client ID, then log in with OTP or TOTP (once per trading day). India prices, daily and 5-minute candles, scans and watchlist then use mStock; Yahoo is the fallback. The key and the day's token stay on your phone; the password is never stored; nothing is placed as an order.
+
+Without mStock, live data comes from Yahoo Finance through native HTTP in the Android app (no API keys). Browsers block it, so use the APK.
 
 **Install:** Releases → latest `app-debug.apk`.
 
