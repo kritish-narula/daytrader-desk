@@ -406,7 +406,7 @@ async function vIpo() {
       const n = S.news['IPO:' + k]; return Object.assign(x, { R: IPO.rate(x, { prevGmp: prev, news: n ? n.s : 0, regime: (S.regime.IN || {}).v }) }); });
     for (const x of L) { const k = x.name.toLowerCase(), e = snap[k]; snap[k] = e && e.d === today ? e : { g: x.gmp, d: today, pg: e ? e.g : undefined }; snap[k].g = x.gmp; }
     store.set('ipoGmp', snap);
-    const live = L.filter(x => !/closed|listed/i.test(x.status)).sort((a, b) => b.R.rating - a.R.rating), done = L.filter(x => /closed|listed/i.test(x.status)).sort((a, b) => b.R.gmpPct - a.R.gmpPct);
+    const live = L.filter(x => !/closed|listed/i.test(x.status)).sort((a, b) => b.R.rating - a.R.rating), done = L.filter(x => /closed/i.test(x.status)).sort((a, b) => b.R.gmpPct - a.R.gmpPct), listed = L.filter(x => /listed/i.test(x.status));
     for (const x of live) if (x.R.rating >= 70) Alerts.evaluate({ sym: 'IPO ' + x.name, mkt: 'IN', price: x.price, rating: x.R.rating, action: x.R.action, setups: [{ n: `IPO ${x.R.action}`, b: 1, q: x.R.rating }] }, true);
     Alerts.save(); Alerts.flush();
     const card = (x, k) => `<div class="card ipo" data-ipo="${esc(x.name)}"><div class="ohead"><div style="min-width:0"><div class="s">${k ? `<span class="rk">${k}</span> ` : ''}${esc(x.name)}</div><div class="note">${x.sme ? '<span class="tag n">SME</span>' : '<span class="tag">Mainboard</span>'} ${esc(x.status)}</div></div>
@@ -417,7 +417,9 @@ async function vIpo() {
       <div class="ipox" style="display:none"><div class="pill ${x.R.rating >= 58 ? 'b1' : x.R.rating <= 44 ? 'b-1' : 'b0'}" style="display:inline-block;margin:8px 0">${esc(x.R.action)}</div>
       <ul class="why">${x.R.why.map(w => `<li>${w[0] >= 0 ? '<span class="up">▲</span>' : '<span class="dn">▼</span>'} ${esc(w[1])}</li>`).join('')}</ul><div class="inews note"><span class="spin"></span> News…</div></div></div>`;
     $('#ipoBody').innerHTML = `${live.length ? `<p class="note">Open & upcoming · highest rating first · ${esc(S.ipo.src)} · ${new Date(S.ipo.at).toLocaleTimeString()}</p>${live.map((x, k) => card(x, k + 1)).join('')}` : '<div class="empty">No open or upcoming IPOs right now.</div>'}
-      ${done.length ? `<h3>Closed / listing soon</h3>${done.map(x => card(x)).join('')}` : ''}`;
+      ${done.length ? `<h3>Closed · allotment & listing coming</h3>${done.map(x => card(x)).join('')}` : ''}
+      ${listed.length ? `<h3>Recently listed · did the GMP get it right?</h3><div class="list">${listed.map(x => { const g = isFinite(x.price) && x.price > 0 ? (x.listPrice / x.price - 1) * 100 : NaN, exp = x.R.gmpPct;
+        return `<div class="row"><div class="nm"><div class="s">${esc(x.name)}</div><div class="f">${x.sme ? 'SME' : 'Mainboard'} · issue ₹${fmt(x.price, 0)} · GMP said ${exp >= 0 ? '+' : ''}${exp.toFixed(0)}%</div></div><div class="px">₹${fmt(x.listPrice, 2)}<small>${isFinite(g) ? pct(g) : ''} listing</small></div></div>`; }).join('')}</div>` : ''}`;
     document.querySelectorAll('.ipo').forEach(c => c.onclick = async () => {
       const box = c.querySelector('.ipox'); const openNow = box.style.display === 'none'; box.style.display = openNow ? '' : 'none'; if (!openNow || c._news) return; c._news = 1;
       const name = c.dataset.ipo, el = c.querySelector('.inews');

@@ -18,7 +18,7 @@
       const hdr = rows[0].map(h => h.toLowerCase()); if (!hdr.some(h => h.includes('gmp'))) continue;
       const col = (...keys) => hdr.findIndex(h => keys.some(k => h.includes(k)));
       const iName = col('ipo name', 'company', 'ipo'), iGmp = hdr.findIndex(h => /gmp/.test(h) && !/date|update/.test(h)), iPrice = col('price band', 'issue price', 'price'),
-        iEst = col('est', 'listing'), iDate = col('date', 'open'), iType = col('type'), iStatus = col('status'), iTrend = col('trend');
+        iListP = hdr.findIndex(h => h.includes('listing price') || h.includes('listed at')), iEst = hdr.findIndex(h => h.includes('est') || (h.includes('listing') && !h.includes('price'))), iDate = col('date', 'open'), iType = col('type'), iStatus = col('status'), iTrend = col('trend');
       for (const r of rows.slice(1)) {
         if (r.length < 3 || !r[iName]) continue;
         const name = r[iName].replace(/\s*(ipo|sme ipo)\s*$/i, '').replace(/\s+(open|closed|upcoming|listed)$/i, '').trim();
@@ -29,7 +29,9 @@
           name, gmp: isFinite(gmp) ? gmp : 0, price: isFinite(hi) ? hi : NaN, priceBand: price, est: iEst >= 0 ? r[iEst] : '',
           dates: iDate >= 0 ? r[iDate] : '', sme: /sme|emerge|bse sme/i.test(typeTxt), status: (iStatus >= 0 ? r[iStatus] : (/(open|closed|upcoming|listed)/i.exec(r[iName]) || [, ''])[1]).trim(),
           trend: iTrend >= 0 ? r[iTrend] : '',
+          listPrice: iListP >= 0 ? num(r[iListP]) : NaN,
         });
+        const last = out[out.length - 1]; if (isFinite(last.listPrice) && last.listPrice > 0) last.status = 'Listed';
       }
     }
     // keep each IPO once, prefer the row with a price
