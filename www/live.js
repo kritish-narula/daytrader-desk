@@ -10,7 +10,7 @@ const Live = (() => {
   async function quotes(syms, mkt) {
     const out = {};
     if (mkt === 'IN' && window.MS && MS.ok()) {
-      try { const Q = await MS.quotes(syms); for (const s of syms) { const q = Q && Q[s]; if (q && q.last_price) { const pc = q.ohlc && q.ohlc.close; out[s] = { p: q.last_price, chg: pc ? (q.last_price / pc - 1) * 100 : null }; } } } catch (e) {}
+      try { const Q = await MS.quotes(syms); for (const s of syms) { const q = Q && Q[s]; if (q && q.last_price) { const pc = q.ohlc && q.ohlc.close; out[s] = { ms: 1, p: q.last_price, chg: pc ? (q.last_price / pc - 1) * 100 : null }; } } } catch (e) {}
     }
     await pool(syms.filter(s => !out[s]), 5, async s => {
       try { const { meta } = await chart(ySym(s, mkt), '1d', '1m'); const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose; if (p) out[s] = { p, chg: pc ? (p / pc - 1) * 100 : null }; } catch (e) {}
@@ -22,7 +22,7 @@ const Live = (() => {
     const old = parseFloat(row.dataset.lp || 'NaN');
     px.innerHTML = `<b>${cur()}${fmt(o.p)}</b>${chgPill(o.chg)}`; delete row.dataset.nopx;
     if (isFinite(old) && old !== o.p) { row.classList.remove('flu', 'fld'); void row.offsetWidth; row.classList.add(o.p > old ? 'flu' : 'fld'); }
-    row.dataset.lp = o.p;
+    row.dataset.lp = o.p; row.dataset.src = o.ms ? 'ms' : 'yf';
   }
   async function tick() {
     if (busy || !onList() || !marketOpen(S.mkt)) return;
@@ -57,6 +57,11 @@ const Live = (() => {
   }
   // after a list renders: live badge, stale banner / auto re-scan
   function onRender() {
+    if (S.mkt === 'IN') { const sc = S.scan.IN, idx = sc ? new Map(sc.rows.map(r => [r.sym, r])) : null, C = window.MS && MS.cov;
+      document.querySelectorAll('.row.gf[data-sym]').forEach(r => { if (r.dataset.src) return; const x = idx && idx.get(r.dataset.sym), s = r.dataset.sym;
+        const ms = C && C.ok[s] && Date.now() - C.ok[s] < 10 * 60e3; r.dataset.src = ms || (x && x.src === 'ms' && Date.now() - (x.srcAt || 0) < 10 * 60e3) ? 'ms' : x && x.src ? 'yf' : ''; }); 
+      const rows = [...document.querySelectorAll('#sl .row.gf[data-sym]')], n = rows.filter(r => r.dataset.src === 'ms').length, hd = document.querySelector('#sl .lhd');
+      if (hd && rows.length && !document.querySelector('#covNote')) hd.insertAdjacentHTML('afterend', `<div class="note" id="covNote" style="margin:-2px 2px 8px"><span class="${n === rows.length ? 'up' : 'wa'}">●</span> ${n} of ${rows.length} prices live from mStock${n < rows.length ? ' · <span class="wa">●</span> = Yahoo fallback' : ''}</div>`); }
     const mkt = S.mkt, hd = document.querySelector('#sl .lhd .note');
     if (hd && !document.querySelector('#liveStamp') && marketOpen(mkt)) hd.insertAdjacentHTML('afterend', '<span class="livepill" id="liveStamp">Live</span>');
     if (S.tab !== 'scan' || S.scanning || !staleScan(mkt)) return;

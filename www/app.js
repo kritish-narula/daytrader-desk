@@ -211,7 +211,7 @@ async function dailyQuick(sym, mkt, Q) {
   const o = Q && MS.overlay(D, Q[sym]); if (o) { price = o.price; prev = o.prev; }
   const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price });
   if (!q.err && prev) q.chg = (q.price / prev - 1) * 100;
-  if (!q.err) q.risk = riskOf(D, mkt, sym);
+  if (!q.err) { q.risk = riskOf(D, mkt, sym); q.src = o ? 'ms' : 'yf'; q.srcAt = Date.now(); }
   if (!q.err && window.Learn) { Learn.resolve(sym, mkt, D); Learn.log(sym, mkt, q.horizons, q.t, q.price); }
   return q;
 }
@@ -569,6 +569,13 @@ function vSaved() {
 }
 
 // ---------- broker (mStock) ----------
+function covHTML(list) {
+  const C = MS.cov || { ok: {}, miss: {} }, ok = Object.keys(C.ok), miss = Object.keys(C.miss).filter(s => !C.ok[s]);
+  if (list) { const got = list.filter(s => C.ok[s] && Date.now() - C.ok[s] < 60e3), bad = list.filter(s => !got.includes(s));
+    return `<b class="${bad.length ? 'wa' : 'up'}">${got.length} of ${list.length} live from mStock</b>${bad.length ? `<br>No mStock price for: ${bad.map(esc).join(', ')} (these use Yahoo)` : '<br>Every one returned a live mStock price.'}`; }
+  if (!ok.length && !miss.length) return 'No prices fetched yet in this session. Run a scan or tap the check below.';
+  return `This session: <b class="up">${ok.length} stocks priced live by mStock</b>${miss.length ? ` · <b class="wa">${miss.length} fell back to Yahoo</b>: ${miss.slice(0, 15).map(esc).join(', ')}${miss.length > 15 ? '…' : ''}` : ' · none fell back to Yahoo'}.<br>In lists, a <span class="up">●</span> after a price = mStock live, <span class="wa">●</span> = Yahoo.`;
+}
 function vBroker() {
   const c = MS.cfg(), ok = MS.ok(), T = !!c.totp, tail = c.apiKey ? '…' + c.apiKey.slice(-4) : '';
   $('#view').innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">mStock live data</div><div class="f">Mirae Asset · Type A API</div></div></div>
@@ -592,6 +599,7 @@ function vBroker() {
    <div id="otpBox" style="display:none;margin-top:10px"><input id="otp" inputmode="numeric" maxlength="6" placeholder="OTP from SMS" class="inp" autocomplete="one-time-code"><button class="btn w" id="doOtp">Verify</button></div>`}
    <div id="bmsg" class="note" style="margin-top:8px"></div></div>
   ${ok ? '<div class="card"><button class="btn g w" id="testQ">Test: fetch RELIANCE live price</button><div id="tmsg" class="note" style="margin-top:8px"></div></div>' : ''}
+  ${ok ? `<div class="card"><h3 style="margin-top:0">Live price coverage</h3><div id="covBox" class="note">${covHTML()}</div><button class="btn g w" id="covGo" style="margin-top:8px">Check 25 popular stocks + indices now</button></div>` : ''}
   <div class="card"><details><summary class="note">Diagnostics</summary><div class="note" id="diag" style="margin-top:6px">${MS.lastCall ? `Last call: ${esc(MS.lastCall.path)} · HTTP ${MS.lastCall.status} · ${esc(MS.lastCall.note)} · ${esc(MS.lastCall.at)}` : 'No calls yet.'}<br>Last quote reply: <code style="word-break:break-all">${esc(MS.lastRaw || '–')}</code><br>Native HTTP: ${window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() ? 'yes' : 'no (browser)'} · Key length: ${c.apiKey ? c.apiKey.length : 0} · PIN vault: ${Sec.hasPin() ? (Sec.isUnlocked() ? 'unlocked' : 'locked') : 'off'}</div></details>
    <button class="btn g w" id="lout" style="margin-top:8px">Log out</button><button class="btn g w" id="forget" style="margin-top:8px;color:var(--dn)">Remove key & data from this phone</button></div>
   <div class="warn">🔒 Your key and the day's session token stay inside this app on this phone. ${Sec.hasPin() ? 'They are encrypted with your app PIN (AES-256).' : '<b>Set an app PIN in Settings to encrypt them.</b>'} The password is never stored and nothing is uploaded. Never share the key or codes with anyone.</div>`;
@@ -633,6 +641,12 @@ function vBroker() {
     $('#tmsg').innerHTML = '<span class="spin"></span>';
     try { const q = await MS.quotes(['RELIANCE']); const r = q.RELIANCE; $('#tmsg').innerHTML = r ? `<span class="up">RELIANCE ₹${fmt(r.last_price)} (prev close ${r.ohlc && r.ohlc.close ? fmt(r.ohlc.close) : '–'})</span>` : `<span class="wa">Connected, but mStock's reply had no price I could read. Reply: <code style="word-break:break-all">${esc(MS.lastRaw || '(empty)')}</code></span>`; }
     catch (e) { $('#tmsg').innerHTML = `<span class="dn">${esc(e.message)}</span>`; }
+  };
+  const cg = $('#covGo'); if (cg) cg.onclick = async () => {
+    cg.disabled = true; cg.innerHTML = '<span class="spin"></span>';
+    const L = [...(S.nse.pop || SEED_IN.map(x => x[0])).slice(0, 25), 'NIFTY', 'BANKNIFTY', 'SENSEX'];
+    try { await MS.quotes(L); } catch (e) { toast(e.message); }
+    $('#covBox').innerHTML = covHTML(L); cg.disabled = false; cg.textContent = 'Check again';
   };
   $('#lout').onclick = () => { MS.logout(); vBroker(); };
   $('#forget').onclick = () => { if (confirm('Remove your mStock key and session from this phone?')) { MS.forget(); vBroker(); } };

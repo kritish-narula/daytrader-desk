@@ -236,6 +236,8 @@
         const d = await this._req('GET', 'instruments/quote/ohlc', { params: part }); this.lastRaw = JSON.stringify(d).slice(0, 400);
         const m = normMap(d, Object.keys(back)); for (const k in m) out[back[k]] = m[k];
       }
+      const C = this.cov = this.cov || { ok: {}, miss: {} }, now = Date.now();
+      for (const s of syms) { if (out[s]) { C.ok[s] = now; delete C.miss[s]; } else C.miss[s] = now; }
       return out;
     },
 

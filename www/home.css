@@ -65,3 +65,6 @@
 .card.opt .ohead{display:flex;align-items:center;gap:8px}
 .livepill{white-space:nowrap}
 .card.upd{display:flex;align-items:center;gap:10px;justify-content:space-between;border-color:var(--accent,#3b82f6)}
+/* price source marker: green = mStock live, amber = Yahoo */
+.row.gf[data-src=ms] .px b::after{content:" ●";color:var(--up);font-size:9px;vertical-align:middle}
+.row.gf[data-src=yf] .px b::after{content:" ●";color:var(--wa,#d29922);font-size:9px;vertical-align:middle}
