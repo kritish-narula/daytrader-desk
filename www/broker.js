@@ -170,7 +170,14 @@
 
     // Script master -> NSE equities, NSE/BSE indices, NFO/BFO index options (cached per day)
     async map() {
-      const m = get('map'); if (m && m.day === istDay() && m.v === 4) return m;
+      // in-memory first: re-reading/parsing a multi-MB map per symbol froze big scans
+      if (this._map && this._map.day === istDay()) return this._map;
+      if (this._mapP) return this._mapP;
+      const m = get('map'); if (m && m.day === istDay() && m.v === 4) { this._map = m; this._keys = new Map(); return m; }
+      this._mapP = this._loadMap().finally(() => { this._mapP = null; });
+      return this._mapP;
+    },
+    async _loadMap() {
       const csv = await this._req('GET', 'instruments/scriptmaster');
       const text = typeof csv === 'string' ? csv : JSON.stringify(csv);
       const lines = text.split(/\r?\n/), hd = lines[0].split(',').map(x => x.trim().toLowerCase().replace(/"/g, ''));
@@ -213,12 +220,17 @@
         const exps = [...new Set(opt[k].map(x => x[2]))].sort().slice(0, 2); opt[k] = opt[k].filter(x => exps.includes(x[2]));
       }
       const out = { v: 4, day: istDay(), eq, idx, opt, fo, counts: Object.fromEntries(Object.entries(opt).map(([k, v]) => [k, v.length])) };
-      set('map', out); return out;
+      this._map = out; this._keys = new Map(); set('map', out); return out;
     },
     // {SYM: {lot, ex:'NFO'|'BFO', type:'stock'|'index'}} — every NSE + BSE F&O underlying, from today's master
     async foUniverse() { const m = await this.map(); return m.fo || null; },
     // index quote key: NIFTY → NSE:NIFTY 50, SENSEX → BSE:SENSEX
     async key(sym) {
+      const day = istDay(), f = get('symfmt') || 0, ck = sym + '|' + f;
+      if (this._keys && this._keysDay === day && this._keys.has(ck)) return this._keys.get(ck);
+      const r = await this._key(sym); if (!this._keys || this._keysDay !== day) { this._keys = new Map(); this._keysDay = day; } this._keys.set(ck, r); return r;
+    },
+    async _key(sym) {
       const IDX = { NIFTY: ['NSE:NIFTY 50', 'NSE:NIFTY'], BANKNIFTY: ['NSE:NIFTY BANK', 'NSE:BANKNIFTY'], FINNIFTY: ['NSE:NIFTY FIN SERVICE', 'NSE:FINNIFTY'], MIDCPNIFTY: ['NSE:NIFTY MID SELECT', 'NSE:MIDCPNIFTY'], SENSEX: ['BSE:SENSEX'], BANKEX: ['BSE:BANKEX'], INDIAVIX: ['NSE:INDIA VIX'] };
       let m = null; try { m = await this.map(); } catch (e) {}
       if (IDX[sym]) { for (const n of IDX[sym]) { const x = m && m.idx[n]; if (x) return { k: x[0] + ':' + x[1], tok: x[2], ex: x[0], idx: 1 }; } const n = IDX[sym][0]; return { k: n, tok: null, ex: n.split(':')[0], idx: 1 }; }

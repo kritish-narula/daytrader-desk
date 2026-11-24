@@ -72,7 +72,9 @@ async function ysearch(q) {
 }
 async function pool(items, n, fn, onProg) {
   let i = 0, done = 0; const out = [];
-  await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; try { out[k] = await fn(items[k]); } catch (e) { out[k] = null; } done++; onProg && onProg(done, items.length); } }));
+  let lastYield = performance.now();
+  await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; try { out[k] = await fn(items[k]); } catch (e) { out[k] = null; } done++; onProg && onProg(done, items.length);
+    if (performance.now() - lastYield > 40) { await new Promise(r => setTimeout(r, 0)); lastYield = performance.now(); } } })); // let taps, scrolling and the progress bar through
   return out;
 }
 
@@ -178,6 +180,7 @@ async function dailyQuick(sym, mkt, Q) {
   if (!q.err && b && b.prev) { q.chg = (q.price / b.prev - 1) * 100; q.prev = b.prev; }
   if (!q.err) { q.risk = riskOf(D, mkt, sym); q.src = b ? b.src : 'yf'; q.srcAt = Date.now(); if (b && b.official) q.closeDay = b.day; }
   if (!q.err && window.Learn) { Learn.resolve(sym, mkt, D); Learn.log(sym, mkt, q.horizons, q.t, q.price); }
+  if (!q.err && q.horizons) for (const h of Object.values(q.horizons)) if (h && h.fv) delete h.fv;
   return q;
 }
 // ---------- scanner ----------

@@ -11,7 +11,10 @@ const Learn = (() => {
   const blank = () => ({ on: true, keys: [], preds: [], adj: {}, prev: null, adoptedAt: 0, rounds: [], lastLearn: 0, lastTick: 0, daily: {} });
   let st = Object.assign(blank(), store.get(KEY, {}));
   let src = 'none';
-  const save = () => { if (st.preds.length > MAX) { const res = st.preds.filter(p => p.done), pend = st.preds.filter(p => !p.done); st.preds = [...res.slice(Math.max(0, res.length - (MAX - pend.length))), ...pend].slice(-MAX); } store.set(KEY, st); };
+  let saveT = null;
+  const save = () => { if (saveT) return; saveT = setTimeout(() => { saveT = null; saveNow(); }, 3000); };
+  const saveNow = () => { if (st.preds.length > MAX) { const res = st.preds.filter(p => p.done), pend = st.preds.filter(p => !p.done); st.preds = [...res.slice(Math.max(0, res.length - (MAX - pend.length))), ...pend].slice(-MAX); } store.set(KEY, st); };
+  document.addEventListener('visibilitychange', () => { if (document.hidden && saveT) { clearTimeout(saveT); saveT = null; saveNow(); } });
   const ki = k => { let i = st.keys.indexOf(k); if (i < 0) { st.keys.push(k); i = st.keys.length - 1; } return i; };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   function corr(x, y) { const n = x.length; if (n < 3) return 0; const mx = x.reduce((a, b) => a + b, 0) / n, my = y.reduce((a, b) => a + b, 0) / n; let a = 0, b = 0, c = 0; for (let k = 0; k < n; k++) { a += (x[k] - mx) * (y[k] - my); b += (x[k] - mx) ** 2; c += (y[k] - my) ** 2; } return b && c ? a / Math.sqrt(b * c) : 0; }
