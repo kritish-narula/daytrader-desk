@@ -31,11 +31,28 @@ jobs:
             git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
             git add www/model.json && git commit -m "Model update: $(node -e "const m=require('./www/model.json');console.log('v'+m.v+' '+m.date)") [skip ci]" && git push
           fi
+      - name: Permanent signing key (encrypted with the KS_PASS secret; created once, reused forever)
+        env:
+          KS_PASS: ${{ secrets.KS_PASS }}
+        run: |
+          if [ -z "$KS_PASS" ]; then echo "No KS_PASS secret: debug-signed build (updates need a reinstall)"; echo '{"signed":false}' > /tmp/sign.json; exit 0; fi
+          if [ -f native/release.keystore.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in native/release.keystore.enc -out /tmp/release.keystore -pass env:KS_PASS || { echo "::error::KS_PASS does not match the stored signing key"; exit 1; }
+          else
+            keytool -genkeypair -keystore /tmp/release.keystore -storetype PKCS12 -alias dtd -keyalg RSA -keysize 4096 -validity 36500 -storepass "$KS_PASS" -keypass "$KS_PASS" -dname "CN=DayTrader Desk, O=Personal"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in /tmp/release.keystore -out native/release.keystore.enc -pass env:KS_PASS
+            git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
+            git add native/release.keystore.enc && git commit -m "Add encrypted app signing key [skip ci]"
+            git pull --rebase origin main && git push   # must succeed, or the next build would get a different key
+          fi
+          echo "KS_FILE=/tmp/release.keystore" >> $GITHUB_ENV
+          echo '{"signed":true}' > /tmp/sign.json
       - name: Build web assets
-        run: python3 build.py && rm www/desk_template.html www/tsla.json
+        run: |
+          python3 build.py && rm www/desk_template.html www/tsla.json
+          node -e "const s=require('/tmp/sign.json');require('fs').writeFileSync('www/version.json',JSON.stringify({build:+process.env.GITHUB_RUN_NUMBER,signed:s.signed,date:new Date().toISOString().slice(0,10)}))"
       - name: Build APK
         env:
-          KS_B64: ${{ secrets.KS_B64 }}
           KS_PASS: ${{ secrets.KS_PASS }}
         run: |
           npm init -y >/dev/null
@@ -44,8 +61,8 @@ jobs:
           npx cap sync android
           python3 native/patch_android.py
           cd android && chmod +x gradlew
-          if [ -n "$KS_B64" ]; then
-            echo "$KS_B64" | base64 -d > app/release.keystore
+          if [ -n "$KS_FILE" ]; then
+            cp "$KS_FILE" app/release.keystore
             ./gradlew assembleRelease
             cp app/build/outputs/apk/release/app-release.apk ../DayTraderDesk.apk
           else
@@ -56,5 +73,8 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: DayTrader Desk build ${{ github.run_number }}
-          body: India / Global / F&O analysis app. Install DayTraderDesk.apk on Android.
+          body: |
+            ${{ github.event.head_commit.message || 'Weekly model retrain' }}
+
+            Install DayTraderDesk.apk on Android (or tap Update inside the app).
           files: DayTraderDesk.apk

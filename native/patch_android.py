@@ -18,7 +18,7 @@ if 'ScanService' not in x:
 m.write_text(x)
 # release signing from env (GitHub secrets); falls back to debug build when absent
 g = A / 'build.gradle'; s = g.read_text()
-if os.environ.get('KS_B64') and 'signingConfigs' not in s:
+if os.environ.get('KS_FILE') and 'signingConfigs' not in s:
     s = s.replace('buildTypes {', '''signingConfigs {
         release {
             storeFile file("release.keystore")
@@ -31,4 +31,9 @@ if os.environ.get('KS_B64') and 'signingConfigs' not in s:
     s = re.sub(r'(release\s*\{)(\s*minifyEnabled)', r'\1\n            signingConfig signingConfigs.release\2', s, count=1)
 s += '\nconfigurations.all { exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk7"; exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk8" }\n'
 g.write_text(s)
-print('android patched; release signing:', bool(os.environ.get('KS_B64')))
+# versionCode must rise every build so Android accepts the update over the installed app
+run = int(os.environ.get('GITHUB_RUN_NUMBER', '1'))
+s = re.sub(r'versionCode\s+\d+', f'versionCode {run}', s, count=1)
+s = re.sub(r'versionName\s+"[^"]*"', f'versionName "1.{run}"', s, count=1)
+g.write_text(s)
+print('android patched; release signing:', bool(os.environ.get('KS_FILE')), '· versionCode', run)

@@ -64,3 +64,4 @@
 .dq-big.flu{animation:flu 1.2s}.dq-big.fld{animation:fld 1.2s}
 .card.opt .ohead{display:flex;align-items:center;gap:8px}
 .livepill{white-space:nowrap}
+.card.upd{display:flex;align-items:center;gap:10px;justify-content:space-between;border-color:var(--accent,#3b82f6)}

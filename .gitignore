@@ -3,3 +3,4 @@ android/
 www/desk.html
 package*.json
 www/mstock.js
+www/version.json
