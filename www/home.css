@@ -53,3 +53,11 @@
 
 /* scanner/list rows: no sparkline, tags wrap onto new lines (nothing scrolls sideways) */
 .row.gf .spk{display:none}
+/* live ticking */
+.livepill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:650;color:var(--up);margin-left:8px}
+.livepill::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--up);animation:lvp 1.6s infinite}
+@keyframes lvp{50%{opacity:.25}}
+.row.gf.flu .px b{animation:flu 1.2s}.row.gf.fld .px b{animation:fld 1.2s}
+@keyframes flu{0%{background:var(--up-bg);color:var(--up)}100%{background:transparent}}
+@keyframes fld{0%{background:var(--down-bg);color:var(--dn)}100%{background:transparent}}
+#staleBar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
