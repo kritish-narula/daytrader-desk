@@ -15,8 +15,8 @@ Object.defineProperty(S, 'uni', { get() { return S.uniBy[S.mkt]; }, set(v) { S.u
 Object.defineProperty(S, 'sizing', { get() { return S.sizingBy[S.mkt]; }, set(v) { S.sizingBy[S.mkt] = v; } });
 // ---------- symbols ----------
 async function loadNSE() {
-  try { const r = await fetch('nse.json'); if (r.ok) { S.nse = await r.json(); return; } } catch (e) {}
-  S.nse = { eq: window.SEED_IN, fo: {}, idx: {}, updated: null, seed: true };
+  try { const r = await fetch('nse.json'); if (r.ok) { S.nse = await r.json(); buildFo(); return; } } catch (e) {}
+  S.nse = { eq: window.SEED_IN, fo: {}, idx: {}, updated: null, seed: true }; buildFo();
 }
 async function loadUS() {
   try { const r = await fetch('us.json'); if (r.ok) { S.us = await r.json(); S.usMap = new Map(S.us.eq); return; } } catch (e) {}
@@ -25,17 +25,31 @@ async function loadUS() {
 const IDX_OPT_US = [['SPY', 'S&P 500 ETF'], ['QQQ', 'Nasdaq-100 ETF'], ['IWM', 'Russell 2000 ETF']];
 const ySym = (sym, mkt = S.mkt) => {
   if (mkt === 'US') return sym;
-  const ix = window.IDX_IN.find(x => x[0] === sym); if (ix) return ix[2];
-  return /\.(NS|BO)$|^\^/.test(sym) ? sym : sym + '.NS';
+  const ix = window.IDX_IN.find(x => x[0] === sym) || (window.IDX_EXTRA || []).find(x => x[0] === sym); if (ix) return ix[2];
+  return /\.(NS|BO)$|^\^/.test(sym) ? sym : sym + (((S.fo || {})[sym] || {}).bseOnly ? '.BO' : '.NS');
 };
 const baseSym = y => y.replace(/\.(NS|BO)$/, '');
 const nameOf = (sym, mkt = S.mkt) => {
   if (mkt === 'US') { const x = window.US_LIST.find(z => z[0] === sym) || IDX_OPT_US.find(z => z[0] === sym); return x ? x[1] : (S.usMap && S.usMap.get(sym)) || ''; }
-  const ix = window.IDX_IN.find(x => x[0] === sym); if (ix) return ix[1];
+  const ix = window.IDX_IN.find(x => x[0] === sym) || (window.IDX_EXTRA || []).find(x => x[0] === sym); if (ix) return ix[1];
   const x = S.nse.eq.find(z => z[0] === sym); return x ? x[1] : '';
 };
-const foLot = (sym, mkt = S.mkt) => mkt === 'US' ? 100 : (S.nse.fo || {})[sym] || (S.nse.idx || {})[sym] || null;
-const isFno = sym => !!foLot(sym) || window.IDX_IN.some(x => x[0] === sym);
+const foLot = (sym, mkt = S.mkt) => mkt === 'US' ? 100 : ((S.fo || {})[sym] || {}).lot || (S.nse.fo || {})[sym] || (S.nse.idx || {})[sym] || null;
+const isFno = sym => !!(S.fo || {})[sym] || !!(S.nse.fo || {})[sym] || window.IDX_IN.some(x => x[0] === sym);
+
+function tagsOf(r) {
+  const t = [];
+  (r.cross || []).slice(0, 1).forEach(c => t.push(`<span class="tag ${c.dir > 0 ? 'p' : 'n'}">${esc(c.name.split(' ')[0])} ${c.days ? '~' + Math.max(1, Math.round(c.days)) + 'd' : 'crossed'}</span>`));
+  (r.chartPats || []).slice(0, 1).forEach(p => t.push(`<span class="tag ${p.b > 0 ? 'p' : p.b < 0 ? 'n' : ''}">📐 ${esc(p.n)}</span>`));
+  (r.setups || []).slice(0, 2).forEach(s => t.push(`<span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.n.replace(/^SMC: /, 'SMC ').replace(' (Minervini template)', ''))}</span>`));
+  if (!(r.setups || []).length) (r.patterns || []).filter(p => p.b).slice(0, 1).forEach(p => t.push(`<span class="tag ${p.b > 0 ? 'p' : 'n'}">${esc(p.n)}</span>`));
+  const RLt = r.risk ? Engine.riskLabel(r.risk) : null; if (RLt && RLt.leader) t.push('<span class="tag p">🏆 Leader</span>');
+  if (r.risk && r.risk.beta >= 1.4) t.push(`<span class="tag n">β ${r.risk.beta.toFixed(1)}</span>`);
+  const rsv = relStr(r); if (rsv != null && Math.abs(rsv) >= 10) t.push(`<span class="tag ${rsv > 0 ? 'p' : 'n'}">RS ${rsv > 0 ? '+' : ''}${rsv.toFixed(0)}%</span>`);
+  if (r.news && r.news.n && Math.abs(r.news.s) >= 0.15) t.push(`<span class="tag ${r.news.s > 0 ? 'p' : 'n'}">📰 ${r.news.s > 0 ? 'Positive' : 'Negative'} news</span>`);
+  const seen = new Set(), u = t.filter(x => { const k = x.replace(/<[^>]+>|📐 /g, '').trim().toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return u.length ? `<div>${u.join('')}</div>` : '';
+}
 
 // ---------- data (Yahoo Finance; works in the Android app via native HTTP) ----------
 const YH = 'https://query1.finance.yahoo.com';
@@ -90,72 +104,16 @@ function render() {
   clearInterval(S.timer); S.timer = null;
   document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mkt));
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
-  $('#navFno').style.display = ''; $('#navIpo').style.display = ''; $('#navFno').lastChild.textContent = S.mkt === 'US' ? 'Options' : 'F&O'; updBell();
+  $('#navFno').style.display = ''; $('#navFno').lastChild.textContent = S.mkt === 'US' ? 'Options' : 'F&O'; updBell();
   setLive(); window.scrollTo(0, 0);
-  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, ai: () => vAI(), settings: vSettings, ipo: vIpo, learn: vLearn })[S.tab]();
+  try {
+    ({ home: () => vHome(), scan: () => vScan(), fno: () => vFno(), saved: () => vSaved(), detail: () => vDetail(), broker: vBroker, alerts: vAlerts, ai: () => vAI(), settings: vSettings, learn: vLearn, paper: () => window.vPaper ? vPaper() : $('#view').innerHTML = '<div class="empty"><span class="spin"></span> Paper trading loading…</div>', flows: () => window.vFlows ? vFlows() : $('#view').innerHTML = '<div class="empty"><span class="spin"></span> Money flow loading…</div>' })[S.tab]();
+  } catch (e) { if (e instanceof ReferenceError && !render._retry) { render._retry = 1; setTimeout(() => { render._retry = 0; render(); }, 60); return; } throw e; } // view scripts still loading
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
-}
-function rowHTML(sym, name, price, chg, sc, lbl, tags = '', rank, bear) {
-  return `<div class="row" data-sym="${esc(sym)}">${rank ? `<div class="rk">${rank}</div>` : ''}${sc != null ? (bear ? `<div class="sc b-1">${sc}<small>${esc(lbl || '')}</small></div>` : badge(sc, lbl)) : ''}<div class="nm"><div class="s">${esc(sym)}</div><div class="f">${esc(name)}</div>${tags}</div>
-  <div class="px">${price != null ? cur() + fmt(price) : ''}<small>${chg != null ? pct(chg) : ''}</small></div></div>`;
 }
 function bindRows(el, hz) { el.querySelectorAll('.row[data-sym]').forEach(r => r.onclick = () => openDetail(r.dataset.sym, hz)); }
 function upsertRow(mkt, row) { const sc = S.scan[mkt]; if (!sc) return; const i = sc.rows.findIndex(r => r.sym === row.sym); if (i >= 0) sc.rows[i] = Object.assign(sc.rows[i], row); }
 
-function vHome() {
-  const m = MK[S.mkt], sc = S.scan[S.mkt];
-  const v = $('#view');
-  v.innerHTML = `<div class="search"><input id="q" placeholder="Search ${S.mkt === 'IN' ? 'any NSE stock or index' : 'any global stock, e.g. AAPL'}" autocomplete="off"></div>
-  <div id="sres"></div>${S.mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in for live prices.' : 'Connect your mStock account for exchange-accurate live prices. Tap to set up.'}</div>`) : ''}
-  <div class="idx" id="idx">${m.idx().map(x => `<div class="card" data-sym="${x[0]}"><div class="n">${x[1]}</div><div class="p" id="ix_${x[0]}"><span class="spin"></span></div><div id="ixc_${x[0]}" style="font-size:12px"></div></div>`).join('')}</div>
-  <div class="chips wrap" id="quick">${[['top', '⭐ Overall'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
-  <div class="card regime" id="regime"><span class="spin"></span></div>
-  ${S.mkt === 'US' ? usHoursHTML() : ''}
-  ${hasCat_() ? `<h3>Browse stocks</h3><div class="card"><div class="pick2" style="margin:0"><label><span>Market cap</span><select id="hbSize">${(S.mkt === 'US' ? SIZES_US : SIZES_IN).map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
-   <label><span>Sector</span><select id="hbSec"><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div><button class="btn w" id="hbGo" style="margin-top:10px">Show stocks</button></div>` : ''}
-  <h3>Top rated today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
-  <h3>Watchlist</h3><div id="wl">${S.saved[S.mkt].length ? '<div class="list">' + S.saved[S.mkt].map(s => rowHTML(s, nameOf(s), null, null, null)).join('') + '</div>' : '<div class="empty">Tap ☆ on any stock to save it here.</div>'}</div>
-  <h3>Popular</h3><div class="chips" style="flex-wrap:wrap">${(S.mkt === 'IN' ? window.SEED_IN.slice(0, 24) : window.US_LIST.slice(0, 24)).map(x => `<button data-sym="${x[0]}">${x[0]}</button>`).join('')}</div>
-  ${S.mkt === 'IN' && S.nse.seed ? '<p class="note">Showing a starter list. The full NSE list loads in the installed app build.</p>' : S.mkt === 'IN' ? `<p class="note">${S.nse.eq.length.toLocaleString()} NSE stocks · ${Object.keys(S.nse.fo || {}).length} F&O stocks · list from ${S.nse.updated}</p>`
-   : S.us && !S.us.seed ? `<p class="note">${S.us.eq.length.toLocaleString()} US-listed stocks · S&P 500/400/600 sectors · list from ${S.us.updated}</p>` : '<p class="note">Showing a starter list. The full US list loads in the installed app build.</p>'}`;
-  v.querySelectorAll('.idx .card, .chips button').forEach(b => b.onclick = () => openDetail(b.dataset.sym));
-  bindRows(v); $('#goScan').onclick = () => { go('scan'); runScan(); };
-  v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.q; go('scan'); if (!S.scan[S.mkt]) runScan(); });
-  const hb = $('#hbGo'); if (hb) hb.onclick = () => { const size = $('#hbSize').value; S.uni = { size, sector: size === 'FO' ? '' : $('#hbSec').value }; store.set('uniBy', S.uniBy); go('scan'); };
-  const rg = S.regime[S.mkt]; if (rg) { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(rg.v); } else regime(S.mkt).then(v => { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(v); });
-  setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = () => $('#gear').click();
-  m.idx().forEach(async x => {
-    try { const { meta } = await chart(x[2], '1d', '5m'); const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose;
-      $('#ix_' + x[0]).textContent = fmt(p); $('#ixc_' + x[0]).innerHTML = pct((p / pc - 1) * 100); } catch (e) { const el = $('#ix_' + x[0]); if (el) el.innerHTML = '<span class="mu" style="font-size:12px">offline</span>'; }
-  });
-  if (!navigator.onLine) v.insertAdjacentHTML('afterbegin', '<div class="warn">You are offline.</div>');
-}
-function usHoursHTML() { // US session in the user's local (IST) time, DST-aware
-  const d = new Date(), et = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-  const toLocal = (h, m) => { const guess = new Date(`${et}T12:00:00Z`), offMin = (new Date(guess.toLocaleString('en-US', { timeZone: 'America/New_York' })) - new Date(guess.toLocaleString('en-US', { timeZone: 'UTC' }))) / 60000;
-    const utc = new Date(Date.UTC(+et.slice(0, 4), +et.slice(5, 7) - 1, +et.slice(8, 10), h, m) - offMin * 60000); return utc.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }); };
-  return `<div class="card regime"><div style="display:flex;justify-content:space-between;align-items:center"><div><div class="note">US market hours (your time, IST)</div><b>${toLocal(9, 30)} – ${toLocal(16, 0)}</b></div><div class="note" style="text-align:right">9:30 AM – 4:00 PM New York<br>${marketOpen('US') ? '<span class="up">● Open now</span>' : 'Closed now'}</div></div></div>`;
-}
-function regimeHTML(v) { const t = v >= 60 ? ['up', 'Uptrend', 'longs get +' + Math.round((v - 50) / 10)] : v <= 40 ? ['dn', 'Downtrend', 'longs get ' + Math.round((v - 50) / 10)] : ['wa', 'Sideways', 'no adjustment'];
-  return `<div style="display:flex;justify-content:space-between;align-items:center"><div><div class="note">Market trend (${S.mkt === 'IN' ? 'Nifty 50' : 'S&P 500'})</div><b class="${t[0]}">${t[1]} · ${v}</b></div><div class="note" style="text-align:right">Ratings: ${t[2]}</div></div>`; }
-function picksHTML(sc) {
-  if (!sc || !sc.rows) return '<div class="empty">Run a scan to rank stocks by setup quality.</div>';
-  const top = rated(sc.rows, 'top').filter(x => x.rating >= 58).slice(0, 8);
-  return `<div class="list">${top.map((x, k) => rowHTML(x.r.sym, nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('') || '<div class="empty">No buys rated 58+ in the last scan.</div>'}</div><p class="note">Rating = signal × proven edge on that stock + market trend + news · scan at ${new Date(sc.at).toLocaleTimeString()}.</p>`;
-}
-function tagsOf(r) {
-  const t = [];
-  (r.cross || []).slice(0, 1).forEach(c => t.push(`<span class="tag ${c.dir > 0 ? 'p' : 'n'}">${esc(c.name.split(' ')[0])} ${c.days ? '~' + Math.max(1, Math.round(c.days)) + 'd' : 'crossed'}</span>`));
-  (r.chartPats || []).slice(0, 1).forEach(p => t.push(`<span class="tag ${p.b > 0 ? 'p' : p.b < 0 ? 'n' : ''}">📐 ${esc(p.n)}</span>`));
-  (r.setups || []).slice(0, 2).forEach(s => t.push(`<span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.n.replace(/^SMC: /, 'SMC ').replace(' (Minervini template)', ''))}</span>`));
-  if (!(r.setups || []).length) (r.patterns || []).filter(p => p.b).slice(0, 1).forEach(p => t.push(`<span class="tag ${p.b > 0 ? 'p' : 'n'}">${esc(p.n)}</span>`));
-  const RLt = r.risk ? Engine.riskLabel(r.risk) : null; if (RLt && RLt.leader) t.push('<span class="tag p">🏆 Leader</span>');
-  if (r.risk && r.risk.beta >= 1.4) t.push(`<span class="tag n">β ${r.risk.beta.toFixed(1)}</span>`);
-  const rsv = relStr(r); if (rsv != null && Math.abs(rsv) >= 10) t.push(`<span class="tag ${rsv > 0 ? 'p' : 'n'}">RS ${rsv > 0 ? '+' : ''}${rsv.toFixed(0)}%</span>`);
-  if (r.news && r.news.n && Math.abs(r.news.s) >= 0.15) t.push(`<span class="tag ${r.news.s > 0 ? 'p' : 'n'}">📰 ${r.news.s > 0 ? 'Positive' : 'Negative'} news</span>`);
-  const seen = new Set(), u = t.filter(x => { const k = x.replace(/<[^>]+>|📐 /g, '').trim().toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
-  return u.length ? `<div>${u.join('')}</div>` : '';
-}
 function setupSearch() {
   const q = $('#q'), out = $('#sres'); let tm;
   q.oninput = () => {
@@ -207,11 +165,13 @@ async function msQuotes(syms, mkt) {
 }
 async function dailyQuick(sym, mkt, Q) {
   const { D, meta } = await chart(ySym(sym, mkt), '2y', '1d');
-  let price = meta.regularMarketPrice, prev = null;
-  const o = Q && MS.overlay(D, Q[sym]); if (o) { price = o.price; prev = o.prev; }
-  const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price });
-  if (!q.err && prev) q.chg = (q.price / prev - 1) * 100;
-  if (!q.err) { q.risk = riskOf(D, mkt, sym); q.src = o ? 'ms' : 'yf'; q.srcAt = Date.now(); }
+  // one rule-set for price + previous close (see MS.basis in broker.js); meta.chartPreviousClose is NOT used (for a 2y range it is
+  // the close before the range start). mStock quote when connected, else Yahoo's last price, marked src 'yf'.
+  const mq = Q && Q[sym], hasMs = !!(mq && mq.last_price);
+  const b = MS.basis(D, { mkt, lp: hasMs ? mq.last_price : meta.regularMarketPrice, pq: hasMs && mq.ohlc ? mq.ohlc.close : null, q: mq, ms: hasMs, ts: meta.regularMarketTime });
+  const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price: b ? b.price : undefined });
+  if (!q.err && b && b.prev) { q.chg = (q.price / b.prev - 1) * 100; q.prev = b.prev; }
+  if (!q.err) { q.risk = riskOf(D, mkt, sym); q.src = b ? b.src : 'yf'; q.srcAt = Date.now(); if (b && b.official) q.closeDay = b.day; }
   if (!q.err && window.Learn) { Learn.resolve(sym, mkt, D); Learn.log(sym, mkt, q.horizons, q.t, q.price); }
   return q;
 }
@@ -271,7 +231,7 @@ function uniSyms(sel = S.uni, mkt = S.mkt) {
   }
   const cat = S.nse.cat || {}, hasCat = Object.keys(cat).length > 0;
   let L;
-  if (sel.size === 'FO') L = Object.keys(S.nse.fo || {});
+  if (sel.size === 'FO') L = foScannable();
   else if (sel.size === 'ALL') L = S.nse.eq.map(x => x[0]);
   else if (hasCat) L = Object.keys(cat).filter(s => cat[s][0] === sel.size);
   else L = window.SEED_IN.map(x => x[0]);
@@ -279,30 +239,6 @@ function uniSyms(sel = S.uni, mkt = S.mkt) {
   return L;
 }
 function uniLabel(sel = S.uni) { return `${((S.mkt === 'US' ? SIZES_US : SIZES_IN).find(x => x[0] === sel.size) || [, 'Stocks'])[1]}${sel.sector ? ' · ' + secName(sel.sector) : ''}`; }
-function vScan() {
-  const sc = S.scan[S.mkt], f = S.scanFilter || 'top', hasCat = hasCat_();
-  const syms = uniSyms(), have = sc ? new Set(sc.rows.map(r => r.sym)) : new Set(), missing = syms.filter(s => !have.has(s));
-  $('#view').innerHTML = `${true ? `<div class="pick2"><label><span>Market cap</span><select id="selSize">${(S.mkt === 'US' ? SIZES_US : SIZES_IN).filter(x => hasCat || !['M', 'S', 'U', 'L'].includes(x[0]) || (S.mkt === 'IN' && x[0] === 'L')).map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
-   <label><span>Sector</span><select id="selSec" ${!hasCat || S.uni.size === 'FO' ? 'disabled' : ''}><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div>` : ''}
-  <div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><b>${esc(uniLabel())}</b><div class="note">${syms.length.toLocaleString()} stocks${missing.length && sc ? ` · ${missing.length} not scanned yet` : ''}</div></div>
-   <button class="btn" id="run" ${S.scanning ? 'disabled' : ''}>${S.scanning ? '<span class="spin"></span>' : missing.length < syms.length && sc ? `Scan ${missing.length ? missing.length + ' new' : 'again'}` : 'Scan'}</button></div>
-  <div class="prog" id="prog" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div><div class="note" id="pmsg">${S.scanning ? S.scanMsg || 'Scanning…' : sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'} · keeps running if you leave the app (until you swipe it away)` : 'Rates every stock 0–100. Same number as on the stock page.'}</div></div>
-  <div class="chips wrap">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
-  $('#run').onclick = () => runScan(missing.length && sc && missing.length < syms.length ? missing : syms);
-  document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.f; vScan(); });
-  const ss = $('#selSize'); if (ss) ss.onchange = () => { S.uni = { size: ss.value, sector: ss.value === 'FO' ? '' : S.uni.sector }; store.set('uniBy', S.uniBy); vScan(); };
-  const se = $('#selSec'); if (se) se.onchange = () => { S.uni.sector = se.value; store.set('uniBy', S.uniBy); vScan(); };
-  drawScan();
-}
-function drawScan() {
-  const sc = S.scan[S.mkt], el = $('#sl'); if (!el) return;
-  if (!sc) { el.innerHTML = '<div class="empty">Pick a group and tap <b>Scan</b>.<br>Lists are ranked by rating, highest first.</div>'; return; }
-  const inUni = new Set(uniSyms()), f = S.scanFilter || 'top';
-  const rows = rated(sc.rows.filter(r => inUni.has(r.sym)), f).slice(0, 150);
-  el.innerHTML = rows.length ? `<p class="note">Scan from ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' (prices move; the stock page is live)' : ''}. ${f === 'sell' ? 'Lowest overall rating first = strongest sell.' : f === 'patterns' ? 'Chart patterns that pass strict shape rules AND showed an edge on 5 years of real NSE data. Open a stock to see the lines drawn.' : f === 'leaders' ? 'Positive alpha, good downside-adjusted returns and they rise more with the market than they fall with it. <a class="help" data-help="leader">What is this?</a>' : f === 'breakout' ? 'Fresh breakouts in stocks with positive alpha, highest rating first.' : f === 'near' ? 'Coiling just under resistance; buy only on the breakout close. Highest rating first.' : HZ.includes(f) ? `Stocks rated BUY for ${FILTERS.find(z => z[0] === f)[1].replace(/^\W+ /, '')}, highest ${f} rating first.` : 'Highest overall rating first.'}</p><div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
-    : `<div class="empty">Nothing in "${FILTERS.find(z => z[0] === f)[1]}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
-  bindRows(el, HZ.includes(f) ? f : 'overall');
-}
 async function enrichNews(mkt, rows) { // news for the strongest candidates, then re-rank
   if (!window.News) return;
   const pick = [...rated(rows, 'top', mkt).slice(0, 25), ...rated(rows, 'sell', mkt).slice(0, 10), ...rated(rows, 'setups', mkt).slice(0, 10)].map(x => x.r);
@@ -312,6 +248,7 @@ async function enrichNews(mkt, rows) { // news for the strongest candidates, the
 }
 function scanProgress(mkt, pct, msg) {
   if (pct != null) S.scanPct = pct; S.scanMsg = msg;
+  if (S.mkt === mkt && S.tab === 'fno') { const f = $('#foProg'); if (f && pct != null) { f.style.display = ''; f.firstChild.style.width = pct + '%'; } return; }
   if (S.mkt !== mkt || S.tab !== 'scan') return;
   const p = $('#prog div'); if (p && pct != null) p.style.width = pct + '%'; const m = $('#pmsg'); if (m) m.textContent = msg;
 }
@@ -331,7 +268,7 @@ async function runScan(syms) {
     const good = rows.filter(Boolean), prev = S.scan[mkt];
     const merged = new Map((prev ? prev.rows : []).map(r => [r.sym, r])); good.forEach(r => merged.set(r.sym, r));
     S.scan[mkt] = { at: Date.now(), rows: [...merged.values()], src: Q ? 'mStock live prices' : 'Yahoo Finance' };
-    if (S.tab === 'scan' && S.mkt === mkt) drawScan();
+    if (S.tab === 'scan' && S.mkt === mkt) drawScan(); else if (S.tab === 'fno' && S.mkt === mkt) drawFoList();
     await enrichNews(mkt, good);
     S.scan[mkt].at = Date.now(); store.set('scan', S.scan);
     // alerts on fresh results
@@ -343,33 +280,84 @@ async function runScan(syms) {
     if (!good.length) scanProgress(mkt, 100, 'Could not load data. Check your internet connection.');
   } finally {
     S.scanning = false; Alerts.keepAlive(!!Alerts.prefs().watch, 'Watching your saved stocks');
-    if (S.tab === 'scan' && S.mkt === mkt) vScan();
+    if (S.tab === 'scan' && S.mkt === mkt) vScan(); else if (S.tab === 'fno' && S.mkt === mkt) { const f = $('#foProg'); if (f) f.style.display = 'none'; drawFoList(); }
     if (S.tab === 'home' && S.mkt === mkt) render();
   }
 }
 
-// ---------- F&O ----------
+// ---------- F&O universe (every NSE + BSE F&O underlying) ----------
+// S.fo = { SYM: { lot, ex: 'NFO'|'BFO', type: 'stock'|'index', bse?: 1 (also on BSE), bseOnly?: 1 } }
+// Sources: nse.json (CI, NSE fo_mktlots) -> overlaid with MS.foUniverse() (mStock script master, daily, authoritative) when logged in.
+const FNO_IDX = [['NIFTY', 'Nifty 50'], ['BANKNIFTY', 'Bank Nifty'], ['FINNIFTY', 'Fin Nifty'], ['MIDCPNIFTY', 'Midcap Select'], ['SENSEX', 'Sensex'], ['BANKEX', 'Bankex']];
+const istDayStr = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+function buildFo() {
+  const fo = {}, n = S.nse || {};
+  for (const [s, l] of Object.entries(n.fo || {})) fo[s] = { lot: l || 0, ex: 'NFO', type: 'stock' };
+  for (const s of ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50']) fo[s] = { lot: (n.idx || {})[s] || 0, ex: 'NFO', type: 'index' };
+  for (const s of (n.bidx || ['SENSEX', 'BANKEX', 'SENSEX50'])) fo[s] = { lot: 0, ex: 'BFO', type: 'index' };
+  let src = n.seed || !Object.keys(n.fo || {}).length ? null : 'NSE list ' + (n.updated || '');
+  const c = store.get('foUni', null);
+  if (c && c.u && c.day === istDayStr()) {
+    const eq = new Set((n.eq || []).map(x => x[0]));
+    for (const [s, v] of Object.entries(c.u)) {
+      const e = fo[s];
+      if (e) { if (v.lot > 0) e.lot = v.lot; if (v.ex === 'BFO' && e.type === 'stock') e.bse = 1; if (v.ex === 'NFO' && e.ex === 'BFO') e.ex = 'NFO'; }
+      else fo[s] = { lot: v.lot || 0, ex: v.ex || 'NFO', type: v.type || 'stock', bseOnly: v.ex === 'BFO' && v.type !== 'index' && !eq.has(s) ? 1 : undefined };
+    }
+    src = 'mStock live';
+  }
+  S.fo = fo; S.foSrc = src; return fo;
+}
+async function refreshFoLive(force) { // true when the universe changed
+  if (!(window.MS && MS.ok && MS.ok() && MS.foUniverse)) return false;
+  const c = store.get('foUni', null); if (!force && c && c.day === istDayStr()) return false;
+  try { const u = await MS.foUniverse(); if (u && Object.keys(u).length > 50) { store.set('foUni', { day: istDayStr(), u }); buildFo(); return true; } } catch (e) {}
+  return false;
+}
+const foStocks = () => Object.keys(S.fo || {}).filter(s => S.fo[s].type === 'stock');
+const foScannable = () => foStocks().filter(s => !S.fo[s].bseOnly);
+
+// ---------- F&O screen ----------
 function vFno() {
   if (S.mkt === 'US') return vOptUS();
-  const sc = S.scan.IN, foSet = new Set(Object.keys(S.nse.fo || {})), lots = foSet.size;
-  const fo0 = sc ? sc.rows.filter(r => foSet.has(r.sym)) : [], fo = fo0.length ? fo0 : null;
-  $('#view').innerHTML = `<h3>Index options · call or put? <a id="optRef">Refresh</a></h3><div id="optBox">${['NIFTY', 'BANKNIFTY', 'SENSEX'].map(s => `<div class="card" id="opt_${s}"><span class="spin"></span> ${s}…</div>`).join('')}</div>
-  <h3>Indices</h3><div class="list">${window.IDX_IN.map(x => rowHTML(x[0], x[1] + (foLot(x[0]) ? ' · lot ' + foLot(x[0]) : ''), null, null, null)).join('')}</div>
-  <h3>F&O stock setups <a id="fscan">${lots ? (fo ? 'Rescan' : 'Scan F&O stocks') : ''}</a></h3>
-  ${!lots ? '<div class="warn">F&O list and lot sizes load in the installed app build.</div>' : ''}
-  ${fo ? `<h3>Long ideas · highest rated first</h3><div class="list">${rated(fo, 'top', 'IN').filter(x => x.rating >= 58).slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'LONG', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No long setups.</div>'}</div>
-     <h3>Short ideas · lowest rating first</h3><div class="list">${rated(fo, 'sell', 'IN').slice(0, 30).map((x, k) => rowHTML(x.r.sym, `Lot ${foLot(x.r.sym)} · ${nameOf(x.r.sym)}`, x.r.price, x.r.chg, x.rating, 'SHORT', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No short setups.</div>'}</div>`
-    : '<div class="empty">Scan the F&O list to rank futures longs and shorts.</div>'}
-  <p class="note">Call/put ratings come from the index's intraday + swing signals. Live premiums need mStock (⚙️). Open interest and IV aren't included, so check the option chain before trading. Option buyers can lose 100% quickly.</p>`;
-  bindRows($('#view'));
+  if (!S.fo) buildFo();
+  const sel = store.get('fnoIdx', ['NIFTY', 'BANKNIFTY', 'SENSEX']).filter(s => FNO_IDX.some(x => x[0] === s));
+  const st = S.fnoF = S.fnoF || { q: '', sec: '', side: 'all', n: 80 };
+  const cat = S.nse.cat || {}, secs = [...new Set(foStocks().map(s => (cat[s] || [])[1]).filter(Boolean))].sort();
+  const n = foStocks().length, nb = foStocks().filter(s => S.fo[s].bse || S.fo[s].bseOnly).length;
+  $('#view').innerHTML = `<h3>Index options <a id="optRef">Refresh</a></h3>
+  <div class="chips wrap" id="idxSel">${FNO_IDX.map(x => `<button data-i="${x[0]}" class="${sel.includes(x[0]) ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
+  <div id="optBox">${sel.map(s => `<div class="card" id="opt_${s}"><span class="spin"></span> ${s}…</div>`).join('')}</div>
+  <h3>F&O stocks <span class="note" id="foCnt">${n ? `${n} · NSE${nb ? ' + ' + nb + ' on BSE' : ''}` : ''}</span> <a id="fscan">${n ? 'Scan all F&O' : ''}</a></h3>
+  ${n ? `<div class="prog" id="foProg" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div>
+  <div class="search" style="margin:0 0 8px"><input id="foQ" placeholder="Search F&O stocks" value="${esc(st.q)}" autocomplete="off"></div>
+  <div class="pick2"><label><span>Sector</span><select id="foSec"><option value="">All sectors</option>${secs.map(s => `<option value="${esc(s)}" ${st.sec === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label>
+   <label><span>Show</span><select id="foSide">${[['all', 'All'], ['long', 'Long ideas'], ['short', 'Short ideas']].map(x => `<option value="${x[0]}" ${st.side === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label></div>
+  <div id="foList"></div>`
+  : '<div class="warn">F&O list loads in the installed app build. Log in to mStock for the live list.</div>'}`;
   S.optO = {};
-  const loadOpts = () => ['NIFTY', 'BANKNIFTY', 'SENSEX'].forEach(s => indexOption(s).then(o => { S.optO[s] = o; const el = $('#opt_' + s); if (el) el.outerHTML = optCard(o); bindOpt(); }).catch(e => { const el = $('#opt_' + s); if (el) el.innerHTML = `<b>${s}</b><div class="note dn">Could not analyse: ${esc(e.message)}</div>`; }));
-  loadOpts(); $('#optRef').onclick = () => { ['NIFTY', 'BANKNIFTY', 'SENSEX'].forEach(s => { const el = $('#opt_' + s); if (el) el.innerHTML = '<span class="spin"></span>'; }); loadOpts(); };
+  const loadOne = s => indexOption(s).then(o => { S.optO[s] = o; const el = $('#opt_' + s); if (el) el.outerHTML = optCard(o); bindOpt(); }).catch(e => { const el = $('#opt_' + s); if (el) el.innerHTML = `<b>${s}</b><div class="note dn">Could not analyse: ${esc(e.message)}</div>`; });
+  const loadOpts = () => store.get('fnoIdx', sel).forEach(loadOne);
+  loadOpts(); $('#optRef').onclick = () => { store.get('fnoIdx', sel).forEach(s => { const el = $('#opt_' + s); if (el) el.innerHTML = '<span class="spin"></span>'; }); loadOpts(); };
+  document.querySelectorAll('#idxSel [data-i]').forEach(b => b.onclick = () => {
+    const cur_ = store.get('fnoIdx', sel), s = b.dataset.i, on = !cur_.includes(s), next = on ? FNO_IDX.map(x => x[0]).filter(x => x === s || cur_.includes(x)) : cur_.filter(x => x !== s);
+    store.set('fnoIdx', next); b.classList.toggle('on', on);
+    if (on) { $('#optBox').insertAdjacentHTML('beforeend', `<div class="card" id="opt_${s}"><span class="spin"></span> ${s}…</div>`); loadOne(s); }
+    else { const el = $('#opt_' + s); if (el) el.remove(); delete S.optO[s]; }
+  });
+  if (n) {
+    drawFoList();
+    const q = $('#foQ'); q.oninput = () => { st.q = q.value.trim(); st.n = 80; drawFoList(); };
+    $('#foSec').onchange = e => { st.sec = e.target.value; st.n = 80; drawFoList(); };
+    $('#foSide').onchange = e => { st.side = e.target.value; st.n = 80; drawFoList(); };
+    $('#fscan').onclick = () => { if (!S.scanning) { S.scanPct = 0; runScan(foScannable()); const p = $('#foProg'); if (p) p.style.display = ''; } };
+  }
+  refreshFoLive().then(ch => { if (ch && S.tab === 'fno') { buildFo(); drawFoList(); const c = $('#foCnt'); if (c) c.textContent = `${foStocks().length} · NSE + BSE`; } });
   if (marketOpen('IN')) {
-    let n = 0, busyT = false;
+    let k = 0, busyT = false;
     S.timer = setInterval(async () => {
       if (S.tab !== 'fno' || document.hidden) return;
-      if (++n % 30 === 0) return loadOpts(); // full re-analysis every 60 s
+      if (++k % 30 === 0) return loadOpts(); // full re-analysis every 60 s
       if (busyT || !(window.MS && MS.ok())) return; busyT = true;
       try {
         const O = Object.values(S.optO || {}).filter(o => o.idxKey), keys = O.flatMap(o => [o.idxKey, ...(o.live || []).filter(Boolean).map(x => x.k)]);
@@ -384,7 +372,29 @@ function vFno() {
       } catch (e) {} finally { busyT = false; }
     }, 2000);
   }
-  const b = $('#fscan'); if (b) b.onclick = () => { S.uni = { size: 'FO', sector: '' }; store.set('uniBy', S.uniBy); go('scan'); runScan(); };
+}
+// the searchable, sector-filtered list of every F&O stock: rated ones first (best rating first), then unscanned A-Z
+function drawFoList() {
+  const el = $('#foList'); if (!el) return;
+  const st = S.fnoF, U = S.fo || {}, cat = S.nse.cat || {}, sc = S.scan.IN, by = new Map(sc ? sc.rows.map(r => [r.sym, r]) : []), q = st.q.toUpperCase();
+  const items = [];
+  for (const s of foStocks()) {
+    if (st.sec && (cat[s] || [])[1] !== st.sec) continue;
+    const nm = nameOf(s); if (q && !s.startsWith(q) && !nm.toUpperCase().includes(q)) continue;
+    const r = by.get(s), R = r && !r.err ? rateRow(r, 'IN') : null;
+    if (st.side === 'long' && !(R && R.rating >= 58)) continue;
+    if (st.side === 'short' && !(R && R.rating <= 42)) continue;
+    items.push({ s, nm, r, R });
+  }
+  items.sort((a, b) => (b.R ? b.R.rating : -1) - (a.R ? a.R.rating : -1) || a.s.localeCompare(b.s));
+  if (st.side === 'short') items.reverse();
+  const shown = items.slice(0, st.n), done = items.filter(x => x.R).length;
+  const lotTxt = s => U[s].lot ? `Lot ${U[s].lot} · ` : '';
+  el.innerHTML = `<div class="note" style="margin:0 2px 8px">${items.length} stocks${done < items.length && !S.scanning ? ` · ${items.length - done} not scanned` : ''}${sc && done ? ` · scan ${new Date(sc.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}${S.foSrc ? ' · ' + esc(S.foSrc) : ''}</div>
+  <div class="list">${shown.map((x, k) => { const sub = lotTxt(x.s) + x.nm + (U[x.s].bseOnly ? ' · BSE only' : ''); return x.R ? rowHTML(x.s, sub, x.r.price, x.r.chg, x.R.rating, actLabel(x.R.action), tagsOf(x.r)) : rowHTML(x.s, sub, null, null, null); }).join('') || '<div class="empty">No F&O stock matches.</div>'}</div>
+  ${items.length > shown.length ? `<button class="btn w" id="foMore" style="margin-top:10px">Show ${Math.min(80, items.length - shown.length)} more (${items.length - shown.length} left)</button>` : ''}`;
+  bindRows(el); const m = $('#foMore'); if (m) m.onclick = () => { st.n += 80; drawFoList(); };
+  if (window.hydrateRows) hydrateRows(el, 12, true);
 }
 
 function vOptUS() {
@@ -412,7 +422,8 @@ async function indexOption(sym, mkt = 'IN') {
   const [d, it0, live] = await Promise.all([chart(ys, '2y', '1d'), chart(ys, '5d', '5m').catch(() => null), useMS ? MS.index(sym).catch(e => ({ err: e.message })) : null]);
   let it = it0, price = d.meta.regularMarketPrice, srcLbl = 'Yahoo (can lag)';
   if (live && !live.err) {
-    MS.overlay(d.D, { last_price: live.price, ohlc: { open: live.open, high: live.high, low: live.low, close: live.prev } }); price = live.price; srcLbl = 'mStock live';
+    const ov = MS.overlay(d.D, { last_price: live.price, ohlc: { open: live.open, high: live.high, low: live.low, close: live.prev } }); price = live.price; srcLbl = 'mStock live';
+    if (ov && ov.prev) live.prev = ov.prev; // guarded previous close (mStock may switch ohlc.close to today's close after 15:30)
     if (open && live.key.tok) { try { const D5 = await MS.candles(sym, '5minute', 5); if (D5.c.length > 20) { D5.c[D5.c.length - 1] = live.price; it = { D: D5 }; srcLbl = 'mStock live · mStock 5-min bars'; } } catch (e) {} }
   }
   const A = Engine.analyze(d.D, { intra: open && it ? it.D : null, tick: US ? 0.01 : 0.05, canShort: true, backtest: true, price, fnoSym: sym, lot: foLot(sym, mkt) });
@@ -446,7 +457,7 @@ async function indexOption(sym, mkt = 'IN') {
   return o;
 }
 function optCard(o) {
-  const A = o.A, US = o.mkt === 'US', name = { NIFTY: 'Nifty 50', BANKNIFTY: 'Bank Nifty', SENSEX: 'Sensex', SPY: 'SPY · S&P 500', QQQ: 'QQQ · Nasdaq-100', IWM: 'IWM · Russell 2000' }[o.sym] || o.sym;
+  const A = o.A, US = o.mkt === 'US', name = { NIFTY: 'Nifty 50', BANKNIFTY: 'Bank Nifty', FINNIFTY: 'Fin Nifty', MIDCPNIFTY: 'Midcap Select', SENSEX: 'Sensex', BANKEX: 'Bankex', SPY: 'SPY · S&P 500', QQQ: 'QQQ · Nasdaq-100', IWM: 'IWM · Russell 2000' }[o.sym] || o.sym;
   const SN = s => US ? (s === 'CE' ? 'CALL' : 'PUT') : s, cur$ = US ? '$' : '₹';
   const L = o.L, s = o.side ? o.strikes[o.pick] : null, lv = o.live && o.live[o.pick];
   const lot = (lv && lv.lot) || foLot(o.sym, o.mkt);
@@ -469,87 +480,10 @@ function optCard(o) {
 }
 function bindOpt() { document.querySelectorAll('.optOpen').forEach(a => a.onclick = () => openDetail(a.dataset.sym, 'intraday')); }
 
-// ---------- IPOs ----------
-async function vIpo() {
-  if (S.mkt === 'US') return vIpoUS();
-  const v = $('#view');
-  v.innerHTML = `<h3>IPOs · grey market premium <a id="ipoRef">Refresh</a></h3><div id="ipoBody"><div class="empty"><span class="spin"></span> Loading live GMP…</div></div>
-   <p class="note">*Allotment and listing are expected dates under SEBI's T+3 timeline (allotment 1 working day after close, listing 3). Exchange holidays can shift them, so confirm on the registrar's site.</p>
-   <p class="note">GMP is unofficial and unregulated grey-market data. It changes daily and does not guarantee the listing price. Rating = GMP % + GMP trend + news + market trend − SME risk. Not investment advice.</p>`;
-  $('#ipoRef').onclick = () => { S.ipo = null; vIpo(); };
-  try {
-    if (!S.ipo || Date.now() - S.ipo.at > 10 * 60e3) S.ipo = await IPO.load();
-    await regime('IN');
-    const snap = store.get('ipoGmp', {}), today = new Date().toISOString().slice(0, 10);
-    const L = S.ipo.list.map(x => { const k = x.name.toLowerCase(), prevE = snap[k]; const prev = prevE && prevE.d !== today ? prevE.g : prevE && prevE.pg;
-      const n = S.news['IPO:' + k]; return Object.assign(x, { R: IPO.rate(x, { prevGmp: prev, news: n ? n.s : 0, regime: (S.regime.IN || {}).v }) }); });
-    for (const x of L) { const k = x.name.toLowerCase(), e = snap[k]; snap[k] = e && e.d === today ? e : { g: x.gmp, d: today, pg: e ? e.g : undefined }; snap[k].g = x.gmp; }
-    store.set('ipoGmp', snap);
-    const live = L.filter(x => !/closed|listed/i.test(x.status)).sort((a, b) => b.R.rating - a.R.rating), done = L.filter(x => /closed/i.test(x.status)).sort((a, b) => b.R.gmpPct - a.R.gmpPct), listed = L.filter(x => /listed/i.test(x.status));
-    for (const x of live) if (x.R.rating >= 70) Alerts.evaluate({ sym: 'IPO ' + x.name, mkt: 'IN', price: x.price, rating: x.R.rating, action: x.R.action, setups: [{ n: `IPO ${x.R.action}`, b: 1, q: x.R.rating }] }, true);
-    Alerts.save(); Alerts.flush();
-    const card = (x, k) => `<div class="card ipo" data-ipo="${esc(x.name)}"><div class="ohead"><div style="min-width:0"><div class="s">${k ? `<span class="rk">${k}</span> ` : ''}${esc(x.name)}</div><div class="note">${x.sme ? '<span class="tag n">SME</span>' : '<span class="tag">Mainboard</span>'} ${esc(x.status)}</div></div>
-      <div class="sc ${x.R.rating >= 58 ? 'b1' : x.R.rating <= 44 ? 'b-1' : 'b0'}">${x.R.rating}<small>${esc(x.R.action.split(' ')[0])}</small></div></div>
-      ${(() => { const Dt = IPO.dates(x.dates), f = d => d ? d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' }) : '–';
-        return Dt ? `<div class="ipod"><div><span>Opens</span><b>${f(Dt.open)}</b></div><div><span>Closes</span><b>${f(Dt.close)}</b></div><div><span>Allotment*</span><b>${f(Dt.allot)}</b></div><div><span>Listing*</span><b>${f(Dt.list)}</b></div></div><div class="ipow">${esc(IPO.when(Dt))}</div>` : ''; })() || (x.dates ? `<div class="ipod1">📅 ${esc(x.dates)} <span class="mu">(open – close)</span></div>` : '<div class="ipod1 mu">📅 Dates not announced yet</div>')}
-      <div class="ipog"><div><span>GMP</span><b class="${x.gmp > 0 ? 'up' : x.gmp < 0 ? 'dn' : ''}">${x.gmp > 0 ? '+' : ''}₹${fmt(x.gmp, 0)} · ${x.R.gmpPct.toFixed(1)}%</b></div><div><span>Price band</span><b>${esc(x.priceBand || '–')}</b></div><div><span>Est. listing</span><b>${esc(x.est || '–')}</b></div></div>
-      <div class="ipox" style="display:none"><div class="pill ${x.R.rating >= 58 ? 'b1' : x.R.rating <= 44 ? 'b-1' : 'b0'}" style="display:inline-block;margin:8px 0">${esc(x.R.action)}</div>
-      <ul class="why">${x.R.why.map(w => `<li>${w[0] >= 0 ? '<span class="up">▲</span>' : '<span class="dn">▼</span>'} ${esc(w[1])}</li>`).join('')}</ul><div class="inews note"><span class="spin"></span> News…</div></div></div>`;
-    $('#ipoBody').innerHTML = `${live.length ? `<p class="note">Open & upcoming · highest rating first · ${esc(S.ipo.src)} · ${new Date(S.ipo.at).toLocaleTimeString()}</p>${live.map((x, k) => card(x, k + 1)).join('')}` : '<div class="empty">No open or upcoming IPOs right now.</div>'}
-      ${done.length ? `<h3>Closed · allotment & listing coming</h3>${done.map(x => card(x)).join('')}` : ''}
-      ${listed.length ? `<h3>Recently listed · did the GMP get it right?</h3><div class="list">${listed.map(x => { const g = isFinite(x.price) && x.price > 0 ? (x.listPrice / x.price - 1) * 100 : NaN, exp = x.R.gmpPct;
-        return `<div class="row"><div class="nm"><div class="s">${esc(x.name)}</div><div class="f">${x.sme ? 'SME' : 'Mainboard'} · issue ₹${fmt(x.price, 0)} · GMP said ${exp >= 0 ? '+' : ''}${exp.toFixed(0)}%</div></div><div class="px">₹${fmt(x.listPrice, 2)}<small>${isFinite(g) ? pct(g) : ''} listing</small></div></div>`; }).join('')}</div>` : ''}`;
-    document.querySelectorAll('.ipo').forEach(c => c.onclick = async () => {
-      const box = c.querySelector('.ipox'); const openNow = box.style.display === 'none'; box.style.display = openNow ? '' : 'none'; if (!openNow || c._news) return; c._news = 1;
-      const name = c.dataset.ipo, el = c.querySelector('.inews');
-      try { const N = await News.get(name + ' IPO', name + ' IPO', true); S.news['IPO:' + name.toLowerCase()] = { s: +(N.score * Math.min(1, N.n / 3)).toFixed(2), n: N.n, at: Date.now() }; store.set('news', S.news);
-        el.innerHTML = `<b>News ${newsHead(N)}</b>` + newsHTML(N); el.querySelectorAll('a').forEach(a => a.onclick = e => e.stopPropagation()); }
-      catch (e) { el.textContent = 'News unavailable.'; }
-    });
-  } catch (e) { $('#ipoBody').innerHTML = `<div class="warn">Could not load IPO data (${esc(e.message)}). It works in the installed app; browsers block these sites.</div>`; }
-}
-
-// ---------- US IPO calendar (Nasdaq) ----------
-async function usIpos() {
-  const ym = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, now = new Date(), prev = new Date(now.getFullYear(), now.getMonth() - 1, 1), next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const get = async m => { const r = await fetch(`https://api.nasdaq.com/api/ipo/calendar?date=${m}`, { headers: { Accept: 'application/json, text/plain, */*' } }); if (!r.ok) throw new Error('HTTP ' + r.status); return (await r.json()).data || {}; };
-  const res = await Promise.allSettled([get(ym(prev)), get(ym(now)), get(ym(next))]), up = new Map(), pr = new Map();
-  for (const x of res) if (x.status === 'fulfilled') {
-    const d = x.value, U = ((d.upcoming || {}).upcomingTable || {}).rows || [], P = (d.priced || {}).rows || [];
-    for (const r of U) up.set(r.proposedTickerSymbol || r.companyName, r);
-    for (const r of P) pr.set(r.proposedTickerSymbol || r.companyName, r);
-  }
-  if (!up.size && !pr.size && res.every(x => x.status === 'rejected')) throw res[0].reason;
-  return { up: [...up.values()], pr: [...pr.values()], at: Date.now() };
-}
-async function vIpoUS() {
-  const v = $('#view');
-  v.innerHTML = `<h3>US IPOs · calendar <a id="ipoRef">Refresh</a></h3><div id="ipoBody"><div class="empty"><span class="spin"></span> Loading Nasdaq IPO calendar…</div></div>
-   <p class="note">US IPOs have no grey market (GMP), so upcoming deals aren't rated. Recently listed ones show how they've traded since pricing. Data: Nasdaq IPO calendar.</p>`;
-  $('#ipoRef').onclick = () => { S.ipoUS = null; vIpoUS(); };
-  try {
-    if (!S.ipoUS || Date.now() - S.ipoUS.at > 15 * 60e3) S.ipoUS = await usIpos();
-    const { up, pr } = S.ipoUS, dt = s => { const d = new Date(s); return isFinite(d) ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : (s || '–'); };
-    up.sort((a, b) => new Date(a.expectedPriceDate) - new Date(b.expectedPriceDate)); pr.sort((a, b) => new Date(b.pricedDate) - new Date(a.pricedDate));
-    const recent = pr.slice(0, 15);
-    $('#ipoBody').innerHTML = `${up.length ? up.map(r => `<div class="card ipo" data-ipo="${esc(r.companyName)}"><div class="ohead"><div style="min-width:0"><div class="s">${esc(r.companyName)}</div><div class="note"><span class="tag">${esc(r.proposedExchange || 'US')}</span> ${esc(r.proposedTickerSymbol || '')}</div></div><div class="sc b0">–<small>UNRATED</small></div></div>
-        <div class="ipod"><div><span>Expected pricing</span><b>${dt(r.expectedPriceDate)}</b></div><div><span>Trading from*</span><b>${(() => { const d = new Date(r.expectedPriceDate); if (!isFinite(d)) return '–'; d.setDate(d.getDate() + 1); while (!(d.getDay() % 6)) d.setDate(d.getDate() + 1); return dt(d); })()}</b></div><div><span>Price range</span><b>$${esc(r.proposedSharePrice || '–')}</b></div><div><span>Deal size</span><b>${esc(r.dollarValueOfSharesOffered || '–')}</b></div></div>
-        <div class="ipox" style="display:none"><div class="note" style="margin-top:8px">${esc(r.sharesOffered || '')} shares offered.</div><div class="inews note"><span class="spin"></span> News…</div></div></div>`).join('') : '<div class="empty">No upcoming US IPOs on the calendar.</div>'}
-      ${recent.length ? `<h3>Recently priced · how are they trading?</h3><div class="list" id="usPr">${recent.map(r => `<div class="row" data-sym="${esc(r.proposedTickerSymbol || '')}"><div class="nm"><div class="s">${esc(r.proposedTickerSymbol || '')} <span class="mu" style="font-weight:500">${esc(r.companyName)}</span></div><div class="f">IPO $${esc(r.proposedSharePrice)} · priced ${dt(r.pricedDate)} · ${esc(r.proposedExchange || '')}</div></div><div class="px" id="usp_${esc(r.proposedTickerSymbol || '')}"><span class="spin"></span></div></div>`).join('')}</div>` : ''}
-      <p class="note">*US IPOs usually price the evening before they start trading, so the first trading day is shown as the next business day. Holidays can shift it.</p>`;
-    bindRows($('#ipoBody'));
-    document.querySelectorAll('.ipo').forEach(c => c.onclick = async () => { const box = c.querySelector('.ipox'), on = box.style.display === 'none'; box.style.display = on ? '' : 'none'; if (!on || c._n) return; c._n = 1;
-      const el = c.querySelector('.inews'); try { const N = await News.get(c.dataset.ipo + ' IPO', c.dataset.ipo + ' IPO', false); el.innerHTML = `<b>News ${newsHead(N)}</b>` + newsHTML(N); } catch (e) { el.textContent = 'News unavailable.'; } });
-    await pool(recent, 4, async r => { const s = r.proposedTickerSymbol, el = document.getElementById('usp_' + s); if (!s || !el) return;
-      try { const { D, meta } = await chart(s, '3mo', '1d'), ipo = parseFloat(String(r.proposedSharePrice).replace(/[^\d.]/g, '')), px = meta.regularMarketPrice || D.c[D.c.length - 1];
-        el.innerHTML = `$${fmt(px)}<small>${isFinite(ipo) && ipo > 0 ? pct((px / ipo - 1) * 100) + ' vs IPO' : ''}</small>`; } catch (e) { el.innerHTML = '<small class="mu">not trading yet</small>'; } });
-  } catch (e) { $('#ipoBody').innerHTML = `<div class="warn">Could not load the US IPO calendar (${esc(e.message)}). It works in the installed app; browsers block it.</div>`; }
-}
-
 // ---------- saved ----------
 function vSaved() {
   const L = S.saved[S.mkt];
-  $('#view').innerHTML = L.length ? `<div class="card" id="wbeta" data-help="wbeta"><span class="spin"></span> Measuring watchlist risk…</div><div class="list" id="svl">${L.map(s => rowHTML(s, nameOf(s), null, null, null)).join('')}</div><p class="note">Overall rating, highest first.</p>` : '<div class="empty">Nothing saved yet. Open any stock and tap ☆.</div>';
+  $('#view').innerHTML = L.length ? `<div class="card" id="wbeta" data-help="wbeta"><span class="spin"></span> Measuring watchlist risk…</div><div class="list" id="svl">${L.map(s => rowHTML(s, nameOf(s), null, null, null)).join('')}</div>` : '<div class="empty">Nothing saved yet. Open any stock and tap ☆.</div>';
   bindRows($('#view'));
   const mkt = S.mkt;
   const got = {}; S.wrisk = {};
@@ -656,24 +590,24 @@ function vBroker() {
 // ---------- settings ----------
 function vSettings() {
   const P = Alerts.prefs(), pin = Sec.hasPin(), secure = store.get('secure', false), al = store.get('autolock', 60);
-  $('#view').innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">Settings</div><div class="f">Data · security · alerts</div></div></div>
+  $('#view').innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">Settings</div></div></div>
   <h3>Live data</h3><div class="list"><div class="row" id="goBroker"><div class="nm"><div class="s">🔌 mStock (Mirae Asset)</div><div class="f">${esc(MS.status())}</div></div><div class="px">›</div></div></div>
   <h3>Security</h3><div class="card">
-   <div class="srow"><div><b>App PIN</b><div class="note">${pin ? 'On · locks the app and encrypts your mStock key' : 'Off · anyone with your phone can open the app'}</div></div><button class="btn sm ${pin ? 'g' : ''}" id="pinBtn">${pin ? 'Change' : 'Set PIN'}</button></div>
-   ${pin ? `<div class="srow"><div><b>Auto-lock</b><div class="note">Lock after the app is in the background for</div></div><select id="autolock">${[[0, 'Immediately'], [60, '1 min'], [300, '5 min'], [1800, '30 min']].map(x => `<option value="${x[0]}" ${al == x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></div>
+   <div class="srow"><div><b>App PIN</b><div class="note">${pin ? 'On' : 'Off'}</div></div><button class="btn sm ${pin ? 'g' : ''}" id="pinBtn">${pin ? 'Change' : 'Set PIN'}</button></div>
+   ${pin ? `<div class="srow"><div><b>Auto-lock</b><div class="note">Lock after background time</div></div><select id="autolock">${[[0, 'Immediately'], [60, '1 min'], [300, '5 min'], [1800, '30 min']].map(x => `<option value="${x[0]}" ${al == x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></div>
    <div class="srow"><div><b>Remove PIN</b></div><button class="btn sm g" id="pinOff">Remove</button></div>` : ''}
-   <div class="srow"><div><b>Hide in Recents & block screenshots</b><div class="note">Stops other apps and screen recorders from seeing your data</div></div><input type="checkbox" class="tg" id="secure" ${secure ? 'checked' : ''}></div>
-   <div class="srow"><div><b>Erase everything on this phone</b><div class="note">Key, session, watchlist, scans, alerts</div></div><button class="btn sm g" id="wipe" style="color:var(--dn)">Erase</button></div></div>
+   <div class="srow"><div><b>Hide in Recents & block screenshots</b></div><input type="checkbox" class="tg" id="secure" ${secure ? 'checked' : ''}></div>
+   <div class="srow"><div><b>Erase everything on this phone</b></div><button class="btn sm g" id="wipe" style="color:var(--dn)">Erase</button></div></div>
   <h3>Alerts</h3><div class="card">
-   <div class="srow"><div><b>Phone notifications</b><div class="note">New strong buys, SMC/VCP setups, EMA crosses, big news, price alerts</div></div><input type="checkbox" class="tg" id="notify" ${P.notify ? 'checked' : ''}></div>
-   <div class="srow"><div><b>Background watch</b><div class="note">Re-checks your saved stocks every 5 min in market hours while the app is in Recents. Swiping the app away stops it.</div></div><input type="checkbox" class="tg" id="watch" ${P.watch ? 'checked' : ''}></div>
+   <div class="srow"><div><b>Phone notifications</b></div><input type="checkbox" class="tg" id="notify" ${P.notify ? 'checked' : ''}></div>
+   <div class="srow"><div><b>Background watch</b><div class="note">Checks saved stocks every 5 min while the app is in Recents</div></div><input type="checkbox" class="tg" id="watch" ${P.watch ? 'checked' : ''}></div>
    <div class="srow"><div><b>Alert on non-saved stocks at rating</b></div><select id="strong">${[70, 75, 80, 85].map(x => `<option ${P.strong == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
   <h3>Scanner</h3><div class="card">
-   <div class="srow"><div><b>Skip illiquid stocks</b><div class="note">Average daily value traded below</div></div><select id="liq">${(S.mkt === 'IN' ? [[0, 'Off'], [1e6, '₹10 lakh'], [1e7, '₹1 Cr'], [5e7, '₹5 Cr'], [1e8, '₹10 Cr']] : [[0, 'Off'], [1e6, '$1M'], [5e6, '$5M'], [2e7, '$20M']]).map(x => `<option value="${x[0]}" ${S.minTurnover[S.mkt] == x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></div></div>
+   <div class="srow"><div><b>Skip illiquid stocks</b><div class="note">Daily value traded below</div></div><select id="liq">${(S.mkt === 'IN' ? [[0, 'Off'], [1e6, '₹10 lakh'], [1e7, '₹1 Cr'], [5e7, '₹5 Cr'], [1e8, '₹10 Cr']] : [[0, 'Off'], [1e6, '$1M'], [5e6, '$5M'], [2e7, '$20M']]).map(x => `<option value="${x[0]}" ${S.minTurnover[S.mkt] == x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></div></div>
   <h3>Position sizing & risk</h3><div class="card">
-   <div class="srow"><div><b>Trading capital</b><div class="note">Used for the suggested quantity</div></div><input id="cap" class="inp" style="width:130px;margin:0" inputmode="numeric" value="${S.sizing.capital}"></div>
-   <div class="srow"><div><b>Risk per trade</b><div class="note">% of capital lost if the stop is hit</div></div><select id="rpct">${[0.25, 0.5, 1, 1.5, 2].map(x => `<option ${S.sizing.riskPct == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
-   <div class="srow"><div><b>Risk-free rate (${S.mkt === 'IN' ? 'India' : 'US'})</b><div class="note">% per year, used for alpha, Sharpe & Sortino</div></div><input id="rf" class="inp" style="width:80px;margin:0" inputmode="decimal" value="${S.rf[S.mkt]}"></div></div>
+   <div class="srow"><div><b>Trading capital</b></div><input id="cap" class="inp" style="width:130px;margin:0" inputmode="numeric" value="${S.sizing.capital}"></div>
+   <div class="srow"><div><b>Risk per trade</b><div class="note">% of capital</div></div><select id="rpct">${[0.25, 0.5, 1, 1.5, 2].map(x => `<option ${S.sizing.riskPct == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+   <div class="srow"><div><b>Risk-free rate (${S.mkt === 'IN' ? 'India' : 'US'})</b><div class="note">% per year</div></div><input id="rf" class="inp" style="width:80px;margin:0" inputmode="decimal" value="${S.rf[S.mkt]}"></div></div>
   <h3>App</h3><div class="list"><div class="row" id="goUpd"><div class="nm"><div class="s">⬆️ App updates</div><div class="f" id="updF">Checking…</div></div><div class="px">›</div></div></div>
   <h3>Tools</h3><div class="list"><div class="row" id="goAI"><div class="nm"><div class="s">🧠 Self-learning</div><div class="f">How accurate each score band really is · what the app learned</div></div><div class="px">›</div></div><div class="row" id="goLearn"><div class="nm"><div class="s">📘 Alpha, beta & risk explained</div><div class="f">What each number means and where the app uses it</div></div><div class="px">›</div></div><div class="row" id="goDesk"><div class="nm"><div class="s">🧪 ORB Desk</div><div class="f">Opening-range breakout + 10,000-replay Time Machine</div></div><div class="px">›</div></div></div>
   <p class="note">DayTrader Desk · analysis only, never places orders. Not investment advice.</p>`;
@@ -756,23 +690,30 @@ async function loadDetail() {
   }
   it = useMS ? await MS.candles(sym, '5minute', 6).then(D => ({ D })).catch(() => null) : null;
   if (!it) it = await chart(ys, '5d', '5m').catch(() => null);
-  let price = d.meta.regularMarketPrice || d.D.c[d.D.c.length - 1];
+  // price + previous close from one rule-set (MS.basis): mStock LTP when connected & live, official close after the session
+  let mq = null;
   if (useMS) {
-    try { const q = (await MS.quotes([sym]))[sym]; const o = MS.overlay(d.D, q); if (o) { price = o.price; prev = o.prev; src = src === 'mStock' ? 'mStock live' : 'Yahoo history + mStock live price'; } }
+    try { mq = (await MS.quotes([sym]))[sym] || null; if (!mq) msErr = 'no quote for ' + sym + ' (' + ((MS.cov && MS.cov.why && MS.cov.why[sym]) || 'not in reply') + ')'; }
     catch (e) { msErr = e.message; }
   }
+  const hasMs = !!(mq && mq.last_price);
+  const bs = MS.basis(d.D, { mkt, lp: hasMs ? mq.last_price : (d.meta.regularMarketPrice || d.D.c[d.D.c.length - 1]), pq: hasMs && mq.ohlc ? mq.ohlc.close : null, q: mq, ms: hasMs, ts: d.meta.regularMarketTime });
+  const price = bs ? bs.price : d.D.c[d.D.c.length - 1]; prev = bs ? bs.prev : null;
+  if (bs && bs.src === 'ms') src = src === 'mStock' ? 'mStock live' : 'Yahoo history + mStock live price';
+  else if (bs && bs.src === 'cl') src = bs.idle ? 'Last official close (market not open yet)' : 'Official close (NSE daily bar)';
+  else if (useMS) src = 'Yahoo Finance (fallback, delayed)';
   const fno = mkt === 'IN' && isFno(sym);
   let news = S.detail.news;
   if (!news || Date.now() - news.at > 5 * 60e3) { try { news = Object.assign(await News.get(ys, nameOf(sym, mkt), mkt === 'IN'), { at: Date.now() }); putNews(mkt, sym, news); } catch (e) { news = { items: [], score: 0, n: 0, err: e.message, at: Date.now() }; } }
   await regime(mkt);
   const A = Engine.analyze(d.D, { intra: it && marketOpen(mkt) ? it.D : null, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
-  if (prev && !A.err) A.chg = (A.price / prev - 1) * 100;
+  if (prev && !A.err) { A.chg = (A.price / prev - 1) * 100; A.prev = prev; }
   if (!A.err) A.risk = riskOf(d.D, mkt, sym);
   if (!A.err && window.Learn) { Learn.resolve(sym, mkt, d.D); Learn.log(sym, mkt, A.horizons, d.D.t[d.D.t.length - 1], A.price); }
   let R = null;
   if (!A.err) { const row = Object.assign({ sym }, rowFromA(A)); R = rateRow(row, mkt); upsertRow(mkt, row); store.set('scan', S.scan);
     Alerts.evaluate({ sym, mkt, price: A.price, rating: R.rating, action: R.action, setups: A.setups, chartPats: A.chartPats, cross: A.cross, news: newsOf(mkt, sym) }, S.saved[mkt].includes(sym)); Alerts.save(); Alerts.flush(); }
-  Object.assign(S.detail, { A, R, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now(), src, msErr, news });
+  Object.assign(S.detail, { A, R, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now(), src, msErr, news, px: bs ? { price: A.price, prev: A.prev, src: bs.src, official: bs.official, idle: bs.idle, day: bs.day, at: bs.at } : null });
 }
 async function vDetail() {
   const v = $('#view'), { sym } = S.detail;
@@ -956,7 +897,8 @@ if (CapApp) {
   });
 }
 const learnFetch = async (s, m) => (await chart(ySym(s, m), '1y', '1d')).D;
-Promise.all([loadNSE(), loadUS()]).then(async () => {
+const pageReady = document.readyState === 'complete' ? Promise.resolve() : new Promise(r => addEventListener('load', r)); // all view scripts (ui-home.js…) are loaded before the first render
+Promise.all([loadNSE(), loadUS(), pageReady]).then(async () => {
   if (window.Learn) await Learn.ready;
   if (store.get('secure', false)) Alerts.setSecure(true);
   if (Sec.hasPin()) await pinPad('Enter your PIN', true);

@@ -115,8 +115,6 @@ h3 .note{text-transform:none;letter-spacing:0;font-weight:500}
 .cp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.cp>div{border:1px solid var(--ln);background:var(--pn2);border-radius:12px;padding:8px;text-align:center;display:flex;flex-direction:column}
 .cp>div.on{border-color:var(--ac)}.cp span{font-size:11px;color:var(--mu);font-weight:700}.cp b{font-size:26px}.cp small{font-size:11px;color:var(--mu)}
 .optOpen{display:block;margin-top:8px;color:var(--ac);cursor:pointer}
-.ipo{cursor:pointer}.ipo .s{font-weight:800;font-size:15px}.ipo .rk{display:inline;color:var(--mu);font-size:12px}
-.ipog{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}.ipog>div{background:var(--pn2);border-radius:9px;padding:6px 7px;min-width:0}.ipog span{display:block;font-size:10px;color:var(--mu);font-weight:700;text-transform:uppercase}.ipog b{font-size:12.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* v6 */
 .buyline{margin-top:10px;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.buyline b{font-size:19px;letter-spacing:.01em}.buyline span{font-size:12px;opacity:.85}
 .stk{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;font-variant-numeric:tabular-nums}.stk th{font-size:10px;text-transform:uppercase;color:var(--mu);text-align:left;padding:4px 4px;font-weight:700}
@@ -128,12 +126,9 @@ h3 .note{text-transform:none;letter-spacing:0;font-weight:500}
 .sheet{position:fixed;inset:0;z-index:250;background:rgba(0,0,0,.55);display:flex;align-items:flex-end}
 .sh-in{background:var(--pn);width:100%;max-height:80vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));border-top:1px solid var(--ln)}
 .sh-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.sh-h b{font-size:17px}.sh-b{font-size:14.5px;line-height:1.55;margin-bottom:14px}
-.ipod{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:8px}.ipod>div{background:var(--pn2);border-radius:9px;padding:6px 5px;text-align:center}.ipod span{display:block;font-size:9.5px;color:var(--mu);font-weight:700;text-transform:uppercase}.ipod b{font-size:12px}
-.ipow{font-size:12.5px;font-weight:700;color:var(--ac);margin-top:6px}
 .pvtg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mu);flex:1;justify-content:flex-end;margin-right:6px}.tg.sm{width:36px;height:21px}.tg.sm:after{width:15px;height:15px}.tg.sm:checked:after{left:18px}
 .cplab{font-size:11px;color:var(--mu);align-self:center;flex:none}
 
 .bell[data-n]:not([data-n=""]):after{min-width:19px;height:19px;line-height:19px;font-size:11px;top:-7px;right:-7px;box-shadow:0 0 0 2px #0a0e13}
 .bell.pop{animation:bellpop .7s ease}@keyframes bellpop{0%{transform:scale(1)}25%{transform:scale(1.25) rotate(-12deg)}50%{transform:scale(1.15) rotate(10deg)}75%{transform:rotate(-6deg)}100%{transform:none}}
 .evd{font-size:11.5px;margin-top:5px;padding:5px 8px;border-radius:8px;background:var(--pn2)}.evd.ok{color:#86efac}.evd.no{color:#fcd34d}
-.ipod1{font-size:12.5px;margin-top:8px;padding:6px 8px;background:var(--pn2);border-radius:9px}

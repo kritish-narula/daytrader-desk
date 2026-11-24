@@ -67,9 +67,13 @@ async function vDetail() {
 function dcQuote(isRefresh) {
   const { A, D, meta = {}, at, mkt } = S.detail, c = cur(), open = marketOpen(mkt);
   const prevC = isFinite(A.chg) ? A.price / (1 + A.chg / 100) : A.prev, dAbs = A.price - prevC, up = dAbs >= 0;
-  const lastT = meta.regularMarketTime || D.t[D.t.length - 1];
-  const status = open ? `<span class="live on"><i></i><span>Live</span></span> <span class="mu">· ${isRefresh ? 'updated' : 'as of'} ${new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })} · refreshes every 30s</span>`
-    : `<span class="live"><i></i><span>At close</span></span> <span class="mu">· ${esc(dcTimeStr(lastT, mkt, true))}</span>`;
+  const px = S.detail.px || {}, tm = new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const srcTag = px.src === 'ms' ? 'mStock' : px.src === 'cl' ? 'official close' : 'Yahoo (delayed)';
+  // closed market: show the SESSION date of the close (daily bars are stamped 09:15, which would read like a wrong time)
+  const dayLbl = d => { try { return new Date(d + 'T12:00:00Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' }); } catch (e) { return d || ''; } };
+  const closeDay = px.day || (D.day && D.day[D.day.length - 1]);
+  const status = open ? `<span class="live on"><i></i><span>Live</span></span> <span class="mu">· ${tm} · ${srcTag} · ${isRefresh ? 'updated' : 'as of'} · full refresh every 30s</span>`
+    : `<span class="live"><i></i><span>${px.idle ? 'Last close' : 'At close'}</span></span> <span class="mu">· ${px.official === false ? 'last price' : 'official close'} ${esc(dayLbl(closeDay))}${mkt === 'IN' ? ' · NSE' : ''}${px.idle ? ' · market not open yet' : ''}</span>`;
   const ex = $('#dqex'); if (ex) ex.textContent = dcExch(S.detail.sym, mkt);
   return `<div class="dq-px"><span class="dq-big">${c}${fmt(A.price)}</span>
     <span class="dq-chg ${up ? 'up' : 'dn'}">${up ? '+' : '−'}${fmt(Math.abs(dAbs))} (${up ? '+' : '−'}${Math.abs(A.chg).toFixed(2)}%) <span class="dq-arr">${up ? '▲' : '▼'}</span></span></div>
@@ -295,15 +299,15 @@ function drawDetail(isRefresh) {
      <div class="qbar"><i style="width:${s.q}%;background:${s.b > 0 ? 'var(--up)' : 'var(--dn)'}"></i></div><div class="x">${esc(s.note)}</div>${evidence(s.n)}
      ${s.entry ? `<div class="lv3"><span>Entry <b>${fmt(s.entry)}</b></span><span>SL <b class="dn">${fmt(s.stop)}</b></span><span>Target <b class="up">${fmt(s.target)}</b></span></div>` : ''}</div>`).join('') : '<div class="note">No SMC, VCP or trend setup active on the daily chart today.</div>'}</div>
   <h3>Chart patterns <span class="note">drawn on the chart</span></h3><div class="card">${(A.chartPats || []).length ? A.chartPats.map(p => `<div class="pat"><div class="ic">${p.b > 0 ? '🟢' : p.b < 0 ? '🔴' : '🟡'}</div><div style="flex:1"><div class="n">${esc(p.n)} <span class="tag ${p.status === 'forming' ? '' : p.b > 0 ? 'p' : 'n'}">${esc(p.status)}</span> <span class="mu" style="font-size:12px">quality ${p.q}</span></div><div class="x">${esc(p.note)}</div>
-     <div class="x">Target <b>${fmt(p.target)}</b> · invalid beyond <b>${fmt(p.stop)}</b></div>${evidence(p.n)}</div></div>`).join('') + '<div class="note" style="margin-top:6px">Shown with lines on the chart above (6M, YTD and 1Y ranges). Toggle "Patterns" to hide them; in the full-screen chart you can hide each one.</div>' : '<div class="note">No head & shoulders, double top/bottom, flag or triangle that meets the rules right now.</div>'}</div>
+     <div class="x">Target <b>${fmt(p.target)}</b> · invalid beyond <b>${fmt(p.stop)}</b></div>${evidence(p.n)}</div></div>`).join('') + '' : '<div class="note">No head & shoulders, double top/bottom, flag or triangle that meets the rules right now.</div>'}</div>
   <h3>Candles & breakouts</h3><div class="card">${A.patterns.length ? A.patterns.map(p => `<div class="pat"><div class="ic">${p.b > 0 ? '🟢' : p.b < 0 ? '🔴' : '🟡'}</div><div><div class="n">${esc(p.n)}</div><div class="x">${esc(p.note)}</div>${p.target || p.stop ? `<div class="x">${p.target ? 'Pattern target <b>' + fmt(p.target) + '</b>' : ''}${p.target && p.stop ? ' · ' : ''}${p.stop ? 'Invalid below/above <b>' + fmt(p.stop) + '</b>' : ''}</div>` : ''}</div></div>`).join('') : '<div class="note">No clear pattern on the daily chart right now.</div>'}</div>
   <h3>EMA crossovers</h3><div class="card">${A.cross.length ? A.cross.map(x => `<div class="pat"><div class="ic">${x.dir > 0 ? '⬆️' : '⬇️'}</div><div><div class="n">${esc(x.name)}</div><div class="x">${esc(x.status)}${x.gap != null ? ` · gap ${x.gap.toFixed(2)}%` : ''} · matters for ${x.hz}</div></div></div>`).join('') : '<div class="note">No EMA cross recent or expected soon.</div>'}</div>
   ${riskCard(A, mkt)}
   ${A.fno ? `<h3>F&O</h3><div class="card"><div class="kv"><div><div class="l">Lot size</div><div class="v">${A.fno.lot || '–'}</div></div><div><div class="l">ATM strike (approx.)</div><div class="v">${fmt(A.fno.atm, 0)}</div></div>
    <div><div class="l">Expected 1-day move</div><div class="v">±${fmt(A.fno.moveDay)}</div></div><div><div class="l">Expected 1-week move</div><div class="v">±${fmt(A.fno.moveWeek)}</div></div></div>
-   <p style="margin:10px 0 4px;font-weight:700">${esc(A.fno.idea)}</p><p class="note">Use the underlying's stop and targets above to exit the option. Strike gaps are approximate, so confirm in the option chain. Buy near-expiry options only on high scores; time decay is brutal.</p></div>` : ''}
+   <p style="margin:10px 0 4px;font-weight:700">${esc(A.fno.idea)}</p><p class="note">Exit on the underlying's SL/targets. Confirm strikes in the option chain.</p></div>` : ''}
   <h3>News <span class="note">${newsHead(S.detail.news)}</span></h3><div class="card dnews">${newsHTML(S.detail.news)}</div>
-  <p class="note dfoot">Rating = technical signal (trend, momentum, volume, SMC/VCP setups) blended with how that signal actually performed on this stock over ~3 years, plus market trend and news. Same number as in every list. It describes the past, not a promise. Not investment advice.</p>`;
+  <p class="note dfoot">Rating blends signal, past edge on this stock, market trend and news. Not investment advice.</p>`;
 
   // build the shell once per stock; later redraws keep the chart (and the user's zoom)
   const body = $('#dbody'), fresh = !$('#dcCard') || body.dataset.sym !== sym;

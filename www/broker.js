@@ -170,18 +170,28 @@
 
     // Script master -> NSE equities, NSE/BSE indices, NFO/BFO index options (cached per day)
     async map() {
-      const m = get('map'); if (m && m.day === istDay() && m.v === 3) return m;
+      const m = get('map'); if (m && m.day === istDay() && m.v === 4) return m;
       const csv = await this._req('GET', 'instruments/scriptmaster');
       const text = typeof csv === 'string' ? csv : JSON.stringify(csv);
       const lines = text.split(/\r?\n/), hd = lines[0].split(',').map(x => x.trim().toLowerCase().replace(/"/g, ''));
       const ix = n => hd.indexOf(n), iTok = ix('instrument_token'), iSym = ix('tradingsymbol'), iEx = ix('exchange'), iSeg = ix('segment'), iTyp = ix('instrument_type'), iName = ix('name'), iExp = ix('expiry'), iStk = ix('strike'), iLot = ix('lot_size');
       if (iTok < 0 || iSym < 0) throw new Error('Unexpected script master format');
-      const eq = {}, idx = {}, opt = {}, today = istDay(), OPT = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY', 'BANKEX'];
+      const eq = {}, idx = {}, opt = {}, fo = {}, today = istDay(), OPT = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY', 'BANKEX'];
       for (const n of OPT) opt[n] = [];
       for (let k = 1; k < lines.length; k++) {
         const r = lines[k].split(','); if (r.length < hd.length - 1) continue;
         const cl = i => i < 0 ? '' : String(r[i] || '').trim().replace(/"/g, '');
         const ex = cl(iEx).toUpperCase(), ts = cl(iSym), seg = cl(iSeg).toUpperCase(), typ = cl(iTyp).toUpperCase();
+        // full F&O universe: every underlying with live NFO/BFO contracts (stocks + indices), lot from the master
+        if ((ex === 'NFO' || ex === 'BFO') && (/^(FUT|OPT)(STK|IDX)$/.test(typ) || /^(CE|PE|FUT|FF)$/.test(typ) || /(CE|PE|FUT)$/.test(ts))) {
+          const und = (cl(iName) || (ts.match(/^[A-Z&-]+/) || [''])[0]).toUpperCase().replace(/\s+/g, '');
+          const ed0 = parseExpiry(cl(iExp)) || expiryFromSymbol(ts, und);
+          if (und && (!ed0 || ed0 >= today)) {
+            const isIdx = /IDX$/.test(typ) || ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50', 'SENSEX', 'BANKEX', 'SENSEX50'].includes(und), lot = +cl(iLot) || 0, cur = fo[und];
+            if (!cur) fo[und] = { lot, ex, type: isIdx ? 'index' : 'stock' };
+            else { if (ex === 'NFO' && cur.ex === 'BFO') { cur.ex = 'NFO'; if (lot) cur.lot = lot; } if (!cur.lot && lot) cur.lot = lot; }
+          }
+        }
         if ((ex === 'NFO' || ex === 'BFO') && (typ === 'CE' || typ === 'PE' || /(CE|PE)$/.test(ts))) {
           const nm = (cl(iName) || ts.match(/^[A-Z]+/)[0]).toUpperCase(), base = OPT.find(o => nm === o || (nm.startsWith(o) && !OPT.some(x => x !== o && x.length > o.length && nm.startsWith(x))));
           if (!base) continue;
@@ -202,9 +212,11 @@
         if (med > cap) for (const x of opt[k]) x[3] = x[3] / 100;
         const exps = [...new Set(opt[k].map(x => x[2]))].sort().slice(0, 2); opt[k] = opt[k].filter(x => exps.includes(x[2]));
       }
-      const out = { v: 3, day: istDay(), eq, idx, opt, counts: Object.fromEntries(Object.entries(opt).map(([k, v]) => [k, v.length])) };
+      const out = { v: 4, day: istDay(), eq, idx, opt, fo, counts: Object.fromEntries(Object.entries(opt).map(([k, v]) => [k, v.length])) };
       set('map', out); return out;
     },
+    // {SYM: {lot, ex:'NFO'|'BFO', type:'stock'|'index'}} — every NSE + BSE F&O underlying, from today's master
+    async foUniverse() { const m = await this.map(); return m.fo || null; },
     // index quote key: NIFTY → NSE:NIFTY 50, SENSEX → BSE:SENSEX
     async key(sym) {
       const IDX = { NIFTY: ['NSE:NIFTY 50', 'NSE:NIFTY'], BANKNIFTY: ['NSE:NIFTY BANK', 'NSE:BANKNIFTY'], FINNIFTY: ['NSE:NIFTY FIN SERVICE', 'NSE:FINNIFTY'], MIDCPNIFTY: ['NSE:NIFTY MID SELECT', 'NSE:MIDCPNIFTY'], SENSEX: ['BSE:SENSEX'], BANKEX: ['BSE:BANKEX'], INDIAVIX: ['NSE:INDIA VIX'] };
@@ -293,15 +305,63 @@
       return D;
     },
 
-    // Patch a daily series with a live quote; returns price + previous close
+    // ---- PRICE BASIS: the single place that decides "last price" and "previous close" for a symbol ----
+    // D: daily series ({t,o,h,l,c,v,day}, day = exchange-local date), mutated: today's bar is created / refreshed.
+    // o: {lp: live last price (mStock LTP, or Yahoo regularMarketPrice), pq: mStock ohlc.close (prev close), q: mStock quote,
+    //     ms: true when lp/pq come from mStock, ts: Yahoo regularMarketTime (s), mkt}
+    // Rules (what a broker terminal / NSE shows):
+    //  - market open: price = LTP; prev = mStock ohlc.close (unless it equals the LTP or today's close, then the prior daily bar)
+    //  - market closed after a session: prev = the PRIOR daily bar (official close of the day before); price = LTP until
+    //    close+30 min (NSE publishes its closing price ~15:40), after that the Yahoo/daily-bar close = official close
+    //  - pre-open (before 09:15), weekends, holidays: price = last completed session's official close, prev = the bar before it;
+    //    never yesterday's close shown as today's move
+    // returns {price, prev, src: 'ms' | 'yf' | 'cl' (official close), official, live, idle, day, at}
+    basis(D, o = {}) {
+      const mkt = o.mkt || 'IN', M = (typeof MK !== 'undefined' && MK[mkt]) || { tz: 'Asia/Kolkata', open: 555, close: 930 };
+      const p = {}; for (const x of new Intl.DateTimeFormat('en-US', { timeZone: M.tz, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())) p[x.type] = x.value;
+      const today = `${p.year}-${p.month}-${p.day}`, mins = +p.hour * 60 + +p.minute, wd = !['Sat', 'Sun'].includes(p.weekday);
+      const live = typeof marketOpen === 'function' ? !!marketOpen(mkt) : wd && mins >= M.open && mins < M.close;
+      const n0 = D.c.length - 1; if (n0 < 0) return null;
+      const lp = +o.lp > 0 ? +o.lp : null, pq = +o.pq > 0 ? +o.pq : null, qo = (o.q && o.q.ohlc) || {}, at = Date.now();
+      const same = (a, b, e = 1e-4) => a > 0 && b > 0 && Math.abs(a / b - 1) < e;
+      const sessionToday = live || (wd && mins >= M.open);
+      let hasToday = D.day[n0] === today, virtual = false;
+      if (sessionToday && !hasToday && lp) {
+        // provider's daily series has no bar for today yet: add one from the live quote (not on a holiday: quote == last session's bar)
+        const tsDay = o.ts ? new Intl.DateTimeFormat('en-CA', { timeZone: M.tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(o.ts * 1000)) : null;
+        const holiday = o.ms ? (+qo.open > 0 && same(+qo.open, D.o[n0]) && same(+qo.high, D.h[n0]) && same(+qo.low, D.l[n0]) && same(lp, D.c[n0], 1e-6)) : tsDay !== today;
+        if (!holiday) {
+          D.t.push(Math.floor(at / 1000)); D.o.push(+qo.open > 0 ? +qo.open : lp); D.h.push(Math.max(+qo.high || lp, lp)); D.l.push(Math.min(+qo.low || lp, lp)); D.c.push(lp); D.v.push(0); D.day.push(today);
+          hasToday = virtual = true;
+        }
+      }
+      const n = D.c.length - 1;
+      if (!sessionToday || !hasToday) { // pre-open / weekend / holiday: the last completed session
+        return { price: D.c[n], prev: n > 0 ? D.c[n - 1] : null, src: 'cl', official: true, live: false, idle: true, day: D.day[n], at };
+      }
+      const PD = n > 0 ? D.c[n - 1] : null;
+      let prev = PD;
+      if (pq && (live || !PD)) { // broker's own previous close, unless it is really today's price / close
+        const isToday = PD && same(pq, D.c[n]) && !same(pq, PD, 5e-4) && !virtual, isLp = lp && pq === lp && PD && PD !== lp;
+        prev = !isToday && !isLp ? pq : PD || pq;
+      }
+      const official = !live && mins >= M.close + 30 && !virtual;
+      let price = official ? D.c[n] : (lp || D.c[n]);
+      if (!official && lp && lp > 0) { D.c[n] = lp; if (+qo.high > 0) D.h[n] = Math.max(D.h[n], +qo.high); if (+qo.low > 0) D.l[n] = Math.min(D.l[n], +qo.low); D.h[n] = Math.max(D.h[n], lp); D.l[n] = Math.min(D.l[n], lp); }
+      return { price, prev, src: official ? 'cl' : (o.ms && lp ? 'ms' : 'yf'), official, live, idle: false, day: today, at };
+    },
+    // Back-compat wrapper (F&O index cards): patch a daily series with an mStock quote; returns price + previous close
     overlay(D, q) {
       if (!q || !q.last_price) return null;
-      const o = q.ohlc || {}, n = D.c.length - 1, today = istDay(), lp = +q.last_price;
-      if (D.day[n] === today) { D.c[n] = lp; if (o.high) D.h[n] = Math.max(D.h[n], +o.high); if (o.low) D.l[n] = Math.min(D.l[n], +o.low); }
-      else if (+o.open > 0 && D.day[n] < today && new Date().getUTCDay() % 6 && istStamp(new Date()).slice(11, 16) >= '09:15') {
-        D.t.push(Math.floor(Date.now() / 1000)); D.o.push(+o.open); D.h.push(Math.max(+o.high || lp, lp)); D.l.push(Math.min(+o.low || lp, lp)); D.c.push(lp); D.v.push(0); D.day.push(today);
-      }
-      return { price: lp, prev: +o.close || null };
+      const b = this.basis(D, { lp: q.last_price, pq: q.ohlc && q.ohlc.close, q, ms: true, mkt: 'IN' });
+      return b && { price: b.price, prev: b.prev, src: b.src, official: b.official };
+    },
+    // Live-only quick prices for list rows / tiles / chart ticks: {SYM: {p, pc, chg, ms:1, at}} (empty unless connected and the market is open)
+    async pxNow(syms, mkt = 'IN') {
+      const out = {}; if (mkt !== 'IN' || !this.ok() || !(typeof marketOpen === 'function' && marketOpen('IN'))) return out;
+      const Q = await this.quotes(syms), at = Date.now();
+      for (const s of syms) { const q = Q[s]; if (!q || !q.last_price) continue; const lp = +q.last_price, pc = q.ohlc && +q.ohlc.close > 0 && +q.ohlc.close !== lp ? +q.ohlc.close : null; out[s] = { ms: 1, p: lp, pc, chg: pc ? (lp / pc - 1) * 100 : null, at, q }; }
+      return out;
     },
   };
   window.MS = MS;

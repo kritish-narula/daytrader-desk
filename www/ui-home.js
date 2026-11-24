@@ -14,14 +14,19 @@ function chgPill(chg) {
   if (chg == null || !isFinite(chg)) return '<span class="gchg z"></span>';
   return `<span class="gchg ${chg >= 0 ? 'u' : 'd'}">${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%</span>`;
 }
-function cachedSpark(sym) { const c = SPK[spkKey(sym)]; return c && Date.now() - c.at < 10 * 60e3 ? c : null; }
+function cachedSpark(sym) { const c = SPK[spkKey(sym)], ttl = S.mkt === 'IN' && window.MS && MS.ok() && marketOpen('IN') ? 20e3 : 10 * 60e3; return c && Date.now() - c.at < ttl ? c : null; }
 function sparkInner(sym) { const c = cachedSpark(sym); return c ? sparkSVG(c.c, c.up, 64, 26, false, c.pc) : ''; }
 // fetch intraday data for a symbol (cached), returns {c, up, pc, p}
 async function getSpark(sym) {
   const c = cachedSpark(sym); if (c) return c;
-  const { D, meta } = await chart(ySym(sym, S.mkt), '1d', '5m');
-  const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose;
-  const o = { c: D.c.slice(-80), up: p >= pc, pc, p, chg: pc ? (p / pc - 1) * 100 : null, at: Date.now() };
+  const mkt = S.mkt, { D, meta } = await chart(ySym(sym, mkt), '1d', '5m');
+  // Yahoo range=1d: chartPreviousClose IS the previous session's close (not valid for longer ranges)
+  let p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose, src = mkt === 'IN' && !marketOpen(mkt) ? 'cl' : 'yf';
+  if (mkt === 'IN' && window.MS && MS.ok() && marketOpen(mkt)) { // connected + live: mStock number, else stay Yahoo (marked)
+    try { const m = (await MS.pxNow([sym], mkt))[sym]; if (m) { p = m.p; if (m.pc) pc = m.pc; src = 'ms'; } } catch (e) { MS.lastError = e.message; }
+  }
+  const cs = D.c.slice(-80); if (src === 'ms' && cs.length) cs[cs.length - 1] = p;
+  const o = { c: cs, up: p >= pc, pc, p, chg: pc ? (p / pc - 1) * 100 : null, src, at: Date.now() };
   SPK[spkKey(sym)] = o; return o;
 }
 // fill sparklines (and optionally price/chg when missing) for rows in `root`
@@ -32,7 +37,7 @@ function hydrateRows(root, max = 12, fillPx = false) {
     try {
       const o = await getSpark(r.dataset.sym); if (S.mkt !== mkt || !r.isConnected) return;
       const sp = r.querySelector('.spk'); if (sp) sp.innerHTML = sparkSVG(o.c, o.up, 64, 26, false, o.pc);
-      if (fillPx && r.dataset.nopx) { const px = r.querySelector('.px'); if (px) { px.innerHTML = `<b>${cur()}${fmt(o.p)}</b>${chgPill(o.chg)}`; delete r.dataset.nopx; } }
+      if (fillPx && r.dataset.nopx) { const px = r.querySelector('.px'); if (px) { px.innerHTML = `<b>${cur()}${fmt(o.p)}</b>${chgPill(o.chg)}`; delete r.dataset.nopx; r.dataset.lp = o.p; if (S.mkt === 'IN') r.dataset.src = o.src; } }
     } catch (e) {}
   });
 }
@@ -72,7 +77,7 @@ function moversHTML(sc, kind) {
 function picksHTML(sc) {
   if (!sc || !sc.rows) return '<div class="empty">Run a scan to rank stocks by setup quality.</div>';
   const top = rated(sc.rows, 'top').filter(x => x.rating >= 58).slice(0, 8);
-  return `<div class="list">${top.map((x, k) => rowHTML(x.r.sym, nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('') || '<div class="empty">No buys rated 58+ in the last scan.</div>'}</div><p class="note">Rating = signal × proven edge on that stock + market trend + news · scan at ${new Date(sc.at).toLocaleTimeString()}.</p>`;
+  return `<div class="list">${top.map((x, k) => rowHTML(x.r.sym, nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('') || '<div class="empty">No buys rated 58+ in the last scan.</div>'}</div><p class="note">Scan ${new Date(sc.at).toLocaleTimeString()}</p>`;
 }
 
 function vHome() {
@@ -81,33 +86,30 @@ function vHome() {
   S.homeMv = S.homeMv || 'gain';
   const saved = S.saved[mkt];
   v.innerHTML = `<div class="search"><input id="q" placeholder="Search ${mkt === 'IN' ? 'any NSE stock or index' : 'any global stock, e.g. AAPL'}" autocomplete="off"></div>
-  <div id="sres"></div>${mkt === 'IN' ? (MS.ok() ? '<div class="note up" style="margin:-4px 2px 10px">● mStock live prices on</div>' : `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in for live prices.' : 'Connect your mStock account for exchange-accurate live prices. Tap to set up.'}</div>`) : ''}
+  <div id="sres"></div>${mkt === 'IN' && !MS.ok() ? `<div class="warn" id="msBan" style="cursor:pointer">${MS.cfg().apiKey ? 'mStock session expired. Tap to log in.' : 'Connect mStock for live prices. Tap to set up.'}</div>` : ''}
   ${marketSummaryHTML(m)}
+  ${window.flowsCardHTML ? flowsCardHTML() : ''}
+  ${window.paperCardHTML ? paperCardHTML() : ''}
   <div class="chips quick" id="quick">${QUICK.map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
   <h3>Top rated today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
   <h3>Market movers</h3><div class="mvtabs" id="mvtabs">${[['gain', '▲ Top gainers'], ['lose', '▼ Top losers'], ['act', '🔥 Most active']].map(x => `<button data-mv="${x[0]}" class="${S.homeMv === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="movers">${moversHTML(sc, S.homeMv)}</div>
-  <h3>Watchlist</h3><div id="wl">${saved.length ? '<div class="list">' + saved.map(s => rowHTML(s, nameOf(s), null, null, null)).join('') + '</div>' : '<div class="empty">Tap ☆ on any stock to save it here.</div>'}</div>
-  ${hasCat_() ? `<h3>Browse stocks</h3><div class="card"><div class="pick2" style="margin:0"><label><span>Market cap</span><select id="hbSize">${(mkt === 'US' ? SIZES_US : SIZES_IN).map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
-   <label><span>Sector</span><select id="hbSec"><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div><button class="btn w" id="hbGo" style="margin-top:10px">Show stocks</button></div>` : ''}
-  <h3>Popular</h3><div class="chips pop">${(mkt === 'IN' ? window.SEED_IN.slice(0, 24) : window.US_LIST.slice(0, 24)).map(x => `<button data-sym="${x[0]}">${x[0]}</button>`).join('')}</div>
-  ${mkt === 'IN' && S.nse.seed ? '<p class="note">Showing a starter list. The full NSE list loads in the installed app build.</p>' : mkt === 'IN' ? `<p class="note">${S.nse.eq.length.toLocaleString()} NSE stocks · ${Object.keys(S.nse.fo || {}).length} F&O stocks · list from ${S.nse.updated}</p>`
-   : S.us && !S.us.seed ? `<p class="note">${S.us.eq.length.toLocaleString()} US-listed stocks · S&P 500/400/600 sectors · list from ${S.us.updated}</p>` : '<p class="note">Showing a starter list. The full US list loads in the installed app build.</p>'}`;
-  v.querySelectorAll('.itile, .pop button').forEach(b => b.onclick = () => openDetail(b.dataset.sym));
+  <h3>Watchlist</h3><div id="wl">${saved.length ? '<div class="list">' + saved.map(s => rowHTML(s, nameOf(s), null, null, null)).join('') + '</div>' : '<div class="empty">Tap ☆ on any stock to save it here.</div>'}</div>`;
+  v.querySelectorAll('.itile').forEach(b => b.onclick = () => openDetail(b.dataset.sym));
   bindRows(v); $('#goScan').onclick = () => { go('scan'); runScan(); };
   v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.q; go('scan'); if (!S.scan[S.mkt]) runScan(); });
   v.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { S.homeMv = b.dataset.mv; v.querySelectorAll('[data-mv]').forEach(x => x.classList.toggle('on', x === b)); $('#movers').innerHTML = moversHTML(S.scan[S.mkt], S.homeMv); bindRows($('#movers')); });
-  const hb = $('#hbGo'); if (hb) hb.onclick = () => { const size = $('#hbSize').value; S.uni = { size, sector: size === 'FO' ? '' : $('#hbSec').value }; store.set('uniBy', S.uniBy); go('scan'); };
   const rg = S.regime[mkt]; if (rg) { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(rg.v); } else regime(mkt).then(x => { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(x); });
   setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = () => $('#gear').click();
   m.idx().forEach(async x => {
     try {
       const o = await getSpark(x[0]); if (S.mkt !== mkt) return;
       const set = (id, h) => { const e = $(id); if (e) e.innerHTML = h; };
-      set('#ix_' + x[0], fmt(o.p)); set('#ixc_' + x[0], chgPill(o.chg)); set('#isp_' + x[0], sparkSVG(o.c, o.up, 90, 30, true, o.pc));
+      set('#ix_' + x[0], fmt(o.p) + (S.mkt === 'IN' && window.MS && MS.ok() && o.src === 'yf' ? ' <span class="wa" title="Yahoo fallback (not mStock)" style="font-size:9px">●</span>' : S.mkt === 'IN' && o.src === 'ms' ? ' <span class="up" title="mStock live" style="font-size:9px">●</span>' : '')); set('#ixc_' + x[0], chgPill(o.chg)); set('#isp_' + x[0], sparkSVG(o.c, o.up, 90, 30, true, o.pc));
     } catch (e) { const el = $('#ix_' + x[0]); if (el) el.innerHTML = '<span class="mu" style="font-size:12px">offline</span>'; }
   });
   hydrateRows($('#wl'), 30, true); hydrateRows($('#picks'), 8); hydrateRows($('#movers'), 5);
   if (!navigator.onLine) v.insertAdjacentHTML('afterbegin', '<div class="warn">You are offline.</div>');
+  window.bindPaperCard && bindPaperCard(); window.bindFlowsCard && bindFlowsCard();
 }
 
 function vScan() {
@@ -117,7 +119,7 @@ function vScan() {
    <label><span>Sector</span><select id="selSec" ${!hasCat || S.uni.size === 'FO' ? 'disabled' : ''}><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div>
   <div class="card scanhd"><div style="display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0"><b>${esc(uniLabel())}</b><div class="note">${syms.length.toLocaleString()} stocks${missing.length && sc ? ` · ${missing.length} not scanned yet` : ''}</div></div>
    <button class="btn" id="run" ${S.scanning ? 'disabled' : ''}>${S.scanning ? '<span class="spin"></span>' : missing.length < syms.length && sc ? `Scan ${missing.length ? missing.length + ' new' : 'again'}` : 'Scan'}</button></div>
-  <div class="prog" id="prog" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div><div class="note" id="pmsg">${S.scanning ? S.scanMsg || 'Scanning…' : sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'} · keeps running if you leave the app (until you swipe it away)` : 'Rates every stock 0–100. Same number as on the stock page.'}</div></div>
+  <div class="prog" id="prog" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div><div class="note" id="pmsg">${S.scanning ? S.scanMsg || 'Scanning…' : sc ? `Last scan ${new Date(sc.at).toLocaleString()} · ${sc.rows.length} stocks · ${sc.src || 'Yahoo Finance'}` : ''}</div></div>
   <div class="chips wrap fchips">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
   $('#run').onclick = () => runScan(missing.length && sc && missing.length < syms.length ? missing : syms);
   document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.f; vScan(); });
@@ -130,8 +132,8 @@ function drawScan() {
   if (!sc) { el.innerHTML = '<div class="empty">Pick a group and tap <b>Scan</b>.<br>Lists are ranked by rating, highest first.</div>'; return; }
   const inUni = new Set(uniSyms()), f = S.scanFilter || 'top', fl = FILTERS.find(z => z[0] === f)[1];
   const rows = rated(sc.rows.filter(r => inUni.has(r.sym)), f).slice(0, 150);
-  const desc = f === 'sell' ? 'Lowest overall rating first = strongest sell.' : f === 'patterns' ? 'Chart patterns that pass strict shape rules AND showed an edge on 5 years of real NSE data. Open a stock to see the lines drawn.' : f === 'leaders' ? 'Positive alpha, good downside-adjusted returns and they rise more with the market than they fall with it. <a class="help" data-help="leader">What is this?</a>' : f === 'breakout' ? 'Fresh breakouts in stocks with positive alpha, highest rating first.' : f === 'near' ? 'Coiling just under resistance; buy only on the breakout close. Highest rating first.' : HZ.includes(f) ? `Stocks rated BUY for ${fl.replace(/^\W+ /, '')}, highest ${f} rating first.` : 'Highest overall rating first.';
-  el.innerHTML = rows.length ? `<div class="lhd"><div><b>${esc(fl)}</b><span class="lcnt">${rows.length}${rows.length >= 150 ? '+' : ''} stocks</span></div><span class="note">Scan ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' · prices move' : ''}</span></div><p class="note ldesc">${desc}</p><div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
+  const desc = f === 'sell' ? 'Lowest rating first.' : f === 'patterns' ? 'Only patterns with a proven edge. Open a stock to see the lines.' : f === 'leaders' ? 'Positive alpha, rises more than it falls with the market. <a class="help" data-help="leader">What is this?</a>' : f === 'near' ? 'Just under resistance; buy only on a breakout close.' : '';
+  el.innerHTML = rows.length ? `<div class="lhd"><div><b>${esc(fl)}</b><span class="lcnt">${rows.length}${rows.length >= 150 ? '+' : ''} stocks</span></div><span class="note">Scan ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' · prices move' : ''}</span></div>${desc ? `<p class="note ldesc">${desc}</p>` : ''}<div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
     : `<div class="empty">Nothing in "${esc(fl)}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
   bindRows(el, HZ.includes(f) ? f : 'overall');
   hydrateRows(el, 12);

@@ -1,0 +1,34 @@
+name: Money flow + sector news
+on:
+  schedule:
+    - cron: '15,45 4-9 * * 1-5'   # every 30 min during NSE hours (09:45-15:15 IST)
+    - cron: '0 10 * * 1-5'        # 15:30 IST, right at close (Yahoo may still be partial)
+    - cron: '0 11 * * 1-5'        # 16:30 IST, final close numbers
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: flows
+  cancel-in-progress: false
+jobs:
+  flows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - name: Compute flows and news pulse
+        run: node tools/flows.js
+      - name: Commit data
+        run: |
+          git config user.name "flows-bot"
+          git config user.email "flows-bot@users.noreply.github.com"
+          git add -A data/flows.json data/news_sectors.json data/flows_universe.json 2>/dev/null || git add -A data
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "flows: update money-flow data [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 5
+          done
+          echo "push failed"; exit 1

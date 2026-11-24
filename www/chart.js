@@ -97,6 +97,8 @@
     document.body.appendChild(root); document.body.style.overflow = 'hidden';
     history.pushState({ chart: 1 }, '');
     V = { root, opts, on, iv, free: store.get('free', true), series: {}, B: [], hidden: new Set(), patSeries: [] };
+    // header price / change come from the stock page's own basis (MS.basis) so both screens show the same numbers
+    try { const d = typeof S !== 'undefined' && S.detail; if (d && d.sym === opts.sym && d.mkt === opts.mkt && d.px && d.A) V.px = Object.assign({}, d.px, { price: d.px.price || d.A.price, prev: d.px.prev || d.A.prev }); } catch (e) {}
     root.querySelector('[data-a=x]').onclick = close;
     root.querySelector('[data-a=fit]').onclick = () => { V.main.timeScale().fitContent(); V.main.priceScale('right').applyOptions({ autoScale: true }); V.main.timeScale().scrollToRealTime(); };
     root.querySelector('[data-a=mode]').onclick = () => { V.free = !V.free; store.set('free', V.free); applyMode(); };
@@ -152,7 +154,7 @@
       const { B, src, tz } = await load(V.opts.sym, V.opts.mkt, V.iv);
       if (!V || V.iv !== my) return;
       V.B = B; V.src = src; V.tz = tz; draw(true);
-      V.timer = setInterval(tick, window.MS && MS.ok() && V.opts.mkt === 'IN' ? 3000 : 6000);
+      V.timer = setInterval(tick, window.MS && MS.ok() && V.opts.mkt === 'IN' ? 3000 : 6000); tick();
     } catch (e) { r.querySelector('#cfoot').innerHTML = `<span class="dn">Could not load ${V.iv} data: ${e.message}</span>`; }
     if (V) r.querySelector('#cload').style.display = 'none';
   }
@@ -206,27 +208,52 @@
       if (!V.free) V.main.priceScale('right').applyOptions({ autoScale: true });
       else { V.main.priceScale('right').applyOptions({ autoScale: true }); setTimeout(() => V && V.free && V.main.priceScale('right').applyOptions({ autoScale: false }), 60); }
     }
-    const last = B[B.length - 1], prev = B[B.length - 2];
-    if (last) { const ch = prev ? (last.close / prev.close - 1) * 100 : 0; V.root.querySelector('#cpx').innerHTML = ` ${window.App.fmt(last.close)} <small class="${ch >= 0 ? 'up' : 'dn'}">${ch >= 0 ? '+' : ''}${ch.toFixed(2)}%</small>`; }
-    const live = window.App.marketOpen(V.opts.mkt);
-    V.root.querySelector('#cfoot').innerHTML = `<span class="live ${live ? 'on' : ''}"><i></i><span>${live ? 'Live' : 'Market closed'}</span></span> · ${V.iv} · ${V.src} · ${V.free ? 'drag any direction · pinch to zoom · drag the price axis to stretch' : 'drag sideways · pinch to zoom · price auto-fits'}`;
+    const last = B[B.length - 1];
+    if (last) { // headline: last price vs PREVIOUS CLOSE (not vs the previous candle)
+      if (!V.px) { const pc = prevCloseFromBars(B); V.px = { price: last.close, prev: pc, src: 'bars', at: Date.now() }; }
+      else if (!window.App.marketOpen(V.opts.mkt) && V.px.official && /^(1D|1W|1M)$/.test(V.iv) && Math.abs(V.px.price / last.close - 1) < 0.05) { last.close = V.px.price; S.c.update({ time: last.time, open: last.open, high: Math.max(last.high, last.close), low: Math.min(last.low, last.close), close: last.close }); }
+      paintHdr();
+    }
+    const live = window.App.marketOpen(V.opts.mkt), px = V.px || {}, tm = px.at ? new Date(px.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+    const sl = px.src === 'ms' ? 'mStock' : px.src === 'cl' ? 'official close' : px.src === 'yf' ? 'Yahoo (delayed)' : 'chart data';
+    V.root.querySelector('#cfoot').innerHTML = `<span class="live ${live ? 'on' : ''}"><i></i><span>${live ? 'Live' : 'Market closed'}</span></span> · price ${tm} · ${sl}${V.tickErr ? ` <span class="wa">· ${V.tickErr}</span>` : ''} · ${V.iv} bars: ${V.src} · ${V.free ? 'drag any direction · pinch to zoom · drag the price axis to stretch' : 'drag sideways · pinch to zoom · price auto-fits'}`;
+  }
+  function prevCloseFromBars(B) { // last close of the session before the last bar's session (daily+: the previous bar)
+    const n = B.length - 1; if (n < 1) return null; const day = b => Math.floor(b.time / 86400), d0 = day(B[n]);
+    if (/^(1D|1W|1M)$/.test(V.iv)) return B[n - 1].close;
+    for (let i = n - 1; i >= 0; i--) if (day(B[i]) < d0) return B[i].close; return null;
+  }
+  function paintHdr() {
+    const px = V.px, el = V.root.querySelector('#cpx'); if (!px || !el) return;
+    const ch = px.prev ? (px.price / px.prev - 1) * 100 : null;
+    el.innerHTML = ` ${window.App.fmt(px.price)} ${ch == null ? '' : `<small class="${ch >= 0 ? 'up' : 'dn'}">${ch >= 0 ? '+' : ''}${ch.toFixed(2)}%</small>`}`;
   }
   async function tick() {
     if (!V || !window.App.marketOpen(V.opts.mkt)) return;
     try {
-      let px = null;
-      if (window.MS && MS.ok() && V.opts.mkt === 'IN') { const q = (await MS.quotes([V.opts.sym]))[V.opts.sym]; px = q && +q.last_price; }
-      if (!px) { const { meta } = await window.App.chart(window.App.ySym(V.opts.sym, V.opts.mkt), '1d', '1m'); px = meta.regularMarketPrice; }
+      let px = null, pq = null, qo = {}, src = 'yf'; V.tickErr = '';
+      if (window.MS && MS.ok() && V.opts.mkt === 'IN') {
+        try { const q = (await MS.quotes([V.opts.sym]))[V.opts.sym]; if (q && +q.last_price > 0) { px = +q.last_price; qo = q.ohlc || {}; pq = +qo.close > 0 && +qo.close !== px ? +qo.close : null; src = 'ms'; } else V.tickErr = 'mStock sent no quote, using Yahoo'; }
+        catch (e) { V.tickErr = 'mStock: ' + (e.message || 'failed') + ', using Yahoo'; }
+      }
+      let yprev = null;
+      if (!px) { const { meta } = await window.App.chart(window.App.ySym(V.opts.sym, V.opts.mkt), '1d', '1m'); px = meta.regularMarketPrice; yprev = meta.chartPreviousClose || meta.previousClose; } // range 1d: prev session close
       if (!V || !px) return;
       const sec = IV.find(x => x[0] === V.iv)[1], B = V.B, last = B[B.length - 1];
-      const now = Math.floor(Date.now() / 1000), t = now + tzOffset(V.tz, now);
-      let k = sec >= 86400 ? last.time : (sec === 14400 ? last.time + Math.floor((t - last.time) / sec) * sec : Math.floor(t / sec) * sec);
-      const before = last.close;
-      if (k > last.time) B.push({ time: k, open: px, high: px, low: px, close: px, volume: 0 });
-      else { last.close = px; last.high = Math.max(last.high, px); last.low = Math.min(last.low, px); }
+      const now = Math.floor(Date.now() / 1000), t = now + tzOffset(V.tz, now), dayN = x => Math.floor(x / 86400);
+      let k, newBar;
+      if (sec === 604800 || sec === 2592000) { const kk = bucketKey(t, sec); newBar = kk > bucketKey(last.time, sec); k = kk; }          // week / month bucket
+      else if (sec >= 86400) { newBar = dayN(t) > dayN(last.time); k = dayN(t) * 86400 + last.time % 86400; }                              // daily: a bar for TODAY if the feed has none yet
+      else { k = sec === 14400 ? last.time + Math.floor((t - last.time) / sec) * sec : Math.floor(t / sec) * sec; newBar = k > last.time; }
+      const before = last.close, daily = sec >= 86400, hi = +qo.high > 0 && daily ? +qo.high : px, lo = +qo.low > 0 && daily ? +qo.low : px;
+      if (newBar) B.push({ time: k, open: daily && +qo.open > 0 ? +qo.open : px, high: Math.max(px, hi), low: Math.min(px, lo), close: px, volume: 0 });
+      else { last.close = px; last.high = Math.max(last.high, px, daily ? hi : 0); last.low = Math.min(last.low, px, daily ? lo || px : px); }
+      // header: same basis as the stock page (previous close); keep the page's prev unless it is missing
+      const prev = (V.px && V.px.prev) || pq || yprev || prevCloseFromBars(B);
+      V.px = { price: px, prev, src, official: false, at: Date.now() };
       draw(false);
       const el = V.root.querySelector('#cpx'); el.classList.remove('flash-up', 'flash-dn'); void el.offsetWidth; el.classList.add(px >= before ? 'flash-up' : 'flash-dn');
-    } catch (e) { }
+    } catch (e) { if (V) { V.tickErr = 'price update failed'; } }
   }
-  window.ChartView = { open, close, calc, aggregate };
+  window.ChartView = { open, close, calc, aggregate, state: () => V && { last: V.B[V.B.length - 1], n: V.B.length, px: V.px, iv: V.iv, foot: V.root.querySelector("#cfoot").textContent } };
 })();

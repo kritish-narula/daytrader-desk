@@ -7,15 +7,29 @@ const Live = (() => {
   let lastRerate = 0, busy = false, reBusy = false;
   const onList = () => ['scan', 'home', 'saved', 'fno'].includes(S.tab) && !document.hidden && !document.querySelector('.lock');
   const visible = () => [...document.querySelectorAll('.row.gf[data-sym]')].filter(r => { const b = r.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; });
-  async function quotes(syms, mkt) {
+  // live prices for the rows on screen: mStock LTP when connected (prev close = mStock ohlc.close), else Yahoo 1-min (marked src yf).
+  // Yahoo meta.chartPreviousClose is only the previous close for range=1d, which is the only range used here.
+  async function quotes(syms, mkt, prevOf) {
     const out = {};
     if (mkt === 'IN' && window.MS && MS.ok()) {
-      try { const Q = await MS.quotes(syms); for (const s of syms) { const q = Q && Q[s]; if (q && q.last_price) { const pc = q.ohlc && q.ohlc.close; out[s] = { ms: 1, p: q.last_price, chg: pc ? (q.last_price / pc - 1) * 100 : null }; } } } catch (e) {}
+      try {
+        const Q = await MS.pxNow(syms, mkt);
+        for (const s of syms) { const o = Q[s]; if (!o) continue; const pc = o.pc || (prevOf && prevOf(s)) || null; out[s] = { ms: 1, p: o.p, chg: pc ? (o.p / pc - 1) * 100 : null, pc }; }
+      } catch (e) { MS.lastError = e.message; }
     }
     await pool(syms.filter(s => !out[s]), 5, async s => {
-      try { const { meta } = await chart(ySym(s, mkt), '1d', '1m'); const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose; if (p) out[s] = { p, chg: pc ? (p / pc - 1) * 100 : null }; } catch (e) {}
+      try { const { meta } = await chart(ySym(s, mkt), '1d', '1m'); const p = meta.regularMarketPrice, pc = meta.chartPreviousClose || meta.previousClose; if (p) out[s] = { p, chg: pc ? (p / pc - 1) * 100 : null, pc }; } catch (e) {}
     });
     return out;
+  }
+  // Home index tiles: mStock index quotes (NSE:NIFTY 50, BSE:SENSEX ...) every tick when connected
+  async function tiles(mkt) {
+    if (S.tab !== 'home' || mkt !== 'IN' || !(window.MS && MS.ok())) return;
+    const ids = (MK[mkt].idx() || []).map(x => x[0]).filter(s => document.querySelector('#ix_' + s)); if (!ids.length) return;
+    const Q = await MS.pxNow(ids, mkt); if (S.mkt !== mkt) return;
+    for (const s of ids) { const o = Q[s], el = document.querySelector('#ix_' + s), c = document.querySelector('#ixc_' + s); if (!o || !el) continue;
+      el.innerHTML = fmt(o.p) + ' <span class="up" title="mStock live" style="font-size:9px">●</span>';
+      if (c && o.chg != null) c.innerHTML = chgPill(o.chg); }
   }
   function paint(row, o) {
     const px = row.querySelector('.px'); if (!px) return;
@@ -28,11 +42,12 @@ const Live = (() => {
     if (busy || !onList() || !marketOpen(S.mkt)) return;
     busy = true; const mkt = S.mkt;
     try {
+      await tiles(mkt);
       const rows = visible().slice(0, 18); if (!rows.length) return;
-      const Q = await quotes([...new Set(rows.map(r => r.dataset.sym))], mkt); if (S.mkt !== mkt) return;
-      const sc = S.scan[mkt];
+      const sc = S.scan[mkt], prevOf = s => { const x = sc && sc.rows.find(r => r.sym === s); return x && x.prev; };
+      const Q = await quotes([...new Set(rows.map(r => r.dataset.sym))], mkt, prevOf); if (S.mkt !== mkt) return;
       for (const r of rows) { const o = Q[r.dataset.sym]; if (!o || !r.isConnected) continue; paint(r, o);
-        const sr = sc && sc.rows.find(x => x.sym === r.dataset.sym); if (sr) { sr.price = o.p; if (o.chg != null) sr.chg = o.chg; } }
+        const sr = sc && sc.rows.find(x => x.sym === r.dataset.sym); if (sr) { sr.price = o.p; if (o.chg != null) sr.chg = o.chg; if (o.pc) sr.prev = o.pc; sr.src = o.ms ? 'ms' : 'yf'; sr.srcAt = Date.now(); } }
       stamp();
       if (Date.now() - lastRerate > RERATE) rerate();
     } finally { busy = false; }
@@ -59,9 +74,11 @@ const Live = (() => {
   function onRender() {
     if (S.mkt === 'IN') { const sc = S.scan.IN, idx = sc ? new Map(sc.rows.map(r => [r.sym, r])) : null, C = window.MS && MS.cov;
       document.querySelectorAll('.row.gf[data-sym]').forEach(r => { if (r.dataset.src) return; const x = idx && idx.get(r.dataset.sym), s = r.dataset.sym;
-        const ms = C && C.ok[s] && Date.now() - C.ok[s] < 10 * 60e3; r.dataset.src = ms || (x && x.src === 'ms' && Date.now() - (x.srcAt || 0) < 10 * 60e3) ? 'ms' : x && x.src ? 'yf' : ''; }); 
-      const rows = [...document.querySelectorAll('#sl .row.gf[data-sym]')], n = rows.filter(r => r.dataset.src === 'ms').length, hd = document.querySelector('#sl .lhd');
-      if (hd && rows.length && !document.querySelector('#covNote')) hd.insertAdjacentHTML('afterend', `<div class="note" id="covNote" style="margin:-2px 2px 8px"><span class="${n === rows.length ? 'up' : 'wa'}">●</span> ${n} of ${rows.length} prices live from mStock${n < rows.length ? ' · <span class="wa">●</span> = Yahoo fallback' : ''}</div>`); }
+        // the row's own source wins (set when its price was computed); 'cl' = official close; no source known -> mStock if it answered recently
+        const fresh = x && Date.now() - (x.srcAt || 0) < 10 * 60e3, ms = C && C.ok[s] && Date.now() - C.ok[s] < 10 * 60e3;
+        r.dataset.src = x && x.src === 'cl' ? 'cl' : x && x.src === 'ms' && (fresh || !marketOpen('IN')) ? 'ms' : x && x.src ? (x.src === 'ms' ? (ms ? 'ms' : 'yf') : 'yf') : ms ? 'ms' : ''; });
+      const rows = [...document.querySelectorAll('#sl .row.gf[data-sym]')], n = rows.filter(r => r.dataset.src === 'ms' || r.dataset.src === 'cl').length, hd = document.querySelector('#sl .lhd');
+      if (hd && rows.length && !document.querySelector('#covNote')) hd.insertAdjacentHTML('afterend', `<div class="note" id="covNote" style="margin:-2px 2px 8px"><span class="${n === rows.length ? 'up' : 'wa'}">●</span> ${n} of ${rows.length} prices from mStock / official close${n < rows.length ? ' · <span class="wa">●</span> = Yahoo fallback' : ''}</div>`); }
     const mkt = S.mkt, hd = document.querySelector('#sl .lhd .note');
     if (hd && !document.querySelector('#liveStamp') && marketOpen(mkt)) hd.insertAdjacentHTML('afterend', '<span class="livepill" id="liveStamp">Live</span>');
     if (S.tab !== 'scan' || S.scanning || !staleScan(mkt)) return;
@@ -78,22 +95,28 @@ const Live = (() => {
   const wrap = name => { const f = window[name]; if (typeof f !== 'function') return; window[name] = function () { const r = f.apply(this, arguments); setTimeout(() => { Live.onRender(); Live.tick().catch(() => {}); }, 50); return r; }; };
   ['drawScan', 'vHome', 'vSaved'].forEach(wrap);
 })();
-// Stock page: price + change tick every 3 s from mStock between the 30-s full re-analyses
+// 'cl' rows = official close (market closed): neutral dot. Injected here so home.css (another owner) stays untouched.
+(() => { const st = document.createElement('style'); st.textContent = '.row.gf[data-src=cl] .px b::after{content:" ●";color:var(--mu,#8a97a6);font-size:9px;vertical-align:middle}'; document.head.appendChild(st); })();
+// Stock page: price + change tick every 3 s from mStock between the 30-s full re-analyses.
+// Previous close = the page's own basis (A.prev from MS.basis), so header, rows and chart agree. If mStock fails, the status line says so.
 (() => {
   let busy = false;
+  const hm = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   setInterval(async () => {
     if (busy || S.tab !== 'detail' || document.hidden || !S.detail || S.detail.mkt !== 'IN' || !(window.MS && MS.ok()) || !marketOpen('IN')) return;
     const A = S.detail.A, big = document.querySelector('.dq-big'), ch = document.querySelector('.dq-chg'); if (!A || !big || !ch) return;
-    busy = true;
+    busy = true; const st = document.querySelector('.dq-st .mu'), sym = S.detail.sym;
     try {
-      const sym = S.detail.sym, kk = await MS.key(sym), q = await MS.ltp([kk.k]), px = q[kk.k]; if (!px || S.detail.sym !== sym) return;
-      const prev = A.price / (1 + (A.chg || 0) / 100), d = px - prev, c = d / prev * 100, up = d >= 0;
+      const kk = await MS.key(sym), q = await MS.ltp([kk.k]), px = q[kk.k]; if (S.detail.sym !== sym) return;
+      if (!px) { if (st) st.innerHTML = '· <span class="wa">mStock tick failed, showing the last refresh (' + hm() + ')</span>'; return; }
+      const prev = A.prev || A.price / (1 + (A.chg || 0) / 100), d = px - prev, c = d / prev * 100, up = d >= 0;
       const old = parseFloat(big.dataset.v || A.price); big.dataset.v = px;
       big.textContent = cur() + fmt(px);
       ch.className = 'dq-chg ' + (up ? 'up' : 'dn');
       ch.innerHTML = `${up ? '+' : '−'}${fmt(Math.abs(d))} (${up ? '+' : '−'}${Math.abs(c).toFixed(2)}%) <span class="dq-arr">${up ? '▲' : '▼'}</span>`;
       if (px !== old) { big.classList.remove('flu', 'fld'); void big.offsetWidth; big.classList.add(px > old ? 'flu' : 'fld'); }
-      const st = document.querySelector('.dq-st .mu'); if (st) st.textContent = '· mStock tick ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) + ' · full refresh every 30s';
-    } catch (e) {} finally { busy = false; }
+      S.detail.px = Object.assign(S.detail.px || {}, { price: px, prev, src: 'ms', at: Date.now(), official: false }); // the full-screen chart header reads this
+      if (st) st.textContent = '· ' + hm() + ' · mStock · full refresh every 30s';
+    } catch (e) { if (st) st.innerHTML = '· <span class="wa">mStock tick failed: ' + esc(e.message || '') + '</span>'; } finally { busy = false; }
   }, 3000);
 })();

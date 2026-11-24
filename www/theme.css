@@ -56,7 +56,7 @@ a{color:var(--accent)}
 .note{color:var(--text2);font-size:12.5px;line-height:1.45}
 p.note{margin:8px 2px 12px}
 .empty{color:var(--text2);padding:28px 16px;font-size:14px;line-height:1.55}
-.price,.px,.lv .v,.kv .v,.idx .p,.sc,.stk,.cp b,.ipog b,.ipod b,.hzc b,.ring .v,.cttl{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.price,.px,.lv .v,.kv .v,.idx .p,.sc,.stk,.cp b,.hzc b,.ring .v,.cttl{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 ::selection{background:var(--accent-bg)}
 
 /* section headers: Google Finance style sentence-case titles */
@@ -269,22 +269,6 @@ html[data-theme="light"] .back,html[data-theme="light"] .star{background:var(--c
 .aic{width:40px;height:40px;border-radius:12px;background:var(--card2)}
 .aic.new:after{background:var(--accent);box-shadow:0 0 0 2px var(--card)}
 
-/* ---------- IPO ---------- */
-.ipo{transition:transform .1s}
-.ipo:active{transform:scale(.99)}
-.ipo .s{font-size:16px;font-weight:750;letter-spacing:-.01em}
-.ohead{align-items:flex-start}
-.ohead .note .tag{margin-top:4px}
-.ipod{gap:6px;margin-top:12px}
-.ipod>div{background:var(--card2);border-radius:10px;padding:7px 4px}
-.ipod span{font-size:9.5px;color:var(--text2);letter-spacing:.03em}
-.ipod b{font-size:12.5px;font-weight:700}
-.ipog{gap:6px;margin-top:8px}
-.ipog>div{background:var(--card2);border-radius:10px;padding:7px 9px}
-.ipog span{font-size:9.5px;color:var(--text2);letter-spacing:.03em}
-.ipog b{font-size:13px;font-weight:700;margin-top:1px}
-.ipow{color:var(--accent);font-weight:650;margin-top:8px}
-.ipod1{background:var(--card2);border-radius:10px}
 
 /* ---------- options (F&O) ---------- */
 .opt .ohead b{font-size:16px}

@@ -23,6 +23,11 @@ const Learn = (() => {
     const saved = store.get('modelRemote', null); if (saved && (!m || saved.v > m.v)) { m = saved; src = 'downloaded'; }
     if (m) E.setModel(m);
     apply();
+    // paper-trading league → setup win rates measured going forward (blend into setup stats, weighted by sample size)
+    (async () => { try { const pj = await (await fetch('https://raw.githubusercontent.com/kritish-narula/daytrader-desk/main/data/paper.json?d=' + new Date().toISOString().slice(0, 10))).json();
+      for (const [n, a] of Object.entries((pj.leaders && pj.leaders.setups) || {})) { if (!Array.isArray(a) || a[0] < 30) continue; const b = E.SETUP_STATS[n];
+        if (!b) { E.SETUP_STATS[n] = a; continue; } const w = a[0] / (a[0] + b[0]); E.SETUP_STATS[n] = [b[0] + a[0], Math.round(b[1] * (1 - w) + a[1] * w), +(b[2] * (1 - w) + a[2] * w).toFixed(2), a[3] && b[3] ? 1 : a[0] >= 60 ? a[3] : b[3]]; }
+    } catch (e) {} })();
     // weekly retrained model from GitHub; only adopted if it is newer and passes the engine's checks
     const last = store.get('modelChecked', 0);
     if (Date.now() - last > 12 * 3600e3) (async () => { // in the background — never delays startup

@@ -17,12 +17,6 @@ async function chart(s, range, iv) {
       if (A.fno) console.log('   fno:', A.fno.idea);
     } catch (e) { console.log(s, 'FAILED', e.message); }
   }
-  try { const I = require('../www/ipo.js'); const h = await fetch('https://ipowatch.in/ipo-grey-market-premium-latest-ipo-gmp/', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.text());
-    const L = I.parseTables(h); console.log('IPO rows parsed:', L.length); for (const x of L.slice(0, 20)) { const r = I.rate(x); const Dt = I.dates(x.dates); console.log('  ', x.name, '| GMP', x.gmp, '| price', x.price, x.sme ? 'SME' : 'MAIN', x.status || '-', isFinite(x.listPrice) ? 'listed@' + x.listPrice : '', '=>', r.rating, r.action, '| dates:', JSON.stringify(x.dates), '→', Dt ? ['open', 'close', 'allot', 'list'].map(k => Dt[k].toDateString().slice(4, 10)).join(' / ') : 'UNPARSED'); } }
-  catch (e) { console.log('IPO FAILED', e.message); }
-  try { const m = new Date().toISOString().slice(0, 7), j = await fetch(`https://api.nasdaq.com/api/ipo/calendar?date=${m}`, { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } }).then(r => r.json());
-    const U = ((j.data || {}).upcoming || {}).upcomingTable || {}, P = (j.data || {}).priced || {}; console.log('US IPO upcoming:', (U.rows || []).length, JSON.stringify((U.rows || [])[0] || {}).slice(0, 300)); console.log('US IPO priced:', (P.rows || []).length, JSON.stringify((P.rows || [])[0] || {}).slice(0, 300)); }
-  catch (e) { console.log('US IPO FAILED', e.message); }
   try { const fs = require('fs'), u = JSON.parse(fs.readFileSync(__dirname + '/../www/us.json')); const c = {}; for (const k in u.cat) c[u.cat[k][0]] = (c[u.cat[k][0]] || 0) + 1; console.log('us.json:', u.eq.length, 'stocks', JSON.stringify(c), 'sectors:', [...new Set(Object.values(u.cat).map(x => x[1]))].join(', ')); } catch (e) { console.log('us.json missing', e.message); }
   const q = await fetch('https://query2.finance.yahoo.com/v1/finance/search?q=tata%20motors&quotesCount=5&newsCount=0', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()).catch(e => ({ err: e.message }));
   console.log('search:', (q.quotes || []).map(x => x.symbol).join(', ') || JSON.stringify(q).slice(0, 200));

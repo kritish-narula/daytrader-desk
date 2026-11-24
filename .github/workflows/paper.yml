@@ -1,0 +1,45 @@
+name: Paper-trading league
+# Runs the paper league every trading day after the NSE close (16:15 IST = 10:45 UTC). Weekly review happens inside the
+# run on the last session of each week. No broker credentials: Yahoo daily bars + NSE public files only.
+on:
+  schedule:
+    - cron: '45 10 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: 'Rebuild from scratch: replay this many past sessions (e.g. 120). Leave empty for a normal daily run.'
+        required: false
+        default: ''
+permissions:
+  contents: write
+concurrency:
+  group: paper-league
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Unit tests
+        run: node tools/paper.test.js
+      - name: Run league
+        env:
+          BACKFILL: ${{ github.event.inputs.backfill }}
+        run: |
+          if [ -n "$BACKFILL" ]; then node tools/paper.js --backfill "$BACKFILL"; else node tools/paper.js; fi
+      - name: Commit results
+        run: |
+          git config user.name "paper-league-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/paper.json data/paper_history.json data/paper_state.json
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "Paper league $(date -u +%F) [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            echo "push failed, retry $i"; sleep $((i * 10))
+          done
+          exit 1

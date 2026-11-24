@@ -724,7 +724,7 @@
 
   // ---------- options idea (F&O) ----------
   E.strikeStep = function (sym, price) {
-    const idx = { NIFTY: 50, BANKNIFTY: 100, FINNIFTY: 50, MIDCPNIFTY: 25, SENSEX: 100, SPY: 1, QQQ: 1, IWM: 1, DIA: 1, SPX: 5 };
+    const idx = { NIFTY: 50, BANKNIFTY: 100, FINNIFTY: 50, MIDCPNIFTY: 25, SENSEX: 100, BANKEX: 100, NIFTYNXT50: 100, SPY: 1, QQQ: 1, IWM: 1, DIA: 1, SPX: 5 };
     if (idx[sym]) return idx[sym];
     return price < 100 ? 2.5 : price < 250 ? 5 : price < 500 ? 10 : price < 1000 ? 20 : price < 2500 ? 50 : price < 5000 ? 100 : 250;
   };

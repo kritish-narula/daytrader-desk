@@ -39,7 +39,6 @@
 /* chips */
 .chips.quick{flex-wrap:wrap;overflow:visible;gap:6px;margin:2px 0 4px}
 .chips.quick button,.chips.fchips button{padding:6px 11px;font-size:12.5px;border-radius:99px}
-.chips.pop{flex-wrap:wrap;overflow:visible}.chips.pop button{padding:6px 12px;font-size:12.5px;font-variant-numeric:tabular-nums}
 .chips.fchips{margin:10px 0 6px}
 /* movers tabs */
 .mvtabs{display:flex;gap:6px;margin-bottom:8px}

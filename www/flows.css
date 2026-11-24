@@ -1,0 +1,17 @@
+/* Money-flow screen + Home card */
+.fseg{margin:4px 0 8px}.fseg button{flex:1}
+.frow{display:block!important;padding:10px 12px}
+.fmain{width:100%}.fh{display:flex;align-items:center;gap:6px}.fn{font-size:15px}.fcnt{font-size:11px;color:var(--text3,var(--mu));flex:1}.fnet{font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fsub{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:12px;color:var(--text2,var(--mu));margin:5px 0 6px;font-variant-numeric:tabular-nums}.fsub b{font-weight:700}.fsub small{color:var(--text3,var(--mu))}
+.fbars{display:flex;flex-direction:column;gap:2px}.fb{display:flex;align-items:center;gap:6px}.fl{width:38px;font-size:10px;color:var(--text3,var(--mu))}
+.ft{flex:1;height:5px;background:var(--card2,#1b222b);border-radius:3px;overflow:hidden}.fv{height:100%;border-radius:3px}.fv.p{background:var(--up)}.fv.n{background:var(--down,var(--dn))}
+.fb:nth-child(2) .fv,.fb:nth-child(3) .fv{opacity:.55}
+.fdot{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none;background:var(--text3,#6b7684)}.fdot.pos{background:var(--up)}.fdot.neg{background:var(--down,var(--dn))}.fdot.neg2{background:var(--warn,var(--wa))}
+.fstat{padding:14px}.fbig{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin:12px 0}.fgrid small{display:block;font-size:11px;color:var(--text3,var(--mu))}.fgrid b{font-size:14px;font-variant-numeric:tabular-nums}
+.fbtn{margin-top:10px;border:1px solid var(--line2,var(--ln));background:var(--card2,var(--pn2));color:var(--text,var(--tx));border-radius:99px;padding:8px 14px;font-weight:700;font-size:13px}
+.fnews{display:flex!important;gap:10px;align-items:flex-start;text-decoration:none;color:inherit}.fnews .fdot{margin-top:5px}.f2{font-size:14px;line-height:1.3}
+.fdef{margin:12px 2px;font-size:12px;color:var(--text2,var(--mu))}.fdef summary{cursor:pointer;font-weight:700}.fdef p{margin:6px 0}
+.fcols{display:grid;grid-template-columns:1fr 1fr;gap:12px}.fch{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.fcl{display:flex;flex-direction:column;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}.fcl:first-of-type{border:0}.fcn{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fcl b{font-size:14px;font-variant-numeric:tabular-nums}.fcl small{font-size:11px}
+.fcard{padding:12px}
