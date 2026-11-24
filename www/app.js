@@ -542,41 +542,65 @@ function vSaved() {
 
 // ---------- broker (mStock) ----------
 function vBroker() {
-  const c = MS.cfg(), ok = MS.ok();
+  const c = MS.cfg(), ok = MS.ok(), T = !!c.totp, tail = c.apiKey ? '…' + c.apiKey.slice(-4) : '';
   $('#view').innerHTML = `<div class="dh"><button class="back" id="back">←</button><div class="t"><div class="s">mStock live data</div><div class="f">Mirae Asset · Type A API</div></div></div>
   <div class="card"><div style="display:flex;align-items:center;gap:10px"><span class="live ${ok ? 'on' : ''}"><i></i><span></span></span><b>${esc(MS.status())}</b></div>
   <p class="note" style="margin:8px 0 0">${ok ? 'India prices, candles and scans now use mStock live data. Yahoo is the fallback.' : 'Log in once per trading day. mStock sessions expire daily.'}</p></div>
-  <div class="card"><h3 style="margin-top:0">1 · API key</h3>
-   <input id="apik" type="password" placeholder="mStock API key" value="${esc(c.apiKey)}" class="inp">
-   <label class="note"><input type="checkbox" id="totp" ${c.totp ? 'checked' : ''}> I use an authenticator app (TOTP) instead of SMS OTP</label>
+  <div class="card"><h3 style="margin-top:0">1 · API key <span class="note">${c.apiKey ? `saved ${esc(tail)}` : 'not saved'}</span></h3>
+   <div style="display:flex;gap:6px"><input id="apik" type="password" placeholder="Paste your Type A API key" value="${esc(c.apiKey)}" class="inp" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1"><button class="btn sm g" id="showK" type="button">👁</button></div>
    <details style="margin-top:6px"><summary class="note">Advanced</summary><input id="cks" placeholder="checksum" value="${esc(c.checksum || 'L')}" class="inp"><p class="note">mStock's docs use "L" as the checksum. Change it only if mStock support tells you to.</p></details>
    <button class="btn g w" id="saveK" style="margin-top:8px">Save key on this phone</button></div>
-  <div class="card"><h3 style="margin-top:0">2 · Log in</h3>
-   <input id="usr" placeholder="mStock client ID / username" value="${esc(c.user || '')}" class="inp" autocomplete="username">
-   <input id="pwd" type="password" placeholder="Password (never saved)" class="inp" autocomplete="current-password">
-   <button class="btn w" id="doLogin">${c.totp ? 'Log in' : 'Log in & send OTP'}</button>
-   <div id="otpBox" style="display:none;margin-top:10px"><input id="otp" inputmode="numeric" placeholder="${c.totp ? 'Authenticator code' : 'OTP from SMS'}" class="inp"><button class="btn w" id="doOtp">Verify</button></div>
+  <div class="card"><h3 style="margin-top:0">2 · How do you verify login?</h3>
+   <div class="chips" id="vmode"><button class="chip ${T ? '' : 'on'}" data-v="otp">📱 SMS OTP</button><button class="chip ${T ? 'on' : ''}" data-v="totp">🔐 Authenticator (TOTP)</button></div>
+   ${T ? `<details class="note" style="margin-top:6px"><summary>First time? Set up the authenticator</summary><ol style="margin:6px 0 0 18px;padding:0;line-height:1.5">
+     <li>Open <b>trade.mstock.com</b> in Chrome (Desktop site on) and log in.</li><li>☰ menu → <b>Trading APIs</b> → <b>Enable TOTP</b>.</li>
+     <li>Scan the QR with Google Authenticator / Microsoft Authenticator. A new "mStock" entry appears.</li>
+     <li>Use <b>that</b> 6-digit code below. Phone time must be set to automatic.</li></ol></details>` : ''}</div>
+  <div class="card"><h3 style="margin-top:0">3 · Log in</h3>
+   <input id="usr" placeholder="mStock client ID" value="${esc(c.user || '')}" class="inp" autocomplete="username" autocapitalize="characters" spellcheck="false">
+   <input id="pwd" type="password" placeholder="Password${T ? ' (only if asked)' : ''} · never saved" class="inp" autocomplete="current-password">
+   ${T ? `<input id="otp" inputmode="numeric" maxlength="6" placeholder="6-digit authenticator code" class="inp" autocomplete="one-time-code">
+   <button class="btn w" id="doTotp">Connect</button>` : `<button class="btn w" id="doLogin">Log in & send OTP</button>
+   <div id="otpBox" style="display:none;margin-top:10px"><input id="otp" inputmode="numeric" maxlength="6" placeholder="OTP from SMS" class="inp" autocomplete="one-time-code"><button class="btn w" id="doOtp">Verify</button></div>`}
    <div id="bmsg" class="note" style="margin-top:8px"></div></div>
   ${ok ? '<div class="card"><button class="btn g w" id="testQ">Test: fetch RELIANCE live price</button><div id="tmsg" class="note" style="margin-top:8px"></div></div>' : ''}
-  <div class="card"><button class="btn g w" id="lout">Log out</button><button class="btn g w" id="forget" style="margin-top:8px;color:var(--dn)">Remove key & data from this phone</button></div>
-  <div class="warn">🔒 Your key and the day's session token stay inside this app on this phone. ${Sec.hasPin() ? 'They are encrypted with your app PIN (AES-256).' : '<b>Set an app PIN in Settings to encrypt them.</b>'} The password is never stored and nothing is uploaded.</div>`;
+  <div class="card"><details><summary class="note">Diagnostics</summary><div class="note" id="diag" style="margin-top:6px">${MS.lastCall ? `Last call: ${esc(MS.lastCall.path)} · HTTP ${MS.lastCall.status} · ${esc(MS.lastCall.note)} · ${esc(MS.lastCall.at)}` : 'No calls yet.'}<br>Native HTTP: ${window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() ? 'yes' : 'no (browser)'} · Key length: ${c.apiKey ? c.apiKey.length : 0} · PIN vault: ${Sec.hasPin() ? (Sec.isUnlocked() ? 'unlocked' : 'locked') : 'off'}</div></details>
+   <button class="btn g w" id="lout" style="margin-top:8px">Log out</button><button class="btn g w" id="forget" style="margin-top:8px;color:var(--dn)">Remove key & data from this phone</button></div>
+  <div class="warn">🔒 Your key and the day's session token stay inside this app on this phone. ${Sec.hasPin() ? 'They are encrypted with your app PIN (AES-256).' : '<b>Set an app PIN in Settings to encrypt them.</b>'} The password is never stored and nothing is uploaded. Never share the key or codes with anyone.</div>`;
   $('#back').onclick = back;
-  const msg = (t, bad) => { $('#bmsg').innerHTML = `<span class="${bad ? 'dn' : 'up'}">${esc(t)}</span>`; };
-  const saveCfg = () => { const n = { apiKey: $('#apik').value.trim(), user: $('#usr').value.trim(), checksum: ($('#cks').value || 'L').trim(), totp: $('#totp').checked }; MS.saveCfg(n); return n; };
-  $('#saveK').onclick = () => { const n = saveCfg(); msg(n.apiKey ? 'Key saved on this phone.' : 'Enter your API key first.', !n.apiKey); };
-  $('#totp').onchange = () => { saveCfg(); vBroker(); };
-  $('#doLogin').onclick = async () => {
-    const n = saveCfg(); if (!n.apiKey || !n.user || !$('#pwd').value) return msg('Enter API key, client ID and password.', true);
-    const b = $('#doLogin'); b.disabled = true; b.innerHTML = '<span class="spin"></span>';
-    try { await MS.login(n.user, $('#pwd').value); $('#pwd').value = ''; $('#otpBox').style.display = ''; msg(n.totp ? 'Password OK. Enter your authenticator code.' : 'OTP sent to your registered mobile.'); $('#otp').focus(); }
-    catch (e) { msg('Login failed: ' + e.message, true); }
-    b.disabled = false; b.textContent = n.totp ? 'Log in' : 'Log in & send OTP';
+  const msg = (t, bad) => { $('#bmsg').innerHTML = `<span class="${bad ? 'dn' : 'up'}">${esc(t)}</span>`; const d = $('#diag'); if (d && MS.lastCall) d.firstChild.textContent = `Last call: ${MS.lastCall.path} · HTTP ${MS.lastCall.status} · ${MS.lastCall.note} · ${MS.lastCall.at}`; };
+  const clean = v => (v || '').replace(/\s+/g, '');
+  const saveCfg = () => { const n = { apiKey: clean($('#apik').value), user: $('#usr').value.trim().toUpperCase(), checksum: ($('#cks').value || 'L').trim(), totp: MS.cfg().totp }; MS.saveCfg(n); return n; };
+  const stored = n => MS.cfg().apiKey === n.apiKey;
+  $('#showK').onclick = () => { const i = $('#apik'); i.type = i.type === 'password' ? 'text' : 'password'; };
+  $('#saveK').onclick = () => { const n = saveCfg(); if (!n.apiKey) return msg('Paste your API key first.', true); msg(stored(n) ? `Key saved (${n.apiKey.length} characters, ends …${n.apiKey.slice(-4)}).` : 'Could not save: unlock the app with your PIN and try again.', !stored(n)); };
+  document.querySelectorAll('#vmode .chip').forEach(b => b.onclick = () => { const n = saveCfg(); n.totp = b.dataset.v === 'totp'; MS.saveCfg(n); vBroker(); });
+  const need = n => { if (!n.apiKey) return 'Paste and save your API key (step 1).'; if (!stored(n)) return 'Key not saved: unlock the app with your PIN.'; if (!n.user) return 'Enter your mStock client ID.'; return ''; };
+  const busy = (b, on, label) => { b.disabled = on; b.innerHTML = on ? '<span class="spin"></span>' : label; };
+  const done = () => { msg('Connected. Live mStock data is on.'); toast('mStock connected'); setTimeout(vBroker, 800); };
+  if (T) $('#doTotp').onclick = async () => {
+    const n = saveCfg(), e = need(n); if (e) return msg(e, true);
+    const code = $('#otp').value.replace(/\D/g, ''); if (code.length !== 6) return msg('Enter the 6-digit code from your authenticator.', true);
+    const b = $('#doTotp'); busy(b, true);
+    try { await MS.connectTotp(n.user, $('#pwd').value, code); $('#pwd').value = ''; done(); }
+    catch (err) { msg(err.message, true); }
+    busy(b, false, 'Connect');
   };
-  $('#doOtp').onclick = async () => {
-    const code = $('#otp').value.trim(); if (!code) return;
-    try { MS.cfg().totp ? await MS.verifyTotp(code) : await MS.verifyOtp(code); msg('Connected. Live mStock data is on.'); setTimeout(vBroker, 700); }
-    catch (e) { msg('Verification failed: ' + e.message, true); }
-  };
+  else {
+    $('#doLogin').onclick = async () => {
+      const n = saveCfg(), e = need(n) || (!$('#pwd').value ? 'Enter your password.' : ''); if (e) return msg(e, true);
+      const b = $('#doLogin'); busy(b, true);
+      try { await MS.login(n.user, $('#pwd').value); $('#pwd').value = ''; $('#otpBox').style.display = ''; msg('OTP sent to your registered mobile.'); $('#otp').focus(); }
+      catch (err) { msg(err.message, true); }
+      busy(b, false, 'Log in & send OTP');
+    };
+    $('#doOtp').onclick = async () => {
+      const code = $('#otp').value.trim(); if (!code) return;
+      const b = $('#doOtp'); busy(b, true);
+      try { await MS.verifyOtp(code); done(); } catch (err) { msg(err.message, true); }
+      busy(b, false, 'Verify');
+    };
+  }
   const tq = $('#testQ'); if (tq) tq.onclick = async () => {
     $('#tmsg').innerHTML = '<span class="spin"></span>';
     try { const q = await MS.quotes(['RELIANCE']); const r = q.RELIANCE; $('#tmsg').innerHTML = r ? `<span class="up">RELIANCE ₹${r.last_price} (prev close ${r.ohlc ? r.ohlc.close : '–'})</span>` : '<span class="wa">Connected, but no quote returned for RELIANCE.</span>'; }

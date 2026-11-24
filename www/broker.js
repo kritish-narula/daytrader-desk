@@ -32,28 +32,50 @@
     },
     forget() { this.logout(); set('cfg', null); set('map', null); },
 
+    // Native HTTP on the phone (exact form encoding, no CORS); browser fetch elsewhere.
+    async _http(method, url, headers, form) {
+      const N = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.Plugins && Capacitor.Plugins.CapacitorHttp;
+      if (N) {
+        const r = await N.request({ url, method, headers, data: form || undefined, connectTimeout: 15000, readTimeout: 30000 });
+        return { status: r.status, body: r.data };
+      }
+      const r = await fetch(url, { method, headers, body: form ? new URLSearchParams(form).toString() : undefined });
+      return { status: r.status, body: await r.text() };
+    },
     async _req(method, path, { form, params, auth = true } = {}) {
-      const headers = { 'X-Mirae-Version': '1' };
+      const headers = { 'X-Mirae-Version': '1', 'Accept': 'application/json' };
       const c = this.cfg(), s = get('session');
       if (auth && s && s.token) headers.Authorization = `token ${c.apiKey}:${s.token}`;
-      let url = BASE + path, body;
+      if (form) headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      let url = BASE + path;
       if (params) url += '?' + params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
-      if (form) { headers['Content-Type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(form).toString(); }
-      const r = await fetch(url, { method, headers, body });
-      const txt = await r.text();
-      let j; try { j = JSON.parse(txt); } catch (e) { if (r.ok) return txt; throw new Error(`HTTP ${r.status}`); }
-      if (j.status !== 'success') {
-        const m = j.message || `HTTP ${r.status}`;
-        if (/token|session|unauthori/i.test(m) && r.status >= 400) set('session', null);
-        throw new Error(m);
-      }
+      let r;
+      try { r = await this._http(method, url, headers, form); }
+      catch (e) { this._diag(path, 0, e.message); throw new Error('Could not reach mStock (' + (e.message || 'network error') + '). Check your internet.'); }
+      let j = r.body;
+      if (typeof j === 'string') { try { j = JSON.parse(j); } catch (e) { if (r.status < 400) { this._diag(path, r.status, 'ok (text)'); return r.body; } j = null; } }
+      const m = (j && (j.message || j.msg || (j.data && j.data.message))) || '';
+      this._diag(path, r.status, j && j.status === 'success' ? 'ok' : m || 'no message');
+      if (!j || j.status !== 'success') throw new Error(this._explain(path, r.status, m));
       return j.data;
     },
+    // translate mStock failures into what to do
+    _explain(path, status, m) {
+      const t = (m || '').toLowerCase();
+      if (status === 403 || /api.?key|invalid key|apikey/.test(t)) return `${m || 'Forbidden (403)'}. The API key was rejected: re-copy it from mStock → Trading APIs, make sure it is a Type A key and not expired.`;
+      if (/ip/.test(t) && /(allow|white|register|mismatch|not)/.test(t)) return `${m}. Your current IP isn't allowed: update the Primary IP on mStock → Trading APIs to your phone's current IP.`;
+      if (/totp/.test(path) && (status === 400 || /totp|invalid|incorrect/.test(t))) return `${m || 'Wrong code'}. Use the 6-digit code for the mStock *Trading API* entry in your authenticator (set up via Trading APIs → Enable TOTP), and make sure your phone's time is set to automatic.`;
+      if (/session\/token/.test(path) && /otp|invalid|incorrect|expired/.test(t)) return `${m}. Check the latest SMS OTP and enter it within a few minutes.`;
+      if (/connect\/login/.test(path) && /(password|credential|user|invalid)/.test(t)) return `${m}. Check your client ID and password (same as the mStock app).`;
+      if (/token|session|unauthori|expired/.test(t) && status >= 400) { set('session', null); return `${m}. Session ended: log in again.`; }
+      return m || `mStock returned HTTP ${status}`;
+    },
+    _diag(path, status, note) { this.lastCall = { path: path.replace(/\?.*$/, ''), status, note: String(note).slice(0, 160), at: new Date().toLocaleTimeString() }; },
 
-    // Step 1: username + password -> OTP sent to registered mobile
+    // Step 1: username + password -> OTP sent to registered mobile (no OTP when TOTP is enabled)
     async login(user, password) {
       const d = await this._req('POST', 'connect/login', { form: { username: user, password }, auth: false });
-      this._pending = { user, name: d && d.nm };
+      this._pending = { user, name: d && (d.nm || d.user_name) };
       return d;
     },
     // Step 2a: OTP (request_token) + checksum -> access token
@@ -62,14 +84,23 @@
       const d = await this._req('POST', 'session/token', { form: { api_key: c.apiKey, request_token: otp, checksum: c.checksum || 'L' }, auth: false });
       return this._store(d);
     },
-    // Step 2b: authenticator TOTP -> access token
+    // Step 2b: authenticator TOTP -> access token (works without the OTP step)
     async verifyTotp(code) {
       const d = await this._req('POST', 'session/verifytotp', { form: { api_key: this.cfg().apiKey, totp: code }, auth: false });
       return this._store(d);
     },
+    // TOTP one-shot: try the code directly; if mStock wants a password login first, do it and retry
+    async connectTotp(user, password, code) {
+      try { return await this.verifyTotp(code); }
+      catch (e1) {
+        if (!password) throw e1;
+        try { await this.login(user, password); } catch (e2) { throw new Error('Login: ' + e2.message); }
+        return await this.verifyTotp(code);
+      }
+    },
     _store(d) {
-      if (!d || !d.access_token) throw new Error('No access token in response');
-      set('session', { token: d.access_token, day: istDay(), user: (this._pending || {}).user, name: d.user_name || (this._pending || {}).name });
+      if (!d || !d.access_token) throw new Error('mStock did not return an access token. Try again; if it repeats, check the key type is A.');
+      set('session', { token: d.access_token, day: istDay(), user: (this._pending || {}).user || d.user_id, name: d.user_name || (this._pending || {}).name || d.user_id });
       return d;
     },
 
