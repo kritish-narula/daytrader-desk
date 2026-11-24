@@ -362,9 +362,28 @@ function vFno() {
     : '<div class="empty">Scan the F&O list to rank futures longs and shorts.</div>'}
   <p class="note">Call/put ratings come from the index's intraday + swing signals. Live premiums need mStock (⚙️). Open interest and IV aren't included, so check the option chain before trading. Option buyers can lose 100% quickly.</p>`;
   bindRows($('#view'));
-  const loadOpts = () => ['NIFTY', 'BANKNIFTY', 'SENSEX'].forEach(s => indexOption(s).then(o => { const el = $('#opt_' + s); if (el) el.outerHTML = optCard(o); bindOpt(); }).catch(e => { const el = $('#opt_' + s); if (el) el.innerHTML = `<b>${s}</b><div class="note dn">Could not analyse: ${esc(e.message)}</div>`; }));
+  S.optO = {};
+  const loadOpts = () => ['NIFTY', 'BANKNIFTY', 'SENSEX'].forEach(s => indexOption(s).then(o => { S.optO[s] = o; const el = $('#opt_' + s); if (el) el.outerHTML = optCard(o); bindOpt(); }).catch(e => { const el = $('#opt_' + s); if (el) el.innerHTML = `<b>${s}</b><div class="note dn">Could not analyse: ${esc(e.message)}</div>`; }));
   loadOpts(); $('#optRef').onclick = () => { ['NIFTY', 'BANKNIFTY', 'SENSEX'].forEach(s => { const el = $('#opt_' + s); if (el) el.innerHTML = '<span class="spin"></span>'; }); loadOpts(); };
-  if (marketOpen('IN')) S.timer = setInterval(loadOpts, 60000);
+  if (marketOpen('IN')) {
+    let n = 0, busyT = false;
+    S.timer = setInterval(async () => {
+      if (S.tab !== 'fno' || document.hidden) return;
+      if (++n % 30 === 0) return loadOpts(); // full re-analysis every 60 s
+      if (busyT || !(window.MS && MS.ok())) return; busyT = true;
+      try {
+        const O = Object.values(S.optO || {}).filter(o => o.idxKey), keys = O.flatMap(o => [o.idxKey, ...(o.live || []).filter(Boolean).map(x => x.k)]);
+        if (!keys.length) return;
+        const q = await MS.ltp([...new Set(keys)]), at = Date.now();
+        for (const o of O) {
+          const px = q[o.idxKey]; if (px) o.A = Object.assign({}, o.A, { price: px, chg: o.prev ? (px / o.prev - 1) * 100 : o.A.chg });
+          for (const x of o.live || []) if (x && q[x.k] != null) x.prem = q[x.k];
+          o.tickAt = at; const el = $('#opt_' + o.sym); if (el) el.outerHTML = optCard(o);
+        }
+        bindOpt();
+      } catch (e) {} finally { busyT = false; }
+    }, 2000);
+  }
   const b = $('#fscan'); if (b) b.onclick = () => { S.uni = { size: 'FO', sector: '' }; store.set('uniBy', S.uniBy); go('scan'); runScan(); };
 }
 
@@ -389,9 +408,16 @@ function istMins() { const p = {}; for (const x of new Intl.DateTimeFormat('en-U
 async function indexOption(sym, mkt = 'IN') {
   const ys = ySym(sym, mkt), open = marketOpen(mkt), mins = mktMins(mkt), US = mkt === 'US';
   const T = US ? { late: 900, itm: 840, otm: 810 } : { late: 870, itm: 810, otm: 780 }; // ET: 3:00/2:00/1:30 PM · IST: 2:30/1:30/1:00 PM
-  const [d, it] = await Promise.all([chart(ys, '2y', '1d'), chart(ys, '5d', '5m').catch(() => null)]);
-  const A = Engine.analyze(d.D, { intra: open && it ? it.D : null, tick: US ? 0.01 : 0.05, canShort: true, backtest: true, price: d.meta.regularMarketPrice, fnoSym: sym, lot: foLot(sym, mkt) });
+  const useMS = !US && window.MS && MS.ok();
+  const [d, it0, live] = await Promise.all([chart(ys, '2y', '1d'), chart(ys, '5d', '5m').catch(() => null), useMS ? MS.index(sym).catch(e => ({ err: e.message })) : null]);
+  let it = it0, price = d.meta.regularMarketPrice, srcLbl = 'Yahoo (can lag)';
+  if (live && !live.err) {
+    MS.overlay(d.D, { last_price: live.price, ohlc: { open: live.open, high: live.high, low: live.low, close: live.prev } }); price = live.price; srcLbl = 'mStock live';
+    if (open && live.key.tok) { try { const D5 = await MS.candles(sym, '5minute', 5); if (D5.c.length > 20) { D5.c[D5.c.length - 1] = live.price; it = { D: D5 }; srcLbl = 'mStock live · mStock 5-min bars'; } } catch (e) {} }
+  }
+  const A = Engine.analyze(d.D, { intra: open && it ? it.D : null, tick: US ? 0.01 : 0.05, canShort: true, backtest: true, price, fnoSym: sym, lot: foLot(sym, mkt) });
   if (A.err) throw new Error(A.err);
+  if (live && !live.err && live.prev) A.chg = (live.price / live.prev - 1) * 100;
   const row = Object.assign({ sym }, rowFromA(A)), ctx = { regime: 50, news: 0, canShort: true };
   const ri = Engine.hzRating(row.intraday, 'intraday', ctx), rs = Engine.hzRating(row.swing, 'swing', ctx);
   const wI = open ? 0.6 : 0.3, bull = Math.round(wI * ri.rating + (1 - wI) * rs.rating);
@@ -402,12 +428,13 @@ async function indexOption(sym, mkt = 'IN') {
   const L = side && src.levels && src.dir === dirN ? src.levels : null;
   // three strikes: safer (1 ITM), balanced (ATM), aggressive (1 OTM)
   const strikes = side ? [['ITM', 'Safer', atm - dirN * step, 0.62], ['ATM', 'Balanced', atm, 0.5], ['OTM', 'Aggressive', atm + dirN * step, 0.4]] : [];
-  const o = { sym, mkt, A, ce, pe, side, atm, step, L, late, open, why: (open ? H.intraday : H.swing).why, hzUsed: src.label, strikes };
-  if (!US && window.MS && MS.ok() && side) { // live contracts + premiums from mStock
+  const o = { sym, mkt, A, ce, pe, side, atm, step, L, late, open, why: (open ? H.intraday : H.swing).why, hzUsed: src.label, strikes, dataSrc: srcLbl, prev: live && !live.err ? live.prev : null, idxKey: live && !live.err ? live.key.k : null, liveErr: live && live.err };
+  if (useMS && side) { // exact contracts + live premiums from mStock
     try {
-      const cs = await Promise.all(strikes.map(s => MS.option(sym, s[2], side))), q = await MS.optionQuotes(cs);
-      o.live = cs.map(c => c && { ts: c.ts, exp: c.exp, lot: c.lot, strike: c.strike, prem: q[c.k] ? +q[c.k].last_price : null });
-      o.exp = (cs.find(Boolean) || {}).exp;
+      const cs = await Promise.all(strikes.map(s => MS.option(sym, s[2], side))), q = await MS.ltp(cs.filter(Boolean).map(c => c.k));
+      o.live = cs.map(c => c && { k: c.k, ts: c.ts, exp: c.exp, lot: c.lot, strike: c.strike, prem: q[c.k] != null ? q[c.k] : null });
+      o.exp = (cs.find(Boolean) || {}).exp; o.liveAt = Date.now();
+      if (!cs.some(Boolean)) o.premErr = 'mStock has no ' + sym + ' option contracts listed for these strikes';
     } catch (e) { o.premErr = e.message; }
   }
   // which strike to buy
@@ -425,7 +452,8 @@ function optCard(o) {
   const lot = (lv && lv.lot) || foLot(o.sym, o.mkt);
   const premAt = (prem, delta, x) => prem && L ? Math.max(0.05, prem + delta * (x - L.entry) * (o.side === 'CE' ? 1 : -1)) : null;
   const buyLine = s ? `BUY ${o.sym} ${fmt(s[2], s[2] % 1 ? 1 : 0)} ${SN(o.side)}` : 'NO TRADE';
-  return `<div class="card opt" id="opt_${o.sym}"><div class="ohead"><div><b>${name}</b> <span class="mu">${fmt(A.price)} ${pct(A.chg)}</span></div></div>
+  return `<div class="card opt" id="opt_${o.sym}"><div class="ohead"><div><b>${name}</b> <span class="mu">${fmt(A.price)} ${pct(A.chg)}</span></div>${!US ? `<span class="${o.dataSrc && o.dataSrc.startsWith('mStock') ? 'livepill' : 'note wa'}" style="margin-left:auto">${o.dataSrc && o.dataSrc.startsWith('mStock') ? 'mStock ' + new Date(o.tickAt || o.liveAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Yahoo · may lag'}</span>` : ''}</div>
+   ${o.liveErr ? `<div class="note dn">mStock index quote failed: ${esc(o.liveErr)}. Showing Yahoo.</div>` : ''}
    <div class="buyline ${o.side === 'CE' ? 'b1' : o.side === 'PE' ? 'b-1' : 'b0'}"><b>${buyLine}</b><span>${s ? (o.exp || lv && lv.exp ? 'Expiry ' + (o.exp || lv.exp) : US ? 'Nearest expiry (SPY/QQQ/IWM have frequent expiries)' : 'Nearest expiry') + (lot ? (US ? ' · 1 contract = 100 shares' : ' · lot ' + lot) : '') : 'Neither side is rated 65+'}</span></div>
    <div class="cp"><div class="${o.side === 'CE' ? 'on' : ''}"><span>${US ? 'CALL' : 'CALL (CE)'}</span><b class="${o.ce >= 65 ? 'up' : o.ce <= 40 ? 'dn' : 'wa'}">${o.ce}</b><small>${o.ce >= 65 ? 'Buy' : 'Don\'t buy'}</small></div><div class="${o.side === 'PE' ? 'on' : ''}"><span>${US ? 'PUT' : 'PUT (PE)'}</span><b class="${o.pe >= 65 ? 'up' : o.pe <= 40 ? 'dn' : 'wa'}">${o.pe}</b><small>${o.pe >= 65 ? 'Buy' : 'Don\'t buy'}</small></div></div>
    ${s ? `<table class="stk"><tr><th>Strike</th><th>Style</th><th>${o.live ? 'Premium' : 'Delta'}</th><th>${o.live ? 'SL → T1' : ''}</th></tr>

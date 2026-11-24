@@ -3,9 +3,9 @@
    - every 3 min: visible rows whose analysis is >5 min old are re-analysed (same engine as the scan) and the list re-ranked
    - opening the Scanner with a scan from an earlier session (or >30 min old while the market is open) re-runs it */
 const Live = (() => {
-  const TICK = 15e3, RERATE = 3 * 60e3, RERATE_AGE = 5 * 60e3, STALE = 30 * 60e3;
+  const TICK = 15e3, TICK_MS = 4e3, RERATE = 3 * 60e3, RERATE_AGE = 5 * 60e3, STALE = 30 * 60e3;
   let lastRerate = 0, busy = false, reBusy = false;
-  const onList = () => ['scan', 'home', 'saved'].includes(S.tab) && !document.hidden && !document.querySelector('.lock');
+  const onList = () => ['scan', 'home', 'saved', 'fno'].includes(S.tab) && !document.hidden && !document.querySelector('.lock');
   const visible = () => [...document.querySelectorAll('.row.gf[data-sym]')].filter(r => { const b = r.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; });
   async function quotes(syms, mkt) {
     const out = {};
@@ -64,7 +64,7 @@ const Live = (() => {
     if (n <= 800) { toast(`Scan was ${ago >= 120 ? Math.round(ago / 60) + ' h' : ago + ' min'} old — re-analysing with the latest data…`); runScan(); }
     else if (!document.querySelector('#staleBar')) { const sl = document.querySelector('#sl'); if (sl) { sl.insertAdjacentHTML('afterbegin', `<div class="warn" id="staleBar">⏱ This scan is ${ago >= 120 ? Math.round(ago / 60) + ' hours' : ago + ' minutes'} old. <button class="btn sm" id="staleGo">Re-scan now</button></div>`); document.querySelector('#staleGo').onclick = () => runScan(); } }
   }
-  setInterval(() => { tick().catch(() => {}); }, TICK);
+  let last = 0; setInterval(() => { const fast = window.MS && MS.ok() && S.mkt === 'IN'; if (Date.now() - last >= (fast ? TICK_MS : TICK) - 50) { last = Date.now(); tick().catch(() => {}); } }, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(() => tick().catch(() => {}), 500); });
   return { tick, rerate, onRender, staleScan };
 })();
@@ -72,4 +72,23 @@ const Live = (() => {
 (() => {
   const wrap = name => { const f = window[name]; if (typeof f !== 'function') return; window[name] = function () { const r = f.apply(this, arguments); setTimeout(() => { Live.onRender(); Live.tick().catch(() => {}); }, 50); return r; }; };
   ['drawScan', 'vHome', 'vSaved'].forEach(wrap);
+})();
+// Stock page: price + change tick every 3 s from mStock between the 30-s full re-analyses
+(() => {
+  let busy = false;
+  setInterval(async () => {
+    if (busy || S.tab !== 'detail' || document.hidden || !S.detail || S.detail.mkt !== 'IN' || !(window.MS && MS.ok()) || !marketOpen('IN')) return;
+    const A = S.detail.A, big = document.querySelector('.dq-big'), ch = document.querySelector('.dq-chg'); if (!A || !big || !ch) return;
+    busy = true;
+    try {
+      const sym = S.detail.sym, kk = await MS.key(sym), q = await MS.ltp([kk.k]), px = q[kk.k]; if (!px || S.detail.sym !== sym) return;
+      const prev = A.price / (1 + (A.chg || 0) / 100), d = px - prev, c = d / prev * 100, up = d >= 0;
+      const old = parseFloat(big.dataset.v || A.price); big.dataset.v = px;
+      big.textContent = cur() + fmt(px);
+      ch.className = 'dq-chg ' + (up ? 'up' : 'dn');
+      ch.innerHTML = `${up ? '+' : '−'}${fmt(Math.abs(d))} (${up ? '+' : '−'}${Math.abs(c).toFixed(2)}%) <span class="dq-arr">${up ? '▲' : '▼'}</span>`;
+      if (px !== old) { big.classList.remove('flu', 'fld'); void big.offsetWidth; big.classList.add(px > old ? 'flu' : 'fld'); }
+      const st = document.querySelector('.dq-st .mu'); if (st) st.textContent = '· mStock tick ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) + ' · full refresh every 30s';
+    } catch (e) {} finally { busy = false; }
+  }, 3000);
 })();

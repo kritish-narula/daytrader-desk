@@ -61,3 +61,6 @@
 @keyframes flu{0%{background:var(--up-bg);color:var(--up)}100%{background:transparent}}
 @keyframes fld{0%{background:var(--down-bg);color:var(--dn)}100%{background:transparent}}
 #staleBar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.dq-big.flu{animation:flu 1.2s}.dq-big.fld{animation:fld 1.2s}
+.card.opt .ohead{display:flex;align-items:center;gap:8px}
+.livepill{white-space:nowrap}

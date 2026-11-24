@@ -14,6 +14,26 @@
     return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
   };
 
+  const MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+  const ymd = (y, m, d) => (y < 100 ? 2000 + y : y) + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  // expiry in any of: 2026-11-25 · 25-11-2026 · 25/11/2026 · 25-Nov-2026 · 25NOV2026 · 25 Nov 26 · epoch seconds
+  function parseExpiry(x) {
+    if (!x) return null; x = x.trim().toUpperCase(); let m;
+    if ((m = x.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return ymd(+m[1], +m[2], +m[3]);
+    if ((m = x.match(/^(\d{1,2})[-\/ ](\d{1,2})[-\/ ](\d{2,4})/))) return ymd(+m[3], +m[2], +m[1]);
+    if ((m = x.match(/^(\d{1,2})[-\/ ]?([A-Z]{3})[A-Z]*[-\/ ]?(\d{2,4})/)) && MON[m[2]]) return ymd(+m[3], MON[m[2]], +m[1]);
+    if ((m = x.match(/^\d{9,10}$/))) { const d = new Date(+x * 1000 + 5.5 * 3600e3); return d.toISOString().slice(0, 10); }
+    const t = Date.parse(x); return isFinite(t) ? new Date(t + 5.5 * 3600e3).toISOString().slice(0, 10) : null;
+  }
+  // NIFTY2672124150CE (weekly: YY M DD, M = 1-9/O/N/D) or NIFTY26NOV24150CE (monthly: last Tuesday/Thursday unknown → month end)
+  function expiryFromSymbol(ts, base) {
+    const r = ts.slice(base.length); let m;
+    if ((m = r.match(/^(\d{2})([1-9OND])(\d{2})\d+(CE|PE)$/))) return ymd(+m[1], { O: 10, N: 11, D: 12 }[m[2]] || +m[2], +m[3]);
+    if ((m = r.match(/^(\d{2})([A-Z]{3})\d+(CE|PE)$/)) && MON[m[2]]) { const y = 2000 + +m[1], mo = MON[m[2]]; return ymd(y, mo, new Date(Date.UTC(y, mo, 0)).getUTCDate()); }
+    return null;
+  }
+  function strikeFromSymbol(ts) { const m = ts.match(/(\d+(?:\.\d+)?)(CE|PE)$/); if (!m) return 0; const d = m[1]; return +(d.length > 7 ? d.slice(-5) : d); }
+
   const MS = {
     lastError: null,
     cfg() { return get('cfg') || { apiKey: '', user: '', checksum: 'L', totp: false }; },
@@ -104,39 +124,61 @@
       return d;
     },
 
-    // Script master -> NSE equity tradingsymbol + instrument_token (cached per day)
+    // Script master -> NSE equities, NSE/BSE indices, NFO/BFO index options (cached per day)
     async map() {
-      const m = get('map'); if (m && m.day === istDay()) return m;
+      const m = get('map'); if (m && m.day === istDay() && m.v === 2) return m;
       const csv = await this._req('GET', 'instruments/scriptmaster');
       const text = typeof csv === 'string' ? csv : JSON.stringify(csv);
-      const lines = text.split(/\r?\n/), hd = lines[0].split(',').map(x => x.trim().toLowerCase());
+      const lines = text.split(/\r?\n/), hd = lines[0].split(',').map(x => x.trim().toLowerCase().replace(/"/g, ''));
       const ix = n => hd.indexOf(n), iTok = ix('instrument_token'), iSym = ix('tradingsymbol'), iEx = ix('exchange'), iSeg = ix('segment'), iTyp = ix('instrument_type'), iName = ix('name'), iExp = ix('expiry'), iStk = ix('strike'), iLot = ix('lot_size');
       if (iTok < 0 || iSym < 0) throw new Error('Unexpected script master format');
-      const eq = {}, idx = {}, opt = { NIFTY: [], BANKNIFTY: [], SENSEX: [] }, today = istDay();
+      const eq = {}, idx = {}, opt = {}, today = istDay(), OPT = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY', 'BANKEX'];
+      for (const n of OPT) opt[n] = [];
       for (let k = 1; k < lines.length; k++) {
         const r = lines[k].split(','); if (r.length < hd.length - 1) continue;
-        const ex = (r[iEx] || '').trim(), ts = (r[iSym] || '').trim(), seg = (r[iSeg] || '').toUpperCase(), typ = (r[iTyp] || '').toUpperCase();
-        if ((ex === 'NFO' || ex === 'BFO') && (typ === 'CE' || typ === 'PE')) {
-          const nm = ((r[iName] || '') + '').trim().toUpperCase().replace(/"/g, '');
-          if (opt[nm]) { const e = new Date(Date.parse((r[iExp] || '').trim())); const ed = isFinite(e) ? e.toISOString().slice(0, 10) : '';
-            if (ed && ed >= today) opt[nm].push([ts, r[iTok].trim(), ed, +r[iStk], typ, +(r[iLot] || 0), ex]); }
+        const cl = i => i < 0 ? '' : String(r[i] || '').trim().replace(/"/g, '');
+        const ex = cl(iEx).toUpperCase(), ts = cl(iSym), seg = cl(iSeg).toUpperCase(), typ = cl(iTyp).toUpperCase();
+        if ((ex === 'NFO' || ex === 'BFO') && (typ === 'CE' || typ === 'PE' || /(CE|PE)$/.test(ts))) {
+          const nm = (cl(iName) || ts.match(/^[A-Z]+/)[0]).toUpperCase(), base = OPT.find(o => nm === o || (nm.startsWith(o) && !OPT.some(x => x !== o && x.length > o.length && nm.startsWith(x))));
+          if (!base) continue;
+          const ed = parseExpiry(cl(iExp)) || expiryFromSymbol(ts, base); if (!ed || ed < today) continue;
+          opt[base].push([ts, cl(iTok), ed, +cl(iStk) || strikeFromSymbol(ts), typ === 'CE' || typ === 'PE' ? typ : ts.slice(-2), +cl(iLot) || 0, ex]);
           continue;
         }
+        if (ex !== 'NSE' && ex !== 'BSE') continue;
+        if (/IND/.test(seg) || /IND/.test(typ)) { idx[ex + ':' + (cl(iName) || ts).toUpperCase()] = [ex, ts, cl(iTok)]; idx[ex + ':' + ts.toUpperCase()] = [ex, ts, cl(iTok)]; continue; }
         if (ex !== 'NSE') continue;
-        if (/IND/.test(seg) || /IND/.test(typ)) { idx[((r[iName] || ts) + '').trim().toUpperCase()] = [ts, r[iTok].trim()]; continue; }
-        const base = ts.replace(/-EQ$/, '');
-        if (/-EQ$/.test(ts) || !eq[base]) eq[base] = [ts, r[iTok].trim()];
+        const b2 = ts.replace(/-EQ$/, '');
+        if (/-EQ$/.test(ts) || !eq[b2]) eq[b2] = [ts, cl(iTok)];
       }
-      for (const k in opt) { const exps = [...new Set(opt[k].map(x => x[2]))].sort().slice(0, 2); opt[k] = opt[k].filter(x => exps.includes(x[2])); }
-      const out = { day: istDay(), eq, idx, opt };
+      for (const k in opt) {
+        // strikes in paise in some masters: normalise to rupees using the spread of strikes
+        const st = opt[k].map(x => x[3]).filter(x => x > 0).sort((a, b) => a - b), med = st[st.length >> 1] || 0, cap = { NIFTY: 60000, BANKNIFTY: 150000, SENSEX: 200000, FINNIFTY: 60000, MIDCPNIFTY: 40000, BANKEX: 150000 }[k];
+        if (med > cap) for (const x of opt[k]) x[3] = x[3] / 100;
+        const exps = [...new Set(opt[k].map(x => x[2]))].sort().slice(0, 2); opt[k] = opt[k].filter(x => exps.includes(x[2]));
+      }
+      const out = { v: 2, day: istDay(), eq, idx, opt, counts: Object.fromEntries(Object.entries(opt).map(([k, v]) => [k, v.length])) };
       set('map', out); return out;
     },
-    async key(sym) { // "NSE:RELIANCE-EQ"
-      const IDX = { NIFTY: ['NIFTY 50', 'NIFTY'], BANKNIFTY: ['NIFTY BANK', 'BANKNIFTY'], FINNIFTY: ['NIFTY FIN SERVICE', 'FINNIFTY'], MIDCPNIFTY: ['NIFTY MID SELECT', 'MIDCPNIFTY'] };
+    // index quote key: NIFTY → NSE:NIFTY 50, SENSEX → BSE:SENSEX
+    async key(sym) {
+      const IDX = { NIFTY: ['NSE:NIFTY 50', 'NSE:NIFTY'], BANKNIFTY: ['NSE:NIFTY BANK', 'NSE:BANKNIFTY'], FINNIFTY: ['NSE:NIFTY FIN SERVICE', 'NSE:FINNIFTY'], MIDCPNIFTY: ['NSE:NIFTY MID SELECT', 'NSE:MIDCPNIFTY'], SENSEX: ['BSE:SENSEX'], BANKEX: ['BSE:BANKEX'], INDIAVIX: ['NSE:INDIA VIX'] };
       let m = null; try { m = await this.map(); } catch (e) {}
-      if (IDX[sym]) { if (!m) return null; for (const n of IDX[sym]) if (m.idx[n]) return { k: 'NSE:' + m.idx[n][0], tok: m.idx[n][1] }; return null; }
-      if (m && m.eq[sym]) return { k: 'NSE:' + m.eq[sym][0], tok: m.eq[sym][1] };
-      return { k: `NSE:${sym}-EQ`, tok: null };
+      if (IDX[sym]) { for (const n of IDX[sym]) { const x = m && m.idx[n]; if (x) return { k: x[0] + ':' + x[1], tok: x[2], ex: x[0], idx: 1 }; } const n = IDX[sym][0]; return { k: n, tok: null, ex: n.split(':')[0], idx: 1 }; }
+      if (m && m.eq[sym]) return { k: 'NSE:' + m.eq[sym][0], tok: m.eq[sym][1], ex: 'NSE' };
+      return { k: `NSE:${sym}-EQ`, tok: null, ex: 'NSE' };
+    },
+    // fastest price call: {key: last_price}
+    async ltp(keys) {
+      const out = {};
+      for (let i = 0; i < keys.length; i += 50) { const d = await this._req('GET', 'instruments/quote/ltp', { params: keys.slice(i, i + 50).map(k => ['i', k]) }); for (const k in d || {}) if (d[k] && d[k].last_price != null) out[k] = +d[k].last_price; }
+      return out;
+    },
+    // live index: {price, prev, open, high, low}
+    async index(sym) {
+      const kk = await this.key(sym), d = await this._req('GET', 'instruments/quote/ohlc', { params: [['i', kk.k]] }), q = d && (d[kk.k] || Object.values(d)[0]);
+      if (!q || !q.last_price) throw new Error('No live quote for ' + sym);
+      const o = q.ohlc || {}; return { price: +q.last_price, prev: +o.close || null, open: +o.open || null, high: +o.high || null, low: +o.low || null, key: kk };
     },
 
     // Index option contract nearest to a strike on the nearest expiry: {k, ts, exp, strike, type, lot}
@@ -167,7 +209,7 @@
     async candles(sym, interval, days) {
       const kk = await this.key(sym); if (!kk || !kk.tok) throw new Error('No mStock instrument token for ' + sym);
       const to = new Date(), from = new Date(to - days * 864e5);
-      const d = await this._req('GET', `instruments/historical/NSE/${kk.tok}/${interval}`, { params: [['from', istStamp(from)], ['to', istStamp(to)]] });
+      const d = await this._req('GET', `instruments/historical/${kk.ex || 'NSE'}/${kk.tok}/${interval}`, { params: [['from', istStamp(from)], ['to', istStamp(to)]] });
       const C = (d && d.candles) || [], D = { t: [], o: [], h: [], l: [], c: [], v: [], day: [] };
       for (const x of C) {
         const ts = String(x[0]), local = ts.slice(0, 19); // treat as IST wall time
