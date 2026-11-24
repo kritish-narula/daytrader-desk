@@ -1,5 +1,5 @@
 {
- "v": 3,
+ "v": 4,
  "date": "2026-11-24",
  "labels": {
   "swing: EMA # above EMA #": "EMA 9 above EMA 21",
@@ -462,6 +462,37 @@
   },
   {
    "v": 3,
+   "date": "2026-11-24",
+   "samples": 51904,
+   "metrics": {
+    "swing": {
+     "train": -0.0187,
+     "trainNew": -0.0156,
+     "test": -0.0132,
+     "testNew": -0.0113,
+     "adopted": false,
+     "n": 18159
+    },
+    "short": {
+     "train": -0.0448,
+     "trainNew": -0.0382,
+     "test": 0.0331,
+     "testNew": 0.035,
+     "adopted": false,
+     "n": 17760
+    },
+    "medium": {
+     "train": 0.0274,
+     "trainNew": 0.0309,
+     "test": 0.0623,
+     "testNew": 0.0559,
+     "adopted": false,
+     "n": 15985
+    }
+   }
+  },
+  {
+   "v": 4,
    "date": "2026-11-24",
    "samples": 51904,
    "metrics": {
