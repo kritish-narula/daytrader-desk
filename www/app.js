@@ -79,8 +79,13 @@ async function pool(items, n, fn, onProg) {
 // ---------- helpers ----------
 function marketOpen(m = S.mkt) {
   const p = {}; for (const x of new Intl.DateTimeFormat('en-US', { timeZone: MK[m].tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())) p[x.type] = x.value;
-  const mins = +p.hour * 60 + +p.minute; return !['Sat', 'Sun'].includes(p.weekday) && mins >= MK[m].open && mins < MK[m].close;
+  const mins = +p.hour * 60 + +p.minute; if (['Sat', 'Sun'].includes(p.weekday) || mins < MK[m].open || mins >= MK[m].close) return false;
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: MK[m].tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return !(m === 'IN' ? NSE_HOLIDAYS : US_HOLIDAYS).has(day);
 }
+// exchange holidays (weekdays). NSE 2026 per exchange calendar; US NYSE 2026.
+const NSE_HOLIDAYS = new Set(['2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26', '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01', '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02', '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25']);
+const US_HOLIDAYS = new Set(['2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25']);
 const cur = () => MK[S.mkt].cur;
 const fmt = (x, d = 2) => x == null || !isFinite(x) ? '–' : (+x).toLocaleString(S.mkt === 'IN' ? 'en-IN' : 'en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 const pct = x => !isFinite(x) ? '' : `<span class="${x >= 0 ? 'up' : 'dn'}">${x >= 0 ? '+' : ''}${x.toFixed(2)}%</span>`;
