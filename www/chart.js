@@ -20,8 +20,9 @@
   }
   function toBars(D, tz) {
     const off = D.t.length ? tzOffset(tz, D.t[D.t.length - 1]) : 0, out = [];
-    for (let i = 0; i < D.c.length; i++) out.push({ time: D.t[i] + off, open: D.o[i], high: D.h[i], low: D.l[i], close: D.c[i], volume: D.v[i] || 0 });
-    return out;
+    for (let i = 0; i < D.c.length; i++) { const b = { time: D.t[i] + off, open: +D.o[i], high: +D.h[i], low: +D.l[i], close: +D.c[i], volume: +D.v[i] || 0 }; if (isFinite(b.time) && b.open > 0 && b.high > 0 && b.low > 0 && b.close > 0) out.push(b); }
+    out.sort((a, b) => a.time - b.time); // the chart refuses unsorted or duplicate times (draws nothing)
+    return out.filter((b, i) => i === out.length - 1 || b.time !== out[i + 1].time);
   }
   function bucketKey(t, sec) {
     if (sec === 604800) { const d = new Date(t * 1000), wd = (d.getUTCDay() + 6) % 7; return Math.floor(t / 86400 - wd) * 86400; }
@@ -47,7 +48,7 @@
     const yPlan = { '1m': ['5d', '1m'], '2m': ['1mo', '2m'], '3m': ['5d', '1m', 180], '5m': ['1mo', '5m'], '15m': ['1mo', '15m'], '30m': ['1mo', '30m'], '1h': ['6mo', '60m'], '4h': ['1y', '60m', 14400], '1D': ['5y', '1d'], '1W': ['10y', '1wk'], '1M': ['max', '1mo'] }[iv];
     let B = null, src = 'Yahoo Finance';
     if (useMS) {
-      try { const D = await MS.candles(sym, msPlan[0], msPlan[1]); B = toBars(D, tz); if (msPlan[2]) B = aggregate(B, msPlan[2]); src = 'mStock'; } catch (e) { src = 'Yahoo Finance (mStock: ' + e.message + ')'; }
+      try { const D = await MS.candles(sym, msPlan[0], msPlan[1]); B = toBars(D, tz); if (msPlan[2]) B = aggregate(B, msPlan[2]); src = 'mStock'; if (B.length < 10) { B = null; src = 'Yahoo Finance (mStock sent too few usable bars)'; } } catch (e) { B = null; src = 'Yahoo Finance (mStock: ' + e.message + ')'; }
     }
     if (!B) { const { D } = await window.App.chart(ys, yPlan[0], yPlan[1]); B = toBars(D, tz); if (yPlan[2]) B = aggregate(B, yPlan[2]); }
     return { B, src, tz };

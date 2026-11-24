@@ -64,6 +64,20 @@
     return out;
   }
 
+  // candle time → epoch seconds: epoch s/ms, ISO with/without offset, "YYYY-MM-DD HH:MM:SS", "DD-MM-YYYY HH:MM" (IST wall time)
+  function candleTime(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number' || /^\d{9,13}$/.test(String(v))) { const n = +v; return Math.floor(n > 1e11 ? n / 1000 : n); }
+    let x = String(v).trim(), m;
+    if ((m = x.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/))) x = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}T${(m[4] || '00').padStart(2, '0')}:${m[5] || '00'}:${m[6] || '00'}`;
+    else if ((m = x.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?))?(.*)$/))) {
+      const tz = (m[3] || '').trim(), hasTz = /^(Z|[+-]\d{2}:?\d{2})/.test(tz);
+      x = m[1] + 'T' + (m[2] ? (m[2].length === 5 ? m[2] + ':00' : m[2]) : '00:00:00') + (hasTz ? tz.replace(/^([+-]\d{2})(\d{2})$/, '$1:$2').slice(0, 6) : '');
+      if (hasTz) { const t = Date.parse(x); return isFinite(t) ? Math.floor(t / 1000) : null; }
+    } else { const t = Date.parse(x); return isFinite(t) ? Math.floor(t / 1000) : null; }
+    const t = Date.parse(x + '+05:30'); return isFinite(t) ? Math.floor(t / 1000) : null;
+  }
+
   const MS = {
     lastError: null,
     cfg() { return get('cfg') || { apiKey: '', user: '', checksum: 'L', totp: false }; },
@@ -261,11 +275,19 @@
       const kk = await this.key(sym); if (!kk || !kk.tok) throw new Error('No mStock instrument token for ' + sym);
       const to = new Date(), from = new Date(to - days * 864e5);
       const d = await this._req('GET', `instruments/historical/${kk.ex || 'NSE'}/${kk.tok}/${interval}`, { params: [['from', istStamp(from)], ['to', istStamp(to)]] });
-      const C = (d && d.candles) || [], D = { t: [], o: [], h: [], l: [], c: [], v: [], day: [] };
+      this.lastCandleRaw = JSON.stringify(d).slice(0, 300);
+      const C = Array.isArray(d) ? d : (d && (d.candles || d.Candles || d.data || d.candle)) || [], rows = [];
       for (const x of C) {
-        const ts = String(x[0]), local = ts.slice(0, 19); // treat as IST wall time
-        const t = Date.parse(local + '+05:30') / 1000; if (!isFinite(t)) continue;
-        D.t.push(t); D.o.push(+x[1]); D.h.push(+x[2]); D.l.push(+x[3]); D.c.push(+x[4]); D.v.push(+x[5] || 0); D.day.push(local.slice(0, 10));
+        const a = Array.isArray(x) ? x : [x.time ?? x.timestamp ?? x.date ?? x.datetime ?? x.t, x.open ?? x.o, x.high ?? x.h, x.low ?? x.l, x.close ?? x.c, x.volume ?? x.v];
+        const t = candleTime(a[0]); if (t == null) continue;
+        const o = +a[1], h = +a[2], l = +a[3], c = +a[4]; if (!(o > 0 && h > 0 && l > 0 && c > 0)) continue;
+        rows.push([t, o, Math.max(h, o, c), Math.min(l, o, c), c, +a[5] || 0]);
+      }
+      rows.sort((p, q) => p[0] - q[0]); // mStock can send newest first; charts and indicators need oldest first
+      const D = { t: [], o: [], h: [], l: [], c: [], v: [], day: [] };
+      for (const r of rows) {
+        if (D.t.length && D.t[D.t.length - 1] === r[0]) { const n = D.t.length - 1; D.o[n] = r[1]; D.h[n] = r[2]; D.l[n] = r[3]; D.c[n] = r[4]; D.v[n] = r[5]; continue; } // duplicate time
+        D.t.push(r[0]); D.o.push(r[1]); D.h.push(r[2]); D.l.push(r[3]); D.c.push(r[4]); D.v.push(r[5]); D.day.push(istDay(new Date(r[0] * 1000)));
       }
       if (!D.c.length) throw new Error('No candles from mStock');
       return D;
