@@ -7,14 +7,22 @@ const MK = {
   IN: { name: 'India', tz: 'Asia/Kolkata', open: 555, close: 930, cur: '₹', tick: 0.05, idx: () => window.IDX_IN },
   US: { name: 'Global', tz: 'America/New_York', open: 570, close: 960, cur: '$', tick: 0.01, idx: () => window.IDX_US },
 };
-const S = { mkt: store.get('mkt', 'IN'), tab: 'home', stack: [], nse: null, saved: store.get('saved', { IN: [], US: [] }), scan: store.get('scan', {}), detail: null, hz: 'swing', timer: null,
-  news: store.get('news', {}), regime: {}, uni: store.get('uni', { size: 'L', sector: '' }), minTurnover: store.get('minTurnover', { IN: 1e7, US: 5e6 }), scanning: false, idxD: {}, sizing: store.get('sizing', { capital: 100000, riskPct: 1 }), rf: store.get('rf', { IN: 6, US: 4 }) };
+const S = { uniBy: store.get('uniBy', { IN: store.get('uni', { size: 'L', sector: '' }), US: { size: 'L', sector: '' } }), sizingBy: store.get('sizingBy', { IN: store.get('sizing', { capital: 100000, riskPct: 1 }), US: { capital: 2000, riskPct: 1 } }), mkt: store.get('mkt', 'IN'), tab: 'home', stack: [], nse: null, saved: store.get('saved', { IN: [], US: [] }), scan: store.get('scan', {}), detail: null, hz: 'swing', timer: null,
+  news: store.get('news', {}), regime: {}, minTurnover: store.get('minTurnover', { IN: 1e7, US: 5e6 }), scanning: false, idxD: {}, rf: store.get('rf', { IN: 6, US: 4 }) };
 
+// per-market selections: S.uni / S.sizing always refer to the current market
+Object.defineProperty(S, 'uni', { get() { return S.uniBy[S.mkt]; }, set(v) { S.uniBy[S.mkt] = v; } });
+Object.defineProperty(S, 'sizing', { get() { return S.sizingBy[S.mkt]; }, set(v) { S.sizingBy[S.mkt] = v; } });
 // ---------- symbols ----------
 async function loadNSE() {
   try { const r = await fetch('nse.json'); if (r.ok) { S.nse = await r.json(); return; } } catch (e) {}
   S.nse = { eq: window.SEED_IN, fo: {}, idx: {}, updated: null, seed: true };
 }
+async function loadUS() {
+  try { const r = await fetch('us.json'); if (r.ok) { S.us = await r.json(); S.usMap = new Map(S.us.eq); return; } } catch (e) {}
+  S.us = { eq: window.US_LIST, cat: {}, seed: true }; S.usMap = new Map(S.us.eq);
+}
+const IDX_OPT_US = [['SPY', 'S&P 500 ETF'], ['QQQ', 'Nasdaq-100 ETF'], ['IWM', 'Russell 2000 ETF']];
 const ySym = (sym, mkt = S.mkt) => {
   if (mkt === 'US') return sym;
   const ix = window.IDX_IN.find(x => x[0] === sym); if (ix) return ix[2];
@@ -22,11 +30,11 @@ const ySym = (sym, mkt = S.mkt) => {
 };
 const baseSym = y => y.replace(/\.(NS|BO)$/, '');
 const nameOf = (sym, mkt = S.mkt) => {
-  if (mkt === 'US') { const x = window.US_LIST.find(z => z[0] === sym); return x ? x[1] : ''; }
+  if (mkt === 'US') { const x = window.US_LIST.find(z => z[0] === sym) || IDX_OPT_US.find(z => z[0] === sym); return x ? x[1] : (S.usMap && S.usMap.get(sym)) || ''; }
   const ix = window.IDX_IN.find(x => x[0] === sym); if (ix) return ix[1];
   const x = S.nse.eq.find(z => z[0] === sym); return x ? x[1] : '';
 };
-const foLot = sym => (S.nse.fo || {})[sym] || (S.nse.idx || {})[sym] || null;
+const foLot = (sym, mkt = S.mkt) => mkt === 'US' ? 100 : (S.nse.fo || {})[sym] || (S.nse.idx || {})[sym] || null;
 const isFno = sym => !!foLot(sym) || window.IDX_IN.some(x => x[0] === sym);
 
 // ---------- data (Yahoo Finance; works in the Android app via native HTTP) ----------
@@ -82,7 +90,7 @@ function render() {
   clearInterval(S.timer); S.timer = null;
   document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mkt));
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
-  $('#navFno').style.display = S.mkt === 'IN' ? '' : 'none'; $('#navIpo').style.display = S.mkt === 'IN' ? '' : 'none'; updBell();
+  $('#navFno').style.display = ''; $('#navIpo').style.display = ''; $('#navFno').lastChild.textContent = S.mkt === 'US' ? 'Options' : 'F&O'; updBell();
   setLive(); window.scrollTo(0, 0);
   ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, settings: vSettings, ipo: vIpo, learn: vLearn })[S.tab]();
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
@@ -102,16 +110,18 @@ function vHome() {
   <div class="idx" id="idx">${m.idx().map(x => `<div class="card" data-sym="${x[0]}"><div class="n">${x[1]}</div><div class="p" id="ix_${x[0]}"><span class="spin"></span></div><div id="ixc_${x[0]}" style="font-size:12px"></div></div>`).join('')}</div>
   <div class="chips wrap" id="quick">${[['top', '⭐ Overall'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short'], ['medium', 'Medium'], ['long', 'Long'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']].map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
   <div class="card regime" id="regime"><span class="spin"></span></div>
-  ${S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length ? `<h3>Browse stocks</h3><div class="card"><div class="pick2" style="margin:0"><label><span>Market cap</span><select id="hbSize">${SIZES.map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
+  ${S.mkt === 'US' ? usHoursHTML() : ''}
+  ${hasCat_() ? `<h3>Browse stocks</h3><div class="card"><div class="pick2" style="margin:0"><label><span>Market cap</span><select id="hbSize">${(S.mkt === 'US' ? SIZES_US : SIZES_IN).map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
    <label><span>Sector</span><select id="hbSec"><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div><button class="btn w" id="hbGo" style="margin-top:10px">Show stocks</button></div>` : ''}
   <h3>Top rated today <a id="goScan">${sc ? 'Rescan' : 'Run scan'}</a></h3><div id="picks">${picksHTML(sc)}</div>
   <h3>Watchlist</h3><div id="wl">${S.saved[S.mkt].length ? '<div class="list">' + S.saved[S.mkt].map(s => rowHTML(s, nameOf(s), null, null, null)).join('') + '</div>' : '<div class="empty">Tap ☆ on any stock to save it here.</div>'}</div>
   <h3>Popular</h3><div class="chips" style="flex-wrap:wrap">${(S.mkt === 'IN' ? window.SEED_IN.slice(0, 24) : window.US_LIST.slice(0, 24)).map(x => `<button data-sym="${x[0]}">${x[0]}</button>`).join('')}</div>
-  ${S.mkt === 'IN' && S.nse.seed ? '<p class="note">Showing a starter list. The full NSE list loads in the installed app build.</p>' : S.mkt === 'IN' ? `<p class="note">${S.nse.eq.length.toLocaleString()} NSE stocks · ${Object.keys(S.nse.fo || {}).length} F&O stocks · list from ${S.nse.updated}</p>` : ''}`;
+  ${S.mkt === 'IN' && S.nse.seed ? '<p class="note">Showing a starter list. The full NSE list loads in the installed app build.</p>' : S.mkt === 'IN' ? `<p class="note">${S.nse.eq.length.toLocaleString()} NSE stocks · ${Object.keys(S.nse.fo || {}).length} F&O stocks · list from ${S.nse.updated}</p>`
+   : S.us && !S.us.seed ? `<p class="note">${S.us.eq.length.toLocaleString()} US-listed stocks · S&P 500/400/600 sectors · list from ${S.us.updated}</p>` : '<p class="note">Showing a starter list. The full US list loads in the installed app build.</p>'}`;
   v.querySelectorAll('.idx .card, .chips button').forEach(b => b.onclick = () => openDetail(b.dataset.sym));
   bindRows(v); $('#goScan').onclick = () => { go('scan'); runScan(); };
   v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.q; go('scan'); if (!S.scan[S.mkt]) runScan(); });
-  const hb = $('#hbGo'); if (hb) hb.onclick = () => { const size = $('#hbSize').value; S.uni = { size, sector: size === 'FO' ? '' : $('#hbSec').value }; store.set('uni', S.uni); go('scan'); };
+  const hb = $('#hbGo'); if (hb) hb.onclick = () => { const size = $('#hbSize').value; S.uni = { size, sector: size === 'FO' ? '' : $('#hbSec').value }; store.set('uniBy', S.uniBy); go('scan'); };
   const rg = S.regime[S.mkt]; if (rg) { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(rg.v); } else regime(S.mkt).then(v => { const el = $('#regime'); if (el) el.innerHTML = regimeHTML(v); });
   setupSearch(); const mb = $('#msBan'); if (mb) mb.onclick = () => $('#gear').click();
   m.idx().forEach(async x => {
@@ -119,6 +129,12 @@ function vHome() {
       $('#ix_' + x[0]).textContent = fmt(p); $('#ixc_' + x[0]).innerHTML = pct((p / pc - 1) * 100); } catch (e) { const el = $('#ix_' + x[0]); if (el) el.innerHTML = '<span class="mu" style="font-size:12px">offline</span>'; }
   });
   if (!navigator.onLine) v.insertAdjacentHTML('afterbegin', '<div class="warn">You are offline.</div>');
+}
+function usHoursHTML() { // US session in the user's local (IST) time, DST-aware
+  const d = new Date(), et = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const toLocal = (h, m) => { const guess = new Date(`${et}T12:00:00Z`), offMin = (new Date(guess.toLocaleString('en-US', { timeZone: 'America/New_York' })) - new Date(guess.toLocaleString('en-US', { timeZone: 'UTC' }))) / 60000;
+    const utc = new Date(Date.UTC(+et.slice(0, 4), +et.slice(5, 7) - 1, +et.slice(8, 10), h, m) - offMin * 60000); return utc.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }); };
+  return `<div class="card regime"><div style="display:flex;justify-content:space-between;align-items:center"><div><div class="note">US market hours (your time, IST)</div><b>${toLocal(9, 30)} – ${toLocal(16, 0)}</b></div><div class="note" style="text-align:right">9:30 AM – 4:00 PM New York<br>${marketOpen('US') ? '<span class="up">● Open now</span>' : 'Closed now'}</div></div></div>`;
 }
 function regimeHTML(v) { const t = v >= 60 ? ['up', 'Uptrend', 'longs get +' + Math.round((v - 50) / 10)] : v <= 40 ? ['dn', 'Downtrend', 'longs get ' + Math.round((v - 50) / 10)] : ['wa', 'Sideways', 'no adjustment'];
   return `<div style="display:flex;justify-content:space-between;align-items:center"><div><div class="note">Market trend (${S.mkt === 'IN' ? 'Nifty 50' : 'S&P 500'})</div><b class="${t[0]}">${t[1]} · ${v}</b></div><div class="note" style="text-align:right">Ratings: ${t[2]}</div></div>`; }
@@ -146,7 +162,7 @@ function setupSearch() {
     if (!s) { out.innerHTML = ''; return; }
     let local = [];
     if (S.mkt === 'IN') local = [...window.IDX_IN.map(x => [x[0], x[1]]), ...S.nse.eq].filter(x => x[0].startsWith(s) || x[1].toUpperCase().includes(s)).sort((a, b) => (b[0] === s) - (a[0] === s) || (b[0].startsWith(s)) - (a[0].startsWith(s))).slice(0, 15);
-    else local = window.US_LIST.filter(x => x[0].startsWith(s) || x[1].toUpperCase().includes(s)).slice(0, 8);
+    else local = [...window.US_LIST, ...((S.us && !S.us.seed) ? S.us.eq : [])].filter(x => x[0].startsWith(s) || String(x[1]).toUpperCase().includes(s)).filter((x, k, a) => a.findIndex(y => y[0] === x[0]) === k).sort((a, b) => (b[0] === s) - (a[0] === s) || (b[0].startsWith(s)) - (a[0].startsWith(s))).slice(0, 15);
     const draw = (extra = []) => { out.innerHTML = `<div class="list">${[...local, ...extra].map(x => rowHTML(x[0], x[1], null, null, null)).join('') || '<div class="empty">No match</div>'}</div>`; bindRows(out); };
     draw();
     tm = setTimeout(async () => {
@@ -230,14 +246,27 @@ function rated(rows, f, mkt = S.mkt) {
   }
   return out.sort(f === 'sell' ? (a, b) => a.rating - b.rating : (a, b) => b.rating - a.rating || a.r.sym.localeCompare(b.r.sym));
 }
-const SIZES = [['L', 'Large cap'], ['M', 'Mid cap'], ['S', 'Small cap'], ['U', 'Micro cap'], ['FO', 'F&O'], ['ALL', 'All NSE']];
+const SIZES_IN = [['L', 'Large cap'], ['M', 'Mid cap'], ['S', 'Small cap'], ['U', 'Micro cap'], ['FO', 'F&O'], ['ALL', 'All NSE']];
+const SIZES_US = [['L', 'Large cap (S&P 500)'], ['M', 'Mid cap (S&P 400)'], ['S', 'Small cap (S&P 600)'], ['POP', 'Popular & ETFs'], ['ALL', 'All US listed']];
+const SIZES = new Proxy([], { get: (_, k) => (S.mkt === 'US' ? SIZES_US : SIZES_IN)[k] });
+const catOf = (mkt = S.mkt) => (mkt === 'US' ? (S.us || {}).cat : S.nse.cat) || {};
+const hasCat_ = (mkt = S.mkt) => Object.keys(catOf(mkt)).length > 0;
 const SECTOR_ICON = { 'Information Technology': '💻 IT', 'Automobile and Auto Components': '🚗 Auto', 'Financial Services': '🏦 Finance', 'Healthcare': '💊 Pharma & Health', 'Fast Moving Consumer Goods': '🛒 FMCG', 'Capital Goods': '🏭 Capital goods',
   'Metals & Mining': '⛏️ Metals', 'Oil Gas & Consumable Fuels': '🛢️ Oil & gas', 'Power': '⚡ Power', 'Chemicals': '🧪 Chemicals', 'Realty': '🏢 Realty', 'Consumer Durables': '📺 Consumer durables', 'Construction': '🏗️ Construction',
+  'Health Care': '💊 Health care', 'Financials': '🏦 Financials', 'Consumer Discretionary': '🛍️ Consumer discretionary', 'Communication Services': '📡 Communication', 'Industrials': '🏭 Industrials',
+  'Consumer Staples': '🛒 Consumer staples', 'Energy': '🛢️ Energy', 'Real Estate': '🏢 Real estate', 'Materials': '⛏️ Materials',
   'Construction Materials': '🧱 Cement', 'Telecommunication': '📡 Telecom', 'Textiles': '🧵 Textiles', 'Services': '🧰 Services', 'Consumer Services': '🛍️ Consumer services', 'Media Entertainment & Publication': '🎬 Media', 'Diversified': '🔀 Diversified', 'Forest Materials': '🌲 Forest materials', 'Utilities': '🚰 Utilities' };
 const secName = s => SECTOR_ICON[s] || s;
-function sectors() { const c = {}; for (const k in (S.nse.cat || {})) { const s = S.nse.cat[k][1]; if (s) c[s] = (c[s] || 0) + 1; } return Object.entries(c).sort((a, b) => b[1] - a[1]).map(x => x[0]); }
+function sectors() { const C = catOf(), c = {}; for (const k in C) { const s = C[k][1]; if (s) c[s] = (c[s] || 0) + 1; } return Object.entries(c).sort((a, b) => b[1] - a[1]).map(x => x[0]); }
 function uniSyms(sel = S.uni, mkt = S.mkt) {
-  if (mkt === 'US') return window.US_LIST.map(x => x[0]);
+  if (mkt === 'US') {
+    const cat = catOf('US'), hc = Object.keys(cat).length > 0; let L;
+    if (sel.size === 'POP' || !hc && sel.size !== 'ALL') L = window.US_LIST.map(x => x[0]);
+    else if (sel.size === 'ALL') L = S.us.eq.map(x => x[0]);
+    else L = Object.keys(cat).filter(s => cat[s][0] === sel.size);
+    if (sel.sector && hc) L = L.filter(s => cat[s] && cat[s][1] === sel.sector);
+    return L;
+  }
   const cat = S.nse.cat || {}, hasCat = Object.keys(cat).length > 0;
   let L;
   if (sel.size === 'FO') L = Object.keys(S.nse.fo || {});
@@ -247,11 +276,11 @@ function uniSyms(sel = S.uni, mkt = S.mkt) {
   if (sel.sector && hasCat) L = L.filter(s => cat[s] && cat[s][1] === sel.sector);
   return L;
 }
-function uniLabel(sel = S.uni) { return S.mkt === 'US' ? 'US large caps' : `${(SIZES.find(x => x[0] === sel.size) || [, 'Stocks'])[1]}${sel.sector ? ' · ' + secName(sel.sector) : ''}`; }
+function uniLabel(sel = S.uni) { return `${((S.mkt === 'US' ? SIZES_US : SIZES_IN).find(x => x[0] === sel.size) || [, 'Stocks'])[1]}${sel.sector ? ' · ' + secName(sel.sector) : ''}`; }
 function vScan() {
-  const sc = S.scan[S.mkt], f = S.scanFilter || 'top', hasCat = S.mkt === 'IN' && Object.keys(S.nse.cat || {}).length > 0;
+  const sc = S.scan[S.mkt], f = S.scanFilter || 'top', hasCat = hasCat_();
   const syms = uniSyms(), have = sc ? new Set(sc.rows.map(r => r.sym)) : new Set(), missing = syms.filter(s => !have.has(s));
-  $('#view').innerHTML = `${S.mkt === 'IN' ? `<div class="pick2"><label><span>Market cap</span><select id="selSize">${SIZES.filter(x => hasCat || !['M', 'S', 'U'].includes(x[0])).map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
+  $('#view').innerHTML = `${true ? `<div class="pick2"><label><span>Market cap</span><select id="selSize">${(S.mkt === 'US' ? SIZES_US : SIZES_IN).filter(x => hasCat || !['M', 'S', 'U', 'L'].includes(x[0]) || (S.mkt === 'IN' && x[0] === 'L')).map(x => `<option value="${x[0]}" ${S.uni.size === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
    <label><span>Sector</span><select id="selSec" ${!hasCat || S.uni.size === 'FO' ? 'disabled' : ''}><option value="">All sectors</option>${sectors().map(s => `<option value="${esc(s)}" ${S.uni.sector === s ? 'selected' : ''}>${esc(secName(s))}</option>`).join('')}</select></label></div>` : ''}
   <div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><b>${esc(uniLabel())}</b><div class="note">${syms.length.toLocaleString()} stocks${missing.length && sc ? ` · ${missing.length} not scanned yet` : ''}</div></div>
    <button class="btn" id="run" ${S.scanning ? 'disabled' : ''}>${S.scanning ? '<span class="spin"></span>' : missing.length < syms.length && sc ? `Scan ${missing.length ? missing.length + ' new' : 'again'}` : 'Scan'}</button></div>
@@ -259,8 +288,8 @@ function vScan() {
   <div class="chips wrap">${FILTERS.map(x => `<button data-f="${x[0]}" class="${x[0] === f ? 'on' : ''}">${x[1]}</button>`).join('')}</div><div id="sl"></div>`;
   $('#run').onclick = () => runScan(missing.length && sc && missing.length < syms.length ? missing : syms);
   document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.scanFilter = b.dataset.f; vScan(); });
-  const ss = $('#selSize'); if (ss) ss.onchange = () => { S.uni = { size: ss.value, sector: ss.value === 'FO' ? '' : S.uni.sector }; store.set('uni', S.uni); vScan(); };
-  const se = $('#selSec'); if (se) se.onchange = () => { S.uni.sector = se.value; store.set('uni', S.uni); vScan(); };
+  const ss = $('#selSize'); if (ss) ss.onchange = () => { S.uni = { size: ss.value, sector: ss.value === 'FO' ? '' : S.uni.sector }; store.set('uniBy', S.uniBy); vScan(); };
+  const se = $('#selSec'); if (se) se.onchange = () => { S.uni.sector = se.value; store.set('uniBy', S.uniBy); vScan(); };
   drawScan();
 }
 function drawScan() {
@@ -319,6 +348,7 @@ async function runScan(syms) {
 
 // ---------- F&O ----------
 function vFno() {
+  if (S.mkt === 'US') return vOptUS();
   const sc = S.scan.IN, foSet = new Set(Object.keys(S.nse.fo || {})), lots = foSet.size;
   const fo0 = sc ? sc.rows.filter(r => foSet.has(r.sym)) : [], fo = fo0.length ? fo0 : null;
   $('#view').innerHTML = `<h3>Index options · call or put? <a id="optRef">Refresh</a></h3><div id="optBox">${['NIFTY', 'BANKNIFTY', 'SENSEX'].map(s => `<div class="card" id="opt_${s}"><span class="spin"></span> ${s}…</div>`).join('')}</div>
@@ -333,28 +363,45 @@ function vFno() {
   const loadOpts = () => ['NIFTY', 'BANKNIFTY', 'SENSEX'].forEach(s => indexOption(s).then(o => { const el = $('#opt_' + s); if (el) el.outerHTML = optCard(o); bindOpt(); }).catch(e => { const el = $('#opt_' + s); if (el) el.innerHTML = `<b>${s}</b><div class="note dn">Could not analyse: ${esc(e.message)}</div>`; }));
   loadOpts(); $('#optRef').onclick = () => { ['NIFTY', 'BANKNIFTY', 'SENSEX'].forEach(s => { const el = $('#opt_' + s); if (el) el.innerHTML = '<span class="spin"></span>'; }); loadOpts(); };
   if (marketOpen('IN')) S.timer = setInterval(loadOpts, 60000);
-  const b = $('#fscan'); if (b) b.onclick = () => { S.uni = { size: 'FO', sector: '' }; store.set('uni', S.uni); go('scan'); runScan(); };
+  const b = $('#fscan'); if (b) b.onclick = () => { S.uni = { size: 'FO', sector: '' }; store.set('uniBy', S.uniBy); go('scan'); runScan(); };
 }
 
-// ---------- index options (NIFTY / BANKNIFTY) ----------
+function vOptUS() {
+  const sc = S.scan.US, cat = catOf('US'), big = sc ? sc.rows.filter(r => !Object.keys(cat).length || (cat[r.sym] && cat[r.sym][0] === 'L') || window.US_LIST.some(x => x[0] === r.sym)) : [];
+  $('#view').innerHTML = `<h3>ETF options · call or put? <a id="optRef">Refresh</a></h3><div id="optBox">${IDX_OPT_US.map(([s]) => `<div class="card" id="opt_${s}"><span class="spin"></span> ${s}…</div>`).join('')}</div>
+  <h3>Stock options setups <a id="fscan">${big.length ? 'Rescan' : 'Scan S&P 500'}</a></h3>
+  ${big.length ? `<h3>Long ideas (buy stock or calls) · highest rated first</h3><div class="list">${rated(big, 'top', 'US').filter(x => x.rating >= 58).slice(0, 30).map((x, k) => rowHTML(x.r.sym, `100 sh/contract · ${nameOf(x.r.sym, 'US')}`, x.r.price, x.r.chg, x.rating, 'LONG', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No long setups.</div>'}</div>
+     <h3>Short ideas (puts or short) · lowest rating first</h3><div class="list">${rated(big, 'sell', 'US').slice(0, 30).map((x, k) => rowHTML(x.r.sym, `100 sh/contract · ${nameOf(x.r.sym, 'US')}`, x.r.price, x.r.chg, x.rating, 'SHORT', tagsOf(x.r), k + 1)).join('') || '<div class="empty">No short setups.</div>'}</div>`
+    : '<div class="empty">Scan the S&P 500 to rank stocks for calls (long) and puts (short).</div>'}
+  <p class="note">Ratings come from each ETF's intraday + swing signals. One US option contract = 100 shares. Premiums, open interest and IV aren't included, so check the option chain in your broker. Option buyers can lose 100% quickly.</p>`;
+  bindRows($('#view'));
+  const loadOpts = () => IDX_OPT_US.forEach(([s]) => indexOption(s, 'US').then(o => { const el = $('#opt_' + s); if (el) el.outerHTML = optCard(o); bindOpt(); }).catch(e => { const el = $('#opt_' + s); if (el) el.innerHTML = `<b>${s}</b><div class="note dn">Could not analyse: ${esc(e.message)}</div>`; }));
+  loadOpts(); $('#optRef').onclick = () => { IDX_OPT_US.forEach(([s]) => { const el = $('#opt_' + s); if (el) el.innerHTML = '<span class="spin"></span>'; }); loadOpts(); };
+  if (marketOpen('US')) S.timer = setInterval(loadOpts, 60000);
+  const b = $('#fscan'); if (b) b.onclick = () => { S.uni = { size: hasCat_('US') ? 'L' : 'POP', sector: '' }; store.set('uniBy', S.uniBy); go('scan'); runScan(); };
+}
+
+// ---------- index options (NIFTY / BANKNIFTY / SENSEX · SPY / QQQ / IWM) ----------
+function mktMins(mkt) { const p = {}; for (const x of new Intl.DateTimeFormat('en-US', { timeZone: MK[mkt].tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())) p[x.type] = x.value; return +p.hour * 60 + +p.minute; }
 function istMins() { const p = {}; for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())) p[x.type] = x.value; return +p.hour * 60 + +p.minute; }
-async function indexOption(sym) {
-  const ys = ySym(sym, 'IN'), open = marketOpen('IN'), mins = istMins();
+async function indexOption(sym, mkt = 'IN') {
+  const ys = ySym(sym, mkt), open = marketOpen(mkt), mins = mktMins(mkt), US = mkt === 'US';
+  const T = US ? { late: 900, itm: 840, otm: 810 } : { late: 870, itm: 810, otm: 780 }; // ET: 3:00/2:00/1:30 PM · IST: 2:30/1:30/1:00 PM
   const [d, it] = await Promise.all([chart(ys, '2y', '1d'), chart(ys, '5d', '5m').catch(() => null)]);
-  const A = Engine.analyze(d.D, { intra: open && it ? it.D : null, tick: 0.05, canShort: true, backtest: true, price: d.meta.regularMarketPrice, fnoSym: sym, lot: foLot(sym) });
+  const A = Engine.analyze(d.D, { intra: open && it ? it.D : null, tick: US ? 0.01 : 0.05, canShort: true, backtest: true, price: d.meta.regularMarketPrice, fnoSym: sym, lot: foLot(sym, mkt) });
   if (A.err) throw new Error(A.err);
   const row = Object.assign({ sym }, rowFromA(A)), ctx = { regime: 50, news: 0, canShort: true };
   const ri = Engine.hzRating(row.intraday, 'intraday', ctx), rs = Engine.hzRating(row.swing, 'swing', ctx);
   const wI = open ? 0.6 : 0.3, bull = Math.round(wI * ri.rating + (1 - wI) * rs.rating);
-  const late = open && mins >= 870; // after 2:30 PM time decay hurts fresh option buys
+  const late = open && mins >= T.late; // last hour: time decay hurts fresh option buys
   let ce = bull, pe = 100 - bull; if (late) { ce = Math.max(0, ce - 10); pe = Math.max(0, pe - 10); }
   const side = ce >= 65 ? 'CE' : pe >= 65 ? 'PE' : null, step = Engine.strikeStep(sym, A.price), atm = Math.round(A.price / step) * step;
   const H = A.horizons, dirN = side === 'CE' ? 1 : -1, src = open && H.intraday.levels && H.intraday.dir === dirN ? H.intraday : H.swing;
   const L = side && src.levels && src.dir === dirN ? src.levels : null;
   // three strikes: safer (1 ITM), balanced (ATM), aggressive (1 OTM)
   const strikes = side ? [['ITM', 'Safer', atm - dirN * step, 0.62], ['ATM', 'Balanced', atm, 0.5], ['OTM', 'Aggressive', atm + dirN * step, 0.4]] : [];
-  const o = { sym, A, ce, pe, side, atm, step, L, late, open, why: (open ? H.intraday : H.swing).why, hzUsed: src.label, strikes };
-  if (window.MS && MS.ok() && side) { // live contracts + premiums from mStock
+  const o = { sym, mkt, A, ce, pe, side, atm, step, L, late, open, why: (open ? H.intraday : H.swing).why, hzUsed: src.label, strikes };
+  if (!US && window.MS && MS.ok() && side) { // live contracts + premiums from mStock
     try {
       const cs = await Promise.all(strikes.map(s => MS.option(sym, s[2], side))), q = await MS.optionQuotes(cs);
       o.live = cs.map(c => c && { ts: c.ts, exp: c.exp, lot: c.lot, strike: c.strike, prem: q[c.k] ? +q[c.k].last_price : null });
@@ -364,28 +411,29 @@ async function indexOption(sym) {
   // which strike to buy
   const conv = side ? Math.max(ce, pe) : 0, today = new Date().toISOString().slice(0, 10), expiryDay = o.exp && o.exp === today;
   let pick = 1, reason = 'Balanced: ATM has the best mix of cost and sensitivity (delta ≈ 0.5).';
-  if (late || expiryDay || (open && mins >= 810)) { pick = 0; reason = expiryDay ? 'Expiry day: time value melts fast, so the in-the-money strike holds value better.' : 'Late session: in-the-money loses less to time decay.'; }
-  else if (conv >= 78 && (!open || mins < 780) && L && (dirN > 0 ? L.t1 >= strikes[2][2] : L.t1 <= strikes[2][2])) { pick = 2; reason = `Strong signal (${conv}) and Target 1 lies beyond ${fmt(strikes[2][2], 0)}: a cheaper out-of-the-money strike gives more upside.`; }
+  if (late || expiryDay || (open && mins >= T.itm)) { pick = 0; reason = expiryDay ? 'Expiry day: time value melts fast, so the in-the-money strike holds value better.' : 'Late session: in-the-money loses less to time decay.'; }
+  else if (conv >= 78 && (!open || mins < T.otm) && L && (dirN > 0 ? L.t1 >= strikes[2][2] : L.t1 <= strikes[2][2])) { pick = 2; reason = `Strong signal (${conv}) and Target 1 lies beyond ${fmt(strikes[2][2], 0)}: a cheaper out-of-the-money strike gives more upside.`; }
   o.pick = pick; o.pickReason = reason;
   return o;
 }
 function optCard(o) {
-  const A = o.A, name = { NIFTY: 'Nifty 50', BANKNIFTY: 'Bank Nifty', SENSEX: 'Sensex' }[o.sym] || o.sym;
+  const A = o.A, US = o.mkt === 'US', name = { NIFTY: 'Nifty 50', BANKNIFTY: 'Bank Nifty', SENSEX: 'Sensex', SPY: 'SPY · S&P 500', QQQ: 'QQQ · Nasdaq-100', IWM: 'IWM · Russell 2000' }[o.sym] || o.sym;
+  const SN = s => US ? (s === 'CE' ? 'CALL' : 'PUT') : s, cur$ = US ? '$' : '₹';
   const L = o.L, s = o.side ? o.strikes[o.pick] : null, lv = o.live && o.live[o.pick];
-  const lot = (lv && lv.lot) || foLot(o.sym);
+  const lot = (lv && lv.lot) || foLot(o.sym, o.mkt);
   const premAt = (prem, delta, x) => prem && L ? Math.max(0.05, prem + delta * (x - L.entry) * (o.side === 'CE' ? 1 : -1)) : null;
-  const buyLine = s ? `BUY ${o.sym} ${fmt(s[2], 0)} ${o.side}` : 'NO TRADE';
+  const buyLine = s ? `BUY ${o.sym} ${fmt(s[2], s[2] % 1 ? 1 : 0)} ${SN(o.side)}` : 'NO TRADE';
   return `<div class="card opt" id="opt_${o.sym}"><div class="ohead"><div><b>${name}</b> <span class="mu">${fmt(A.price)} ${pct(A.chg)}</span></div></div>
-   <div class="buyline ${o.side === 'CE' ? 'b1' : o.side === 'PE' ? 'b-1' : 'b0'}"><b>${buyLine}</b><span>${s ? (o.exp || lv && lv.exp ? 'Expiry ' + (o.exp || lv.exp) : 'Nearest expiry') + (lot ? ' · lot ' + lot : '') : 'Neither side is rated 65+'}</span></div>
-   <div class="cp"><div class="${o.side === 'CE' ? 'on' : ''}"><span>CALL (CE)</span><b class="${o.ce >= 65 ? 'up' : o.ce <= 40 ? 'dn' : 'wa'}">${o.ce}</b><small>${o.ce >= 65 ? 'Buy' : 'Don\'t buy'}</small></div><div class="${o.side === 'PE' ? 'on' : ''}"><span>PUT (PE)</span><b class="${o.pe >= 65 ? 'up' : o.pe <= 40 ? 'dn' : 'wa'}">${o.pe}</b><small>${o.pe >= 65 ? 'Buy' : 'Don\'t buy'}</small></div></div>
+   <div class="buyline ${o.side === 'CE' ? 'b1' : o.side === 'PE' ? 'b-1' : 'b0'}"><b>${buyLine}</b><span>${s ? (o.exp || lv && lv.exp ? 'Expiry ' + (o.exp || lv.exp) : US ? 'Nearest expiry (SPY/QQQ/IWM have frequent expiries)' : 'Nearest expiry') + (lot ? (US ? ' · 1 contract = 100 shares' : ' · lot ' + lot) : '') : 'Neither side is rated 65+'}</span></div>
+   <div class="cp"><div class="${o.side === 'CE' ? 'on' : ''}"><span>${US ? 'CALL' : 'CALL (CE)'}</span><b class="${o.ce >= 65 ? 'up' : o.ce <= 40 ? 'dn' : 'wa'}">${o.ce}</b><small>${o.ce >= 65 ? 'Buy' : 'Don\'t buy'}</small></div><div class="${o.side === 'PE' ? 'on' : ''}"><span>${US ? 'PUT' : 'PUT (PE)'}</span><b class="${o.pe >= 65 ? 'up' : o.pe <= 40 ? 'dn' : 'wa'}">${o.pe}</b><small>${o.pe >= 65 ? 'Buy' : 'Don\'t buy'}</small></div></div>
    ${s ? `<table class="stk"><tr><th>Strike</th><th>Style</th><th>${o.live ? 'Premium' : 'Delta'}</th><th>${o.live ? 'SL → T1' : ''}</th></tr>
-     ${o.strikes.map((x, k) => { const lvk = o.live && o.live[k], pr = lvk && lvk.prem; return `<tr class="${k === o.pick ? 'pick' : ''}"><td><b>${fmt(x[2], 0)} ${o.side}</b>${k === o.pick ? ' ✓' : ''}</td><td>${x[1]} <span class="mu">${x[0]}</span></td><td>${o.live ? (pr ? '₹' + fmt(pr) : '–') : '≈' + x[3]}</td><td>${pr && L ? `₹${fmt(premAt(pr, x[3], L.stop))} → ₹${fmt(premAt(pr, x[3], L.t1))}` : ''}</td></tr>`; }).join('')}</table>
+     ${o.strikes.map((x, k) => { const lvk = o.live && o.live[k], pr = lvk && lvk.prem; return `<tr class="${k === o.pick ? 'pick' : ''}"><td><b>${fmt(x[2], x[2] % 1 ? 1 : 0)} ${SN(o.side)}</b>${k === o.pick ? ' ✓' : ''}</td><td>${x[1]} <span class="mu">${x[0]}</span></td><td>${o.live ? (pr ? '₹' + fmt(pr) : '–') : '≈' + x[3]}</td><td>${pr && L ? `₹${fmt(premAt(pr, x[3], L.stop))} → ₹${fmt(premAt(pr, x[3], L.t1))}` : ''}</td></tr>`; }).join('')}</table>
      <div class="note" style="margin-top:6px">✓ ${esc(o.pickReason)}</div>
      ${L ? `<div class="lv3" style="margin-top:6px"><span>${o.sym} entry <b>${fmt(L.entry)}</b></span><span>SL <b class="dn">${fmt(L.stop)}</b></span><span>T1 <b class="up">${fmt(L.t1)}</b></span><span>T2 <b class="up">${fmt(L.t2)}</b></span></div><div class="note">Exit the option when ${o.sym} hits these levels (${esc(o.hzUsed.toLowerCase())} plan).${o.live ? ' Premium SL/T1 ≈ index move × delta.' : ''}</div>` : ''}
-     ${!o.live ? `<div class="note">${o.premErr ? 'mStock premium error: ' + esc(o.premErr) : 'Connect mStock (⚙️) for exact contracts, expiry and live premiums.'}</div>` : ''}`
+     ${!o.live ? `<div class="note">${US ? 'Check the premium and expiry in your broker before buying.' : o.premErr ? 'mStock premium error: ' + esc(o.premErr) : 'Connect mStock (⚙️) for exact contracts, expiry and live premiums.'}</div>` : ''}`
    : `<div class="sub" style="margin-top:8px">Buying options without an edge loses to time decay, so wait for 65+ on one side.</div>`}
-   ${o.late ? '<div class="warn" style="margin:8px 0 0">After 2:30 PM: theta decay is fastest, so ratings are cut by 10. Prefer no fresh option buys.</div>' : ''}
-   ${!o.open ? '<div class="note" style="margin-top:6px">Market closed: this is the plan for the next session (mostly from the daily trend). Re-check after 9:30 AM.</div>' : ''}
+   ${o.late ? `<div class="warn" style="margin:8px 0 0">Last hour of trading (after ${US ? '3:00 PM ET' : '2:30 PM'}): theta decay is fastest, so ratings are cut by 10. Prefer no fresh option buys.</div>` : ''}
+   ${!o.open ? `<div class="note" style="margin-top:6px">Market closed: this is the plan for the next session (mostly from the daily trend). Re-check ${US ? '15 minutes after the US open' : 'after 9:30 AM'}.</div>` : ''}
    <ul class="why">${o.why.slice(0, 4).map(w => `<li>${w.w > 0 ? '<span class="up">▲</span>' : '<span class="dn">▼</span>'} ${esc(w.t)}</li>`).join('')}</ul>
    <a class="note optOpen" data-sym="${o.sym}">Full analysis & live chart ›</a></div>`;
 }
@@ -393,6 +441,7 @@ function bindOpt() { document.querySelectorAll('.optOpen').forEach(a => a.onclic
 
 // ---------- IPOs ----------
 async function vIpo() {
+  if (S.mkt === 'US') return vIpoUS();
   const v = $('#view');
   v.innerHTML = `<h3>IPOs · grey market premium <a id="ipoRef">Refresh</a></h3><div id="ipoBody"><div class="empty"><span class="spin"></span> Loading live GMP…</div></div>
    <p class="note">*Allotment and listing are expected dates under SEBI's T+3 timeline (allotment 1 working day after close, listing 3). Exchange holidays can shift them, so confirm on the registrar's site.</p>
@@ -428,6 +477,43 @@ async function vIpo() {
       catch (e) { el.textContent = 'News unavailable.'; }
     });
   } catch (e) { $('#ipoBody').innerHTML = `<div class="warn">Could not load IPO data (${esc(e.message)}). It works in the installed app; browsers block these sites.</div>`; }
+}
+
+// ---------- US IPO calendar (Nasdaq) ----------
+async function usIpos() {
+  const ym = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, now = new Date(), prev = new Date(now.getFullYear(), now.getMonth() - 1, 1), next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const get = async m => { const r = await fetch(`https://api.nasdaq.com/api/ipo/calendar?date=${m}`, { headers: { Accept: 'application/json, text/plain, */*' } }); if (!r.ok) throw new Error('HTTP ' + r.status); return (await r.json()).data || {}; };
+  const res = await Promise.allSettled([get(ym(prev)), get(ym(now)), get(ym(next))]), up = new Map(), pr = new Map();
+  for (const x of res) if (x.status === 'fulfilled') {
+    const d = x.value, U = ((d.upcoming || {}).upcomingTable || {}).rows || [], P = (d.priced || {}).rows || [];
+    for (const r of U) up.set(r.proposedTickerSymbol || r.companyName, r);
+    for (const r of P) pr.set(r.proposedTickerSymbol || r.companyName, r);
+  }
+  if (!up.size && !pr.size && res.every(x => x.status === 'rejected')) throw res[0].reason;
+  return { up: [...up.values()], pr: [...pr.values()], at: Date.now() };
+}
+async function vIpoUS() {
+  const v = $('#view');
+  v.innerHTML = `<h3>US IPOs · calendar <a id="ipoRef">Refresh</a></h3><div id="ipoBody"><div class="empty"><span class="spin"></span> Loading Nasdaq IPO calendar…</div></div>
+   <p class="note">US IPOs have no grey market (GMP), so upcoming deals aren't rated. Recently listed ones show how they've traded since pricing. Data: Nasdaq IPO calendar.</p>`;
+  $('#ipoRef').onclick = () => { S.ipoUS = null; vIpoUS(); };
+  try {
+    if (!S.ipoUS || Date.now() - S.ipoUS.at > 15 * 60e3) S.ipoUS = await usIpos();
+    const { up, pr } = S.ipoUS, dt = s => { const d = new Date(s); return isFinite(d) ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : (s || '–'); };
+    up.sort((a, b) => new Date(a.expectedPriceDate) - new Date(b.expectedPriceDate)); pr.sort((a, b) => new Date(b.pricedDate) - new Date(a.pricedDate));
+    const recent = pr.slice(0, 15);
+    $('#ipoBody').innerHTML = `${up.length ? up.map(r => `<div class="card ipo" data-ipo="${esc(r.companyName)}"><div class="ohead"><div style="min-width:0"><div class="s">${esc(r.companyName)}</div><div class="note"><span class="tag">${esc(r.proposedExchange || 'US')}</span> ${esc(r.proposedTickerSymbol || '')}</div></div><div class="sc b0">–<small>UNRATED</small></div></div>
+        <div class="ipod"><div><span>Expected pricing</span><b>${dt(r.expectedPriceDate)}</b></div><div><span>Trading from*</span><b>${(() => { const d = new Date(r.expectedPriceDate); if (!isFinite(d)) return '–'; d.setDate(d.getDate() + 1); while (!(d.getDay() % 6)) d.setDate(d.getDate() + 1); return dt(d); })()}</b></div><div><span>Price range</span><b>$${esc(r.proposedSharePrice || '–')}</b></div><div><span>Deal size</span><b>${esc(r.dollarValueOfSharesOffered || '–')}</b></div></div>
+        <div class="ipox" style="display:none"><div class="note" style="margin-top:8px">${esc(r.sharesOffered || '')} shares offered.</div><div class="inews note"><span class="spin"></span> News…</div></div></div>`).join('') : '<div class="empty">No upcoming US IPOs on the calendar.</div>'}
+      ${recent.length ? `<h3>Recently priced · how are they trading?</h3><div class="list" id="usPr">${recent.map(r => `<div class="row" data-sym="${esc(r.proposedTickerSymbol || '')}"><div class="nm"><div class="s">${esc(r.proposedTickerSymbol || '')} <span class="mu" style="font-weight:500">${esc(r.companyName)}</span></div><div class="f">IPO $${esc(r.proposedSharePrice)} · priced ${dt(r.pricedDate)} · ${esc(r.proposedExchange || '')}</div></div><div class="px" id="usp_${esc(r.proposedTickerSymbol || '')}"><span class="spin"></span></div></div>`).join('')}</div>` : ''}
+      <p class="note">*US IPOs usually price the evening before they start trading, so the first trading day is shown as the next business day. Holidays can shift it.</p>`;
+    bindRows($('#ipoBody'));
+    document.querySelectorAll('.ipo').forEach(c => c.onclick = async () => { const box = c.querySelector('.ipox'), on = box.style.display === 'none'; box.style.display = on ? '' : 'none'; if (!on || c._n) return; c._n = 1;
+      const el = c.querySelector('.inews'); try { const N = await News.get(c.dataset.ipo + ' IPO', c.dataset.ipo + ' IPO', false); el.innerHTML = `<b>News ${newsHead(N)}</b>` + newsHTML(N); } catch (e) { el.textContent = 'News unavailable.'; } });
+    await pool(recent, 4, async r => { const s = r.proposedTickerSymbol, el = document.getElementById('usp_' + s); if (!s || !el) return;
+      try { const { D, meta } = await chart(s, '3mo', '1d'), ipo = parseFloat(String(r.proposedSharePrice).replace(/[^\d.]/g, '')), px = meta.regularMarketPrice || D.c[D.c.length - 1];
+        el.innerHTML = `$${fmt(px)}<small>${isFinite(ipo) && ipo > 0 ? pct((px / ipo - 1) * 100) + ' vs IPO' : ''}</small>`; } catch (e) { el.innerHTML = '<small class="mu">not trading yet</small>'; } });
+  } catch (e) { $('#ipoBody').innerHTML = `<div class="warn">Could not load the US IPO calendar (${esc(e.message)}). It works in the installed app; browsers block it.</div>`; }
 }
 
 // ---------- saved ----------
@@ -523,8 +609,8 @@ function vSettings() {
   <h3>Tools</h3><div class="list"><div class="row" id="goLearn"><div class="nm"><div class="s">📘 Alpha, beta & risk explained</div><div class="f">What each number means and where the app uses it</div></div><div class="px">›</div></div><div class="row" id="goDesk"><div class="nm"><div class="s">🧪 ORB Desk</div><div class="f">Opening-range breakout + 10,000-replay Time Machine</div></div><div class="px">›</div></div></div>
   <p class="note">DayTrader Desk · analysis only, never places orders. Not investment advice.</p>`;
   $('#back').onclick = back; $('#goBroker').onclick = () => go('broker'); $('#goDesk').onclick = () => { location.href = 'desk.html'; }; $('#goLearn').onclick = () => go('learn');
-  $('#cap').onchange = e => { S.sizing.capital = Math.max(0, +e.target.value || 0); store.set('sizing', S.sizing); };
-  $('#rpct').onchange = e => { S.sizing.riskPct = +e.target.value; store.set('sizing', S.sizing); };
+  $('#cap').onchange = e => { S.sizing.capital = Math.max(0, +e.target.value || 0); store.set('sizingBy', S.sizingBy); };
+  $('#rpct').onchange = e => { S.sizing.riskPct = +e.target.value; store.set('sizingBy', S.sizingBy); };
   $('#rf').onchange = e => { const v = +e.target.value; if (isFinite(v) && v >= 0 && v < 20) { S.rf[S.mkt] = v; store.set('rf', S.rf); } };
   $('#pinBtn').onclick = async () => { const p1 = await pinPad(pin ? 'New PIN (4–8 digits)' : 'Choose a PIN (4–8 digits)'); if (!p1) return; const p2 = await pinPad('Enter it again'); if (p1 !== p2) return toast('PINs did not match.');
     if (pin) { const old = await pinPad('Current PIN'); if (!old) return; try { await Sec.unlock(old); } catch (e) { return toast(e.message); } }
@@ -783,7 +869,7 @@ function drawPreview() {
 window.App = { ySym, chart, fmt, marketOpen };
 
 // ---------- boot ----------
-document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.mkt = b.dataset.m; store.set('mkt', S.mkt); if (['detail', 'broker'].includes(S.tab) || (['fno', 'ipo'].includes(S.tab) && S.mkt === 'US')) { S.stack = []; S.tab = 'home'; } render(); });
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.mkt = b.dataset.m; store.set('mkt', S.mkt); if (['detail', 'broker'].includes(S.tab)) { S.stack = []; S.tab = 'home'; } render(); });
 document.querySelectorAll('.nav button').forEach(b => b.onclick = () => { if (b.dataset.t === 'desk') { location.href = 'desk.html'; return; } S.stack = []; S.tab = b.dataset.t; render(); });
 $('#gear').onclick = () => go('settings');
 $('#bell').onclick = () => go('alerts');
@@ -797,7 +883,7 @@ if (CapApp) {
     updBell(); if (S.tab === 'scan') vScan();
   });
 }
-loadNSE().then(async () => {
+Promise.all([loadNSE(), loadUS()]).then(async () => {
   if (store.get('secure', false)) Alerts.setSecure(true);
   if (Sec.hasPin()) await pinPad('Enter your PIN', true);
   render();

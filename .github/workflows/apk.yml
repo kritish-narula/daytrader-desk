@@ -12,6 +12,8 @@ jobs:
         with: {distribution: temurin, java-version: 21}
       - name: Download NSE stock list and F&O lot sizes
         run: python3 tools/nse_symbols.py
+      - name: Download US stock list (Nasdaq Trader) and S&P 500/400/600 sectors
+        run: python3 tools/us_symbols.py
       - name: Live data smoke test
         continue-on-error: true
         run: node tools/livetest.js
