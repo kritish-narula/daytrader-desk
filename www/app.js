@@ -153,7 +153,8 @@ function tagsOf(r) {
   if (r.risk && r.risk.beta >= 1.4) t.push(`<span class="tag n">β ${r.risk.beta.toFixed(1)}</span>`);
   const rsv = relStr(r); if (rsv != null && Math.abs(rsv) >= 10) t.push(`<span class="tag ${rsv > 0 ? 'p' : 'n'}">RS ${rsv > 0 ? '+' : ''}${rsv.toFixed(0)}%</span>`);
   if (r.news && r.news.n && Math.abs(r.news.s) >= 0.15) t.push(`<span class="tag ${r.news.s > 0 ? 'p' : 'n'}">📰 ${r.news.s > 0 ? 'Positive' : 'Negative'} news</span>`);
-  return t.length ? `<div>${t.join('')}</div>` : '';
+  const seen = new Set(), u = t.filter(x => { const k = x.replace(/<[^>]+>|📐 /g, '').trim().toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return u.length ? `<div>${u.join('')}</div>` : '';
 }
 function setupSearch() {
   const q = $('#q'), out = $('#sres'); let tm;

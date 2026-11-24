@@ -37,9 +37,8 @@ function hydrateRows(root, max = 12, fillPx = false) {
   });
 }
 function rowHTML(sym, name, price, chg, sc, lbl, tags = '', rank, bear) {
-  const cached = sparkInner(sym);
   return `<div class="row gf" data-sym="${esc(sym)}"${price == null ? ' data-nopx="1"' : ''}><div class="rm">${rank ? `<div class="rk">${rank}</div>` : ''}${sc != null ? (bear ? `<div class="sc b-1">${sc}<small>${esc(lbl || '')}</small></div>` : badge(sc, lbl)) : ''}<div class="nm"><div class="s">${esc(sym)}</div><div class="f">${esc(name)}</div></div>
-  <div class="spk">${cached}</div><div class="px">${price != null ? `<b>${cur()}${fmt(price)}</b>${chgPill(chg)}` : ''}</div></div>${tags ? `<div class="rtags">${tags}</div>` : ''}</div>`;
+  <div class="px">${price != null ? `<b>${cur()}${fmt(price)}</b>${chgPill(chg)}` : ''}</div></div>${tags ? `<div class="rtags">${tags}</div>` : ''}</div>`;
 }
 
 function marketSummaryHTML(m) {
