@@ -592,7 +592,7 @@ function vBroker() {
    <div id="otpBox" style="display:none;margin-top:10px"><input id="otp" inputmode="numeric" maxlength="6" placeholder="OTP from SMS" class="inp" autocomplete="one-time-code"><button class="btn w" id="doOtp">Verify</button></div>`}
    <div id="bmsg" class="note" style="margin-top:8px"></div></div>
   ${ok ? '<div class="card"><button class="btn g w" id="testQ">Test: fetch RELIANCE live price</button><div id="tmsg" class="note" style="margin-top:8px"></div></div>' : ''}
-  <div class="card"><details><summary class="note">Diagnostics</summary><div class="note" id="diag" style="margin-top:6px">${MS.lastCall ? `Last call: ${esc(MS.lastCall.path)} · HTTP ${MS.lastCall.status} · ${esc(MS.lastCall.note)} · ${esc(MS.lastCall.at)}` : 'No calls yet.'}<br>Native HTTP: ${window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() ? 'yes' : 'no (browser)'} · Key length: ${c.apiKey ? c.apiKey.length : 0} · PIN vault: ${Sec.hasPin() ? (Sec.isUnlocked() ? 'unlocked' : 'locked') : 'off'}</div></details>
+  <div class="card"><details><summary class="note">Diagnostics</summary><div class="note" id="diag" style="margin-top:6px">${MS.lastCall ? `Last call: ${esc(MS.lastCall.path)} · HTTP ${MS.lastCall.status} · ${esc(MS.lastCall.note)} · ${esc(MS.lastCall.at)}` : 'No calls yet.'}<br>Last quote reply: <code style="word-break:break-all">${esc(MS.lastRaw || '–')}</code><br>Native HTTP: ${window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() ? 'yes' : 'no (browser)'} · Key length: ${c.apiKey ? c.apiKey.length : 0} · PIN vault: ${Sec.hasPin() ? (Sec.isUnlocked() ? 'unlocked' : 'locked') : 'off'}</div></details>
    <button class="btn g w" id="lout" style="margin-top:8px">Log out</button><button class="btn g w" id="forget" style="margin-top:8px;color:var(--dn)">Remove key & data from this phone</button></div>
   <div class="warn">🔒 Your key and the day's session token stay inside this app on this phone. ${Sec.hasPin() ? 'They are encrypted with your app PIN (AES-256).' : '<b>Set an app PIN in Settings to encrypt them.</b>'} The password is never stored and nothing is uploaded. Never share the key or codes with anyone.</div>`;
   $('#back').onclick = back;
@@ -631,7 +631,7 @@ function vBroker() {
   }
   const tq = $('#testQ'); if (tq) tq.onclick = async () => {
     $('#tmsg').innerHTML = '<span class="spin"></span>';
-    try { const q = await MS.quotes(['RELIANCE']); const r = q.RELIANCE; $('#tmsg').innerHTML = r ? `<span class="up">RELIANCE ₹${r.last_price} (prev close ${r.ohlc ? r.ohlc.close : '–'})</span>` : '<span class="wa">Connected, but no quote returned for RELIANCE.</span>'; }
+    try { const q = await MS.quotes(['RELIANCE']); const r = q.RELIANCE; $('#tmsg').innerHTML = r ? `<span class="up">RELIANCE ₹${fmt(r.last_price)} (prev close ${r.ohlc && r.ohlc.close ? fmt(r.ohlc.close) : '–'})</span>` : `<span class="wa">Connected, but mStock's reply had no price I could read. Reply: <code style="word-break:break-all">${esc(MS.lastRaw || '(empty)')}</code></span>`; }
     catch (e) { $('#tmsg').innerHTML = `<span class="dn">${esc(e.message)}</span>`; }
   };
   $('#lout').onclick = () => { MS.logout(); vBroker(); };

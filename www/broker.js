@@ -34,6 +34,36 @@
   }
   function strikeFromSymbol(ts) { const m = ts.match(/(\d+(?:\.\d+)?)(CE|PE)$/); if (!m) return 0; const d = m[1]; return +(d.length > 7 ? d.slice(-5) : d); }
 
+  // mStock quote replies vary from the docs: find the price/ohlc whatever the field names, strings or nesting
+  const num = v => { const n = typeof v === 'string' ? parseFloat(v.replace(/,/g, '')) : +v; return isFinite(n) ? n : null; };
+  function pick(o, names) {
+    if (!o || typeof o !== 'object') return null;
+    const L = {}; for (const k of Object.keys(o)) L[k.toLowerCase().replace(/[^a-z]/g, '')] = o[k];
+    for (const n of names) { const v = num(L[n]); if (v != null && v !== 0) return v; }
+    for (const k of Object.keys(o)) if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) { const v = pick(o[k], names); if (v != null) return v; }
+    return null;
+  }
+  const P_LTP = ['lastprice', 'ltp', 'lasttradedprice', 'lasttradeprice', 'ltpprice', 'lp', 'lastrate', 'tradeprice', 'price'];
+  function normQ(q) {
+    if (q == null) return null; if (typeof q !== 'object') { const v = num(q); return v ? { last_price: v, ohlc: {} } : null; }
+    const lp = pick(q, P_LTP); if (lp == null) return null;
+    const src = q.ohlc || q.OHLC || q.Ohlc || q;
+    const o = { open: pick(src, ['open', 'openprice', 'o']), high: pick(src, ['high', 'highprice', 'h']), low: pick(src, ['low', 'lowprice', 'l']),
+      close: pick(src, ['close', 'prevclose', 'previousclose', 'closeprice', 'pclose', 'c']) || pick(q, ['prevclose', 'previousclose', 'pclose', 'closeprice', 'close']) };
+    return { last_price: lp, ohlc: o, instrument_token: q.instrument_token || q.token || null };
+  }
+  // reply → {requestedKey: normalisedQuote}; tolerant of arrays, missing exchange prefix, token keys
+  function normMap(d, wanted) {
+    const out = {}, rows = Array.isArray(d) ? d.map(x => [String(x.exchange ? x.exchange + ':' : '') + (x.tradingsymbol || x.symbol || x.trading_symbol || ''), x]) : Object.entries(d || {});
+    const bare = k => k.replace(/^[A-Z]+:/, '').toUpperCase();
+    for (const w of wanted) {
+      let hit = rows.find(([k]) => k === w) || rows.find(([k]) => bare(k) === bare(w)) || rows.find(([k]) => bare(k).replace(/-EQ$/, '') === bare(w).replace(/-EQ$/, ''));
+      if (!hit && rows.length === 1 && wanted.length === 1) hit = rows[0];
+      const q = hit && normQ(hit[1]); if (q) out[w] = q;
+    }
+    return out;
+  }
+
   const MS = {
     lastError: null,
     cfg() { return get('cfg') || { apiKey: '', user: '', checksum: 'L', totp: false }; },
@@ -171,12 +201,16 @@
     // fastest price call: {key: last_price}
     async ltp(keys) {
       const out = {};
-      for (let i = 0; i < keys.length; i += 50) { const d = await this._req('GET', 'instruments/quote/ltp', { params: keys.slice(i, i + 50).map(k => ['i', k]) }); for (const k in d || {}) if (d[k] && d[k].last_price != null) out[k] = +d[k].last_price; }
+      for (let i = 0; i < keys.length; i += 50) {
+        const part = keys.slice(i, i + 50), d = await this._req('GET', 'instruments/quote/ltp', { params: part.map(k => ['i', k]) });
+        this.lastRaw = JSON.stringify(d).slice(0, 400);
+        const m = normMap(d, part); for (const k in m) out[k] = m[k].last_price;
+      }
       return out;
     },
     // live index: {price, prev, open, high, low}
     async index(sym) {
-      const kk = await this.key(sym), d = await this._req('GET', 'instruments/quote/ohlc', { params: [['i', kk.k]] }), q = d && (d[kk.k] || Object.values(d)[0]);
+      const kk = await this.key(sym), d = await this._req('GET', 'instruments/quote/ohlc', { params: [['i', kk.k]] }); this.lastRaw = JSON.stringify(d).slice(0, 400); const q = normMap(d, [kk.k])[kk.k];
       if (!q || !q.last_price) throw new Error('No live quote for ' + sym);
       const o = q.ohlc || {}; return { price: +q.last_price, prev: +o.close || null, open: +o.open || null, high: +o.high || null, low: +o.low || null, key: kk };
     },
@@ -190,7 +224,7 @@
     },
     async optionQuotes(list) { // list of option() results -> {key: quote}
       const part = list.filter(Boolean).map(o => ['i', o.k]); if (!part.length) return {};
-      return (await this._req('GET', 'instruments/quote/ohlc', { params: part })) || {};
+      const d = await this._req('GET', 'instruments/quote/ohlc', { params: part }); this.lastRaw = JSON.stringify(d).slice(0, 400); return normMap(d, part.map(x => x[1]));
     },
     // Live quotes for many symbols: {SYM: {last_price, ohlc:{open,high,low,close(prev)}}}
     async quotes(syms) {
@@ -199,8 +233,8 @@
         const part = [], back = {};
         for (let j = i; j < Math.min(syms.length, i + 50); j++) if (keys[j]) { part.push(['i', keys[j].k]); back[keys[j].k] = syms[j]; }
         if (!part.length) continue;
-        const d = await this._req('GET', 'instruments/quote/ohlc', { params: part });
-        for (const k in d || {}) if (back[k]) out[back[k]] = d[k];
+        const d = await this._req('GET', 'instruments/quote/ohlc', { params: part }); this.lastRaw = JSON.stringify(d).slice(0, 400);
+        const m = normMap(d, Object.keys(back)); for (const k in m) out[back[k]] = m[k];
       }
       return out;
     },
