@@ -1,0 +1,433 @@
+{
+ "v": 1,
+ "date": "2026-11-24",
+ "labels": {
+  "swing: EMA # above EMA #": "EMA 9 above EMA 21",
+  "swing: RSI # in bullish zone": "RSI 65 in bullish zone",
+  "swing: Volume # average on an up day": "Volume 0.7× average on an up day",
+  "swing: Closed above #-day high": "Closed above 20-day high",
+  "swing: Above # EMA (trend support)": "Above 50 EMA (trend support)"
+ },
+ "trainedOn": {
+  "stocks": 80,
+  "samples": 51904
+ },
+ "w": {
+  "swing: EMA # above EMA #": 1.5,
+  "swing: RSI # in bullish zone": 1.5,
+  "swing: Volume # average on an up day": 0.5,
+  "swing: Closed above #-day high": 0.5,
+  "swing: Above # EMA (trend support)": 0.5
+ },
+ "calib": {
+  "swing": [
+   {
+    "lo": 0,
+    "hi": 30,
+    "n": 2507,
+    "p": 0.313,
+    "ret": 1.08,
+    "up": 0.558
+   },
+   {
+    "lo": 30,
+    "hi": 42,
+    "n": 2339,
+    "p": 0.29,
+    "ret": 0.7,
+    "up": 0.522
+   },
+   {
+    "lo": 42,
+    "hi": 50,
+    "n": 1844,
+    "p": 0.305,
+    "ret": 0.76,
+    "up": 0.532
+   },
+   {
+    "lo": 50,
+    "hi": 58,
+    "n": 2660,
+    "p": 0.283,
+    "ret": 0.64,
+    "up": 0.525
+   },
+   {
+    "lo": 58,
+    "hi": 64,
+    "n": 906,
+    "p": 0.288,
+    "ret": 0.29,
+    "up": 0.493
+   },
+   {
+    "lo": 64,
+    "hi": 70,
+    "n": 1821,
+    "p": 0.309,
+    "ret": 0.84,
+    "up": 0.556
+   },
+   {
+    "lo": 70,
+    "hi": 80,
+    "n": 4324,
+    "p": 0.288,
+    "ret": 0.69,
+    "up": 0.549
+   },
+   {
+    "lo": 80,
+    "hi": 101,
+    "n": 1758,
+    "p": 0.265,
+    "ret": 0.46,
+    "up": 0.532
+   }
+  ],
+  "short": [
+   {
+    "lo": 0,
+    "hi": 30,
+    "n": 1473,
+    "p": 0.336,
+    "ret": 2.4,
+    "up": 0.591
+   },
+   {
+    "lo": 30,
+    "hi": 42,
+    "n": 2015,
+    "p": 0.349,
+    "ret": 2.31,
+    "up": 0.589
+   },
+   {
+    "lo": 42,
+    "hi": 50,
+    "n": 2863,
+    "p": 0.349,
+    "ret": 2.26,
+    "up": 0.563
+   },
+   {
+    "lo": 50,
+    "hi": 58,
+    "n": 4900,
+    "p": 0.339,
+    "ret": 1.8,
+    "up": 0.552
+   },
+   {
+    "lo": 58,
+    "hi": 64,
+    "n": 1734,
+    "p": 0.301,
+    "ret": 1.62,
+    "up": 0.567
+   },
+   {
+    "lo": 64,
+    "hi": 70,
+    "n": 1574,
+    "p": 0.287,
+    "ret": 1.39,
+    "up": 0.532
+   },
+   {
+    "lo": 70,
+    "hi": 80,
+    "n": 2418,
+    "p": 0.323,
+    "ret": 2.83,
+    "up": 0.592
+   },
+   {
+    "lo": 80,
+    "hi": 101,
+    "n": 783,
+    "p": 0.397,
+    "ret": 4.18,
+    "up": 0.621
+   }
+  ],
+  "medium": [
+   {
+    "lo": 0,
+    "hi": 30,
+    "n": 1020,
+    "p": 0.475,
+    "ret": 8.86,
+    "up": 0.692
+   },
+   {
+    "lo": 30,
+    "hi": 42,
+    "n": 1264,
+    "p": 0.408,
+    "ret": 5.54,
+    "up": 0.652
+   },
+   {
+    "lo": 42,
+    "hi": 50,
+    "n": 2233,
+    "p": 0.417,
+    "ret": 6.18,
+    "up": 0.588
+   },
+   {
+    "lo": 50,
+    "hi": 58,
+    "n": 3739,
+    "p": 0.484,
+    "ret": 9.07,
+    "up": 0.63
+   },
+   {
+    "lo": 58,
+    "hi": 64,
+    "n": 1616,
+    "p": 0.475,
+    "ret": 9.7,
+    "up": 0.658
+   },
+   {
+    "lo": 64,
+    "hi": 70,
+    "n": 1550,
+    "p": 0.436,
+    "ret": 8.13,
+    "up": 0.614
+   },
+   {
+    "lo": 70,
+    "hi": 80,
+    "n": 2191,
+    "p": 0.403,
+    "ret": 7.78,
+    "up": 0.592
+   },
+   {
+    "lo": 80,
+    "hi": 101,
+    "n": 2372,
+    "p": 0.52,
+    "ret": 16.09,
+    "up": 0.667
+   }
+  ]
+ },
+ "setups": {
+  "Rally into 20 EMA in downtrend": [
+   1355,
+   18,
+   3.61,
+   0
+  ],
+  "Double top": [
+   434,
+   42,
+   1.02,
+   0
+  ],
+  "Bear flag": [
+   657,
+   8,
+   4.4,
+   0
+  ],
+  "SMC: Retest of bearish fair value gap": [
+   1625,
+   29,
+   2.28,
+   0
+  ],
+  "SMC: Change of character (bullish)": [
+   751,
+   39,
+   1.86,
+   1
+  ],
+  "Bull flag": [
+   819,
+   23,
+   4.18,
+   1
+  ],
+  "SMC: Break of structure (bullish)": [
+   715,
+   35,
+   1.83,
+   0
+  ],
+  "SMC: Retest of bullish fair value gap": [
+   1896,
+   39,
+   2.18,
+   1
+  ],
+  "Pocket pivot": [
+   1155,
+   34,
+   2,
+   1
+  ],
+  "Pullback to 20 EMA in uptrend": [
+   2619,
+   27,
+   4.07,
+   1
+  ],
+  "Double bottom": [
+   432,
+   57,
+   1.04,
+   1
+  ],
+  "Clean volume breakout": [
+   508,
+   37,
+   2,
+   1
+  ],
+  "SMC: Change of character (bearish)": [
+   708,
+   25,
+   1.86,
+   0
+  ],
+  "SMC: Liquidity sweep below lows": [
+   1040,
+   35,
+   2.64,
+   1
+  ],
+  "SMC: Break of structure (bearish)": [
+   678,
+   22,
+   1.88,
+   0
+  ],
+  "SMC: Liquidity sweep above highs": [
+   1129,
+   27,
+   2.79,
+   0
+  ],
+  "Gap-down and go": [
+   148,
+   26,
+   2,
+   0
+  ],
+  "Descending triangle": [
+   53,
+   31,
+   1.92,
+   0
+  ],
+  "Gap-up and go": [
+   156,
+   43,
+   2,
+   1
+  ],
+  "Inverse head & shoulders": [
+   59,
+   62,
+   2.31,
+   1
+  ],
+  "Ascending triangle": [
+   57,
+   40,
+   2.29,
+   1
+  ],
+  "Oversold dip in long-term uptrend": [
+   76,
+   31,
+   3.2,
+   1
+  ],
+  "Head & shoulders": [
+   70,
+   30,
+   2.22,
+   0
+  ],
+  "Symmetrical triangle": [
+   42,
+   0,
+   3.47,
+   0
+  ],
+  "VCP (volatility contraction) forming": [
+   197,
+   21,
+   3.98,
+   0
+  ]
+ },
+ "metrics": {
+  "swing": {
+   "train": -0.0223,
+   "trainNew": -0.0187,
+   "test": -0.0158,
+   "testNew": -0.0133,
+   "adopted": true,
+   "n": 18159
+  },
+  "short": {
+   "train": -0.0449,
+   "trainNew": -0.0382,
+   "test": 0.0331,
+   "testNew": 0.0349,
+   "adopted": false,
+   "n": 17760
+  },
+  "medium": {
+   "train": 0.0274,
+   "trainNew": 0.0309,
+   "test": 0.0623,
+   "testNew": 0.0559,
+   "adopted": false,
+   "n": 15985
+  }
+ },
+ "history": [
+  {
+   "v": 1,
+   "date": "2026-11-24",
+   "samples": 51904,
+   "metrics": {
+    "swing": {
+     "train": -0.0223,
+     "trainNew": -0.0187,
+     "test": -0.0158,
+     "testNew": -0.0133,
+     "adopted": true,
+     "n": 18159
+    },
+    "short": {
+     "train": -0.0449,
+     "trainNew": -0.0382,
+     "test": 0.0331,
+     "testNew": 0.0349,
+     "adopted": false,
+     "n": 17760
+    },
+    "medium": {
+     "train": 0.0274,
+     "trainNew": 0.0309,
+     "test": 0.0623,
+     "testNew": 0.0559,
+     "adopted": false,
+     "n": 15985
+    }
+   }
+  }
+ ]
+}
