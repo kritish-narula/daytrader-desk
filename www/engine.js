@@ -35,7 +35,7 @@
     const g = [NaN], l = [NaN];
     for (let i = 1; i < c.length; i++) { const d = c[i] - c[i - 1]; g.push(Math.max(d, 0)); l.push(Math.max(-d, 0)); }
     const ag = wilder(g, n), al = wilder(l, n);
-    return ag.map((x, i) => ok(x) ? (al[i] === 0 ? 100 : 100 - 100 / (1 + x / al[i])) : NaN);
+    return ag.map((x, i) => ok(x) ? (al[i] === 0 ? (x === 0 ? 50 : 100) : 100 - 100 / (1 + x / al[i])) : NaN); // flat series = neutral 50, not "overbought" 100
   }
   function trueRange(h, l, c) { return h.map((x, i) => i ? Math.max(x - l[i], Math.abs(x - c[i - 1]), Math.abs(l[i] - c[i - 1])) : x - l[i]); }
   function atr(h, l, c, n = 14) { return wilder(trueRange(h, l, c), n); }
@@ -101,12 +101,61 @@
     }
     return { hi, lo };
   }
+  // ATR with a floor so flat / illiquid series (ATR ≈ 0) can't produce zero-width stops or divide-by-zero
+  const atrAt = (I, i, px) => { const a = I.atr[i], f = Math.abs(px) * 0.002; return ok(a) && a > f ? a : f || 1e-6; };
+  const HOLD = { intraday: 'Intraday · today only', swing: 'Swing · 3–10 trading days', short: 'Short term · 2–6 weeks', medium: 'Medium term · 2–6 months' };
+  // Make a trade idea internally consistent: stop and target on the right side of the entry, reward:risk within [1, 6].
+  // R:R > 6: the stop is inside normal noise → widen it (to at most 1 ATR), then cap an over-ambitious target at 6R.
+  // R:R < 1: setups are dropped (not worth taking); chart patterns (tighten=true) keep a textbook stop down to 0.75R, below that
+  // the stop is trailed to 1R if that still leaves ≥ 0.5 ATR of room, else the pattern is treated as played out.
+  // Returns false when the idea is not tradable any more (stop already hit, target already reached, nothing left to gain).
+  function tradeSanity(x, px, at, R, tighten, tick) {
+    if (!x.b || !ok(x.stop) || !ok(x.target)) return !x.b || (x.stop == null && x.target == null);
+    const b = x.b, e = ok(x.entry) ? x.entry : px;
+    let risk = b * (e - x.stop), rew = b * (x.target - e), moved = false;
+    if (!(risk > 0) || !(rew > 0)) return false;
+    if (rew / risk > 6) {
+      if (risk < at) { risk = Math.min(at, Math.max(risk, rew / 6)); moved = true; }
+      if (rew / risk > 6) { rew = 6 * risk; moved = true; }
+    } else if (rew / risk < 1) {
+      if (!tighten || rew < 0.5 * at) return false;
+      // chart patterns: a textbook stop at 0.75–1R is kept (a double bottom bought at the neckline is ~0.9R by construction and
+      // tightening would put the stop inside the pattern's own lows); below 0.75R price has run toward the target → trail to 1R
+      if (rew / risk < 0.75) { risk = rew; moved = true; }
+    }
+    if (moved) { x.stop = R(e - b * risk); x.target = R(e + b * rew); }
+    const rk = b * (e - x.stop); let rw = b * (x.target - e);
+    if (rk > 0 && rw / rk > 6.001) { x.target = +(e + b * Math.floor(6 * rk / tick) * tick).toFixed(2); rw = b * (x.target - e); } // tick rounding pushed it past 6R
+    if (!(rk > 0) || !(rw > 0)) return false;
+    x.rr = Math.round(rw / rk * 100) / 100;
+    return true;
+  }
+  const b2rr = (x, s0, t0) => { const e = x.entry; const r = Math.abs(t0 - e) / Math.max(1e-9, Math.abs(e - s0)); return r < 1 ? 'below 1' : r.toFixed(1); };
+  // Execution hint for a daily-chart idea: a pending trigger confirmed on a 15-min close, a limit on a pullback, or a market entry with a no-chase rule.
+  function triggerText(x, px, R) {
+    if (!x.b || !ok(x.stop)) return undefined;
+    const e = ok(x.entry) ? x.entry : px, b = x.b, risk = Math.abs(e - x.stop), buy = b > 0 ? 'Buy' : 'Sell', gap = Math.max(risk * 0.15, Math.abs(px) * 0.001);
+    if (b * (e - px) > gap) return `${buy} ${b > 0 ? 'above' : 'below'} ${R(e)} on a 15-min close`;
+    if (b * (px - e) > gap) return `${buy} on a ${b > 0 ? 'dip' : 'bounce'} to ${R(e)} (limit order); cancel if ${R(x.stop)} trades first`;
+    return `${buy} near ${R(e)}; skip if it opens ${b > 0 ? 'above' : 'below'} ${R(e + b * 0.5 * risk)} (don't chase)`;
+  }
   E.setups = function (I, i, tick = 0.05) {
     i = i == null ? I.n - 1 : i;
-    const D = I.D, c = D.c, h = D.h, l = D.l, o = D.o, v = D.v, out = [], at = I.atr[i];
-    if (i < 60 || !ok(at)) return out;
-    const R = x => roundTick(x, tick), px = c[i];
-    const add = (s) => { s.q = Math.round(clamp(s.q, 0, 100)); out.push(s); };
+    const D = I.D, c = D.c, h = D.h, l = D.l, o = D.o, v = D.v, out = [];
+    if (i < 60 || !ok(I.atr[i]) || !ok(c[i])) return out;
+    const R = x => roundTick(x, tick), px = c[i], at = atrAt(I, i, px), rngPos = h[i] > l[i] ? (c[i] - l[i]) / (h[i] - l[i]) : 0.5; // close location in today's bar, 0..1
+    const SHORT_TF = { TREND: 1, VCP: 1, PRE: 1 };
+    const add = (s) => {
+      s.q = Math.round(clamp(s.q, 0, 100));
+      if (s.entry != null || s.stop != null || s.target != null) {
+        if ([s.entry, s.stop, s.target].some(x => x != null && !ok(x))) return; // NaN guard
+        if (!tradeSanity(s, px, at, R, false, tick)) return;
+        const tg = triggerText(s, px, R); if (tg) s.trigger = tg;
+      }
+      const tf = SHORT_TF[s.k] && s.n !== 'Pullback to 20 EMA in uptrend' && s.n !== 'Rally into 20 EMA in downtrend' ? 'short' : 'swing';
+      s.hz = tf; s.timeframe = HOLD[tf];
+      out.push(s);
+    };
     const pv = pivotsUpTo(D, i - 120, i, 3);
     const lastH = pv.hi.slice(-3), lastL = pv.lo.slice(-3);
     // --- SMC: structure, BOS / CHoCH ---
@@ -114,25 +163,36 @@
       const [h1, h2] = lastH.slice(-2), [l1, l2] = lastL.slice(-2);
       const upStruct = h[h2] > h[h1] && l[l2] > l[l1], dnStruct = h[h2] < h[h1] && l[l2] < l[l1];
       const brokeUp = c[i] > h[h2] && c[i - 1] <= h[h2], brokeDn = c[i] < l[l2] && c[i - 1] >= l[l2];
-      if (brokeUp) {
-        const choch = dnStruct || (!upStruct && h[h2] < h[h1]);
+      const chochUp = dnStruct || (!upStruct && h[h2] < h[h1]);
+      // a bullish BOS is a trend-continuation signal: only meaningful above the 200 EMA (it showed no edge overall)
+      if (brokeUp && (chochUp || c[i] > I.e200[i])) {
+        const choch = chochUp;
         // order block = last red candle before the impulse that broke structure
         let ob = -1; for (let j = i - 1; j > Math.max(l2, i - 15) - 1; j--) if (c[j] < o[j]) { ob = j; break; }
         const stop = ob >= 0 ? l[ob] - 0.1 * at : l[l2] - 0.1 * at;
         add({ n: choch ? 'SMC: Change of character (bullish)' : 'SMC: Break of structure (bullish)', k: 'SMC', b: 1, q: (choch ? 62 : 70) + (I.v20[i - 1] && v[i] > 1.3 * I.v20[i - 1] ? 12 : 0) + (c[i] > I.e50[i] ? 8 : -8),
-          note: `Closed above swing high ${R(h[h2])}.${ob >= 0 ? ` Order block ${R(l[ob])}–${R(h[ob])}: best entry on a retest.` : ''}`, entry: R(ob >= 0 ? h[ob] : px), stop: R(stop), target: R(px + 2 * (px - stop)) });
+          note: `Closed above swing high ${R(h[h2])}.${ob >= 0 ? ` Order block ${R(l[ob])}–${R(h[ob])}: best entry on a retest.` : ''}`, entry: R(ob >= 0 ? Math.min(h[ob], px) : px), stop: R(stop), target: R(px + 2 * (px - stop)) });
       }
       if (brokeDn) {
         const choch = upStruct || (!dnStruct && l[l2] > l[l1]);
         let ob = -1; for (let j = i - 1; j > Math.max(h2, i - 15) - 1; j--) if (c[j] > o[j]) { ob = j; break; }
         const stop = ob >= 0 ? h[ob] + 0.1 * at : h[h2] + 0.1 * at;
         add({ n: choch ? 'SMC: Change of character (bearish)' : 'SMC: Break of structure (bearish)', k: 'SMC', b: -1, q: (choch ? 62 : 70) + (I.v20[i - 1] && v[i] > 1.3 * I.v20[i - 1] ? 12 : 0) + (c[i] < I.e50[i] ? 8 : -8),
-          note: `Closed below swing low ${R(l[l2])}.${ob >= 0 ? ` Supply order block ${R(l[ob])}–${R(h[ob])}.` : ''}`, entry: R(ob >= 0 ? l[ob] : px), stop: R(stop), target: R(px - 2 * (stop - px)) });
+          note: `Closed below swing low ${R(l[l2])}.${ob >= 0 ? ` Supply order block ${R(l[ob])}–${R(h[ob])}.` : ''}`, entry: R(ob >= 0 ? Math.max(l[ob], px) : px), stop: R(stop), target: R(px - 2 * (stop - px)) });
       }
       // --- liquidity sweep (stop hunt) ---
       const swL = Math.min(...lastL.map(j => l[j])), swH = Math.max(...lastH.map(j => h[j]));
-      if (l[i] < l[l2] && c[i] > l[l2] && c[i] > o[i]) add({ n: 'SMC: Liquidity sweep below lows', k: 'SMC', b: 1, q: 60 + (c[i] > I.e200[i] ? 12 : 0) + (l[i] <= swL ? 6 : 0), note: `Took stops under ${R(l[l2])} and closed back above. Classic reversal trigger.`, entry: R(px), stop: R(l[i] - 0.1 * at), target: R(h[h2]) });
-      if (h[i] > h[h2] && c[i] < h[h2] && c[i] < o[i]) add({ n: 'SMC: Liquidity sweep above highs', k: 'SMC', b: -1, q: 60 + (c[i] < I.e200[i] ? 12 : 0) + (h[i] >= swH ? 6 : 0), note: `Ran stops above ${R(h[h2])} and closed back below.`, entry: R(px), stop: R(h[i] + 0.1 * at), target: R(l[l2]) });
+      // sweep must close back with a rejection wick (close in the upper/lower half of the bar)
+      // target = most recent swing high/low beyond price that pays at least 1R (next liquidity pool)
+      const pool = (lst, b, e, risk) => { const xs = lst.slice().reverse().map(j => (b > 0 ? h : l)[j]).filter(x => b * (x - e) > 0); const f = xs.find(x => b * (x - e) >= risk); return f !== undefined ? f : xs[0]; };
+      if (l[i] < l[l2] && c[i] > l[l2] && c[i] > o[i] && rngPos >= 0.5) {
+        const st = l[i] - 0.1 * at, tg = pool(pv.hi, 1, px, px - st);
+        if (tg != null) add({ n: 'SMC: Liquidity sweep below lows', k: 'SMC', b: 1, q: 60 + (c[i] > I.e200[i] ? 12 : 0) + (l[i] <= swL ? 6 : 0), note: `Took stops under ${R(l[l2])} and closed back above. Classic reversal trigger.`, entry: R(px), stop: R(st), target: R(tg) });
+      }
+      if (h[i] > h[h2] && c[i] < h[h2] && c[i] < o[i] && rngPos <= 0.5) {
+        const st = h[i] + 0.1 * at, tg = pool(pv.lo, -1, px, st - px);
+        if (tg != null) add({ n: 'SMC: Liquidity sweep above highs', k: 'SMC', b: -1, q: 60 + (c[i] < I.e200[i] ? 12 : 0) + (h[i] >= swH ? 6 : 0), note: `Ran stops above ${R(h[h2])} and closed back below.`, entry: R(px), stop: R(st), target: R(tg) });
+      }
     }
     // --- SMC: unfilled fair value gaps near price ---
     for (let j = i; j >= Math.max(2, i - 25); j--) {
@@ -162,7 +222,7 @@
         const pivot = maxIn(h, dd[dd.length - 1].hi, i), lastLow = l[dd[dd.length - 1].lo];
         const v10 = v.slice(i - 9, i + 1).reduce((a, b) => a + b, 0) / 10, v50 = v.slice(i - 49, i + 1).reduce((a, b) => a + b, 0) / 50;
         const dry = v50 > 0 && v10 < 0.85 * v50, near = c[i] >= pivot * 0.92, brk = c[i] > pivot * 0.999 && I.v20[i - 1] && v[i] > 1.4 * I.v20[i - 1];
-        if (near) add({ n: brk ? 'VCP breakout' : 'VCP (volatility contraction) forming', k: 'VCP', b: 1,
+        if (near && c[i] > lastLow) add({ n: brk ? 'VCP breakout' : 'VCP (volatility contraction) forming', k: 'VCP', b: 1,
           q: 62 + dd.length * 4 + (dry ? 8 : 0) + (brk ? 10 : 0) + (ttN === 7 ? 4 : 0),
           note: `${dd.length} contractions: ${dd.map(x => (x.d * 100).toFixed(0) + '%').join(' → ')}${dry ? ', volume drying up' : ''}. ${brk ? 'Broke the pivot on volume.' : `Buy above pivot ${R(pivot)}.`}`,
           entry: R(pivot * 1.001), stop: R(lastLow * 0.995), target: R(pivot * 1.001 + 2 * (pivot * 1.001 - lastLow * 0.995)) });
@@ -174,10 +234,11 @@
     if (I.e20[i] < I.e50[i] && I.e50[i] < I.e200[i] && Math.max(h[i], h[i - 1]) >= I.e20[i] * 0.99 && c[i] < I.e20[i] && I.rsi[i] < 60)
       add({ n: 'Rally into 20 EMA in downtrend', k: 'TREND', b: -1, q: 62 + (c[i] < o[i] ? 8 : 0) + (I.adx[i] > 25 ? 8 : 0), note: 'Downtrend intact; bounce failed at the 20 EMA.', entry: R(l[i]), stop: R(Math.max(h[i], h[i - 1]) + 0.2 * at), target: R(l[i] - 2 * (Math.max(h[i], h[i - 1]) + 0.2 * at - l[i])) });
     // --- breakout family ---
-    const v20 = I.v20[i - 1], volx = v20 ? v[i] / v20 : 0, rngPos = h[i] > l[i] ? (c[i] - l[i]) / (h[i] - l[i]) : 0.5;
+    const v20 = I.v20[i - 1], volx = v20 ? v[i] / v20 : 0;
     const lvl50 = maxIn(h, i - 50, i - 1), uptrend = c[i] > I.e50[i] && I.e50[i] > I.e200[i];
     // clean breakout: close through a 50-day high on volume, strong close, not already stretched
-    if (c[i] > lvl50 && c[i - 1] <= lvl50 * 1.005 && volx >= 1.5 && rngPos >= 0.65 && (c[i] - lvl50) / at < 1.5)
+    // trend filter: breakouts below a falling/under 200 EMA were break-even on real data → require price above the 200 EMA
+    if (c[i] > lvl50 && c[i - 1] <= lvl50 * 1.005 && volx >= 1.5 && rngPos >= 0.65 && (c[i] - lvl50) / at < 1.5 && c[i] > I.e200[i])
       add({ n: 'Clean volume breakout', k: 'BRK', b: 1, q: 64 + Math.min(10, (volx - 1.5) * 8) + (c[i] >= hi52 * 0.995 ? 8 : 0) + (uptrend ? 6 : -6), note: `Closed above the 50-day high ${R(lvl50)} on ${volx.toFixed(1)}× volume, near the day's high.`, entry: R(px), stop: R(Math.max(lvl50 - at, l[i] - 0.2 * at)), target: R(px + 2 * (px - Math.max(lvl50 - at, l[i] - 0.2 * at))) });
     // near breakout: coiling just under a base high with shrinking range and quiet volume
     const base = maxIn(h, i - 60, i - 3), dist = (base - c[i]) / c[i];
@@ -189,7 +250,7 @@
     }
     // pocket pivot: up-day volume beats every down-day volume of the last 10 sessions, in an uptrend
     let maxDn = 0; for (let j = i - 10; j < i; j++) if (c[j] < c[j - 1]) maxDn = Math.max(maxDn, v[j]);
-    if (uptrend && c[i] > c[i - 1] && maxDn > 0 && v[i] > maxDn && Math.abs(c[i] - I.e20[i]) / I.e20[i] < 0.05)
+    if (uptrend && c[i] > c[i - 1] && rngPos >= 0.5 && maxDn > 0 && v[i] > maxDn && Math.abs(c[i] - I.e20[i]) / I.e20[i] < 0.05) // close in the upper half (Morales/Kacher)
       add({ n: 'Pocket pivot', k: 'BRK', b: 1, q: 62 + (rngPos > 0.7 ? 6 : 0) + (volx > 1.5 ? 6 : 0), note: `Up-day volume beat every down-day volume of the last 10 sessions: institutional buying near the 20 EMA.`, entry: R(px), stop: R(Math.min(l[i], I.e20[i]) - 0.3 * at), target: R(px + 2 * (px - Math.min(l[i], I.e20[i]) + 0.3 * at)) });
     // gap and go / gap down
     if (o[i] > h[i - 1] * 1.01 && c[i] > o[i] && volx > 1.5) add({ n: 'Gap-up and go', k: 'GAP', b: 1, q: 60 + (rngPos > 0.75 ? 8 : 0) + (uptrend ? 6 : 0), note: `Gapped above yesterday's high and kept rising on ${volx.toFixed(1)}× volume. Gap low ${R(h[i - 1])} should hold.`, entry: R(px), stop: R(h[i - 1] - 0.2 * at), target: R(px + 2 * (px - h[i - 1] + 0.2 * at)) });
@@ -263,36 +324,40 @@
     const hi52 = maxIn(D.h, i - 251, i), lo52 = minIn(D.l, i - 251, i);
     const volx = I.v20[i - 1] > 0 ? D.v[i] / I.v20[i - 1] : NaN;
     const trendStrong = I.adx[i] > 20;
+    // graded instead of ±1: same sign, but the size of the gap (in ATRs) sets the strength, so agreeing trend
+    // factors don't all slam to ±1 together (that is what saturated the rating at 70+)
+    const A = atrAt(I, i, c), gr = (x, k) => clamp(x / (k * A));
+    const dmi = trendStrong ? sgn(I.pdi[i] - I.mdi[i]) * clamp((I.adx[i] - 15) / 15, 0, 1) : 0;
     if (hz === 'swing') {
-      add(2, sgn(I.e9[i] - I.e21[i]), 'EMA 9 above EMA 21', 'EMA 9 below EMA 21');
-      add(0.75, sgn(c - I.e20[i]), 'Price above 20 EMA', 'Price below 20 EMA');
+      add(2, gr(I.e9[i] - I.e21[i], 1), 'EMA 9 above EMA 21', 'EMA 9 below EMA 21');
+      add(0.75, gr(c - I.e20[i], 2), 'Price above 20 EMA', 'Price below 20 EMA');
       add(0.25, mh > 0 ? (mh > mp ? 1 : 0.3) : (mh > mp ? -0.3 : -1), 'MACD momentum rising', 'MACD momentum falling'); // IC < 0 in both test sets: near-zero weight
       add(1.5, r > 78 ? -0.5 : r > 68 ? 0.3 : r >= 50 ? 1 : r >= 40 ? -0.3 : r >= 30 ? -0.7 : 0.2, `RSI ${r | 0} in bullish zone`, r > 78 ? `RSI ${r | 0} overbought` : `RSI ${r | 0} weak`);
-      add(1.5, I.st.dir[i], 'Supertrend bullish', 'Supertrend bearish');
+      add(1.5, I.st.dir[i] * (0.5 + 0.5 * clamp(Math.abs(c - I.st.line[i]) / (3 * A), 0, 1)), 'Supertrend bullish', 'Supertrend bearish');
       add(1, volx > 1.5 ? sgn(c - C[i - 1]) : 0, `Volume ${volx.toFixed(1)}× average on an up day`, `Volume ${volx.toFixed(1)}× average on a down day`);
       add(1, c > hi20 ? 1 : c < lo20 ? -1 : 0, 'Closed above 20-day high', 'Closed below 20-day low');
-      add(1, sgn(c - I.e50[i]), 'Above 50 EMA (trend support)', 'Below 50 EMA');
+      add(1, gr(c - I.e50[i], 4), 'Above 50 EMA (trend support)', 'Below 50 EMA');
       // (a "chasing" penalty for stretched stocks was removed: on real data stretched stocks kept going — IC −0.04 in both test sets)
     } else if (hz === 'short') {
-      add(2, sgn(I.e20[i] - I.e50[i]), '20 EMA above 50 EMA', '20 EMA below 50 EMA');
-      add(1.5, sgn(c - I.e50[i]), 'Price above 50 EMA', 'Price below 50 EMA');
-      add(1.5, trendStrong ? sgn(I.pdi[i] - I.mdi[i]) : 0, `ADX ${I.adx[i] | 0}: strong uptrend`, `ADX ${I.adx[i] | 0}: strong downtrend`);
+      add(2, gr(I.e20[i] - I.e50[i], 2.5), '20 EMA above 50 EMA', '20 EMA below 50 EMA');
+      add(1.5, gr(c - I.e50[i], 4), 'Price above 50 EMA', 'Price below 50 EMA');
+      add(1.5, dmi, `ADX ${I.adx[i] | 0}: strong uptrend`, `ADX ${I.adx[i] | 0}: strong downtrend`);
       add(1.5, roc(20) / 10, `+${roc(20).toFixed(1)}% in 1 month`, `${roc(20).toFixed(1)}% in 1 month`);
-      add(0.5, sgn(mh), 'MACD above signal', 'MACD below signal');
+      add(0.5, gr(mh, 0.4), 'MACD above signal', 'MACD below signal');
       add(1, c > hi20 ? 1 : c < lo20 ? -1 : 0, '20-day breakout', '20-day breakdown');
-      add(1, r >= 50 && r <= 72 ? 1 : r > 72 ? 0 : -1, 'RSI supports trend', 'RSI below 50');
+      add(1, r > 72 ? 0 : clamp((r - 50) / 12), 'RSI supports trend', 'RSI below 50');
 
     } else if (hz === 'medium') {
-      add(2, sgn(I.e50[i] - I.e150[i]), '50 EMA above 150 EMA', '50 EMA below 150 EMA');
-      add(1.5, sgn(c - I.e150[i]), 'Above 30-week average', 'Below 30-week average');
-      add(1.5, i >= 20 ? sgn(I.e150[i] - I.e150[i - 20]) : NaN, '30-week average rising', '30-week average falling');
+      add(2, gr(I.e50[i] - I.e150[i], 4), '50 EMA above 150 EMA', '50 EMA below 150 EMA');
+      add(1.5, gr(c - I.e150[i], 7), 'Above 30-week average', 'Below 30-week average');
+      add(1.5, i >= 20 ? gr(I.e150[i] - I.e150[i - 20], 2) : NaN, '30-week average rising', '30-week average falling');
       add(1.5, roc(126) / 25, `+${roc(126).toFixed(0)}% in 6 months`, `${roc(126).toFixed(0)}% in 6 months`);
       add(1.5, hi52 > lo52 ? 2 * (c - lo52) / (hi52 - lo52) - 1 : NaN, 'Upper part of 52-week range', 'Lower part of 52-week range');
-      add(1, trendStrong ? sgn(I.pdi[i] - I.mdi[i]) : 0, 'Trend strength confirmed', 'Downtrend strength confirmed');
+      add(1, dmi, 'Trend strength confirmed', 'Downtrend strength confirmed');
     } else if (hz === 'long') {
-      add(2, sgn(c - I.e200[i]), 'Above 200 EMA', 'Below 200 EMA');
-      add(2, sgn(I.e50[i] - I.e200[i]), 'Golden-cross structure (50 > 200)', 'Death-cross structure (50 < 200)');
-      add(1.5, i >= 40 ? sgn(I.e200[i] - I.e200[i - 40]) : NaN, '200 EMA rising', '200 EMA falling');
+      add(2, gr(c - I.e200[i], 9), 'Above 200 EMA', 'Below 200 EMA');
+      add(2, gr(I.e50[i] - I.e200[i], 6), 'Golden-cross structure (50 > 200)', 'Death-cross structure (50 < 200)');
+      add(1.5, i >= 40 ? gr(I.e200[i] - I.e200[i - 40], 3) : NaN, '200 EMA rising', '200 EMA falling');
       add(1.5, roc(250) / 40, `+${roc(250).toFixed(0)}% over 1 year`, `${roc(250).toFixed(0)}% over 1 year`);
       add(1, (c / hi52 - 0.725) / 0.125, 'Near 52-week high', 'Far below 52-week high');
     }
@@ -336,8 +401,8 @@
   // ---------- levels ----------
   function roundTick(x, tick) { return +(Math.round(x / tick) * tick).toFixed(2); }
   function levels(I, i, hz, dir, tick, price) {
-    const P = H[hz], D = I.D, at = I.atr[i];
-    let risk = P.riskAtr * at;
+    const P = H[hz], D = I.D, at = atrAt(I, i, price);
+    let risk = Math.max(P.riskAtr * at, tick);
     if (P.swingLook) { // structure stop: recent swing low/high if within 1–2.5× the ATR risk band
       const s = dir > 0 ? minIn(D.l, i - P.swingLook, i) : maxIn(D.h, i - P.swingLook, i);
       const r2 = Math.abs(price - s) * 1.005;
@@ -360,7 +425,10 @@
     if (hz === 'intraday' || canShort) return { a: strong ? 'STRONG SELL' : 'SELL', d: -1 };
     return { a: hz === 'long' || hz === 'medium' ? 'AVOID' : 'SELL / EXIT', d: -1, noShort: true };
   }
-  const toScore = s => Math.round(50 + 50 * s);
+  // Calibration: score = 50 ± 50·|s|^1.6. Same sign as the factor blend, but middling agreement maps closer to 50 so 70+ is
+  // reserved for broad, strong agreement (~13% of readings on random walks, was ~37% on real NSE data with the linear map).
+  const SCORE_POW = 1.6;
+  const toScore = s => Math.round(50 + 50 * Math.sign(s) * Math.pow(Math.min(1, Math.abs(s)), SCORE_POW));
 
   function backtest(I, hz) {
     const P = H[hz], n = I.n, C = I.D.c; let wins = 0, losses = 0;
@@ -446,7 +514,8 @@
     for (let k = 0; k < 3; k++) if (I.st.dir[i - k] !== I.st.dir[i - k - 1] && I.st.dir[i - k - 1]) {
       P.push({ n: `Supertrend flipped ${I.st.dir[i] > 0 ? 'bullish' : 'bearish'}`, b: I.st.dir[i], note: `${k ? k + ' day(s) ago' : 'Today'}.`, stop: R(I.st.line[i]) }); break;
     }
-    return P;
+    // drop items whose invalidation level is already broken or whose target is already reached (stale structure / played-out patterns)
+    return P.filter(p => !p.b || ((p.stop == null || p.b * (c[i] - p.stop) >= 0) && (p.target == null || p.b * (p.target - c[i]) > 0)));
   };
 
   // ---------- geometric chart patterns with drawable lines ----------
@@ -456,7 +525,11 @@
   E.chartPatterns = function (I, tick = 0.05) {
     const D = I.D, n = I.n, i = n - 1, h = D.h, l = D.l, c = D.c, out = [];
     if (n < 60) return out;
-    const R = x => roundTick(x, tick), at = I.atr[i] || (h[i] - l[i]);
+    const R = x => roundTick(x, tick), at = atrAt(I, i, c[i]);
+    // stable ids (bar timestamp, not window index) so the same pattern keeps its id as new bars arrive
+    const T = j => (D.t && D.t[j] != null ? D.t[j] : j);
+    // after the trigger bar `from`, did price close through the stop (failed) or touch the target (played out)? b = trade direction
+    const resolved = (b, from, stop, tgt) => { for (let j = Math.max(0, from); j <= i; j++) if (b * (c[j] - stop) < 0 || b * ((b > 0 ? h[j] : l[j]) - tgt) >= 0) return true; return false; };
     const GREEN = '#22c55e', RED = '#ef4444', BLUE = '#4c9aff', GOLD = '#f5b301';
     const pv = pivotsUpTo(D, Math.max(0, n - 160), i, 4), PH = pv.hi, PL = pv.lo;
     // ---- head & shoulders (top) and inverse ----
@@ -478,11 +551,12 @@
         const depth = Math.abs(H - neck.at(hd)), nk = neck.at(i);
         let broke = -1; for (let j = rs + 1; j <= i; j++) if (sg * (c[j] - neck.at(j)) < 0) { broke = j; break; }
         if (broke < 0 && sg * (c[i] - val[rs]) > 0) continue;                             // price back above right shoulder: invalid
-        const status = broke >= 0 ? 'confirmed' : 'forming', tgt = nk - sg * depth;
+        const status = broke >= 0 ? 'confirmed' : 'forming', tgt = nk - sg * depth, stopLv = val[rs] + sg * 0.2 * at;
+        if (broke >= 0 && resolved(-sg, broke, stopLv, tgt)) continue;                    // already failed or already hit its target
         const q = 64 + (broke >= 0 ? 12 : 0) + (Math.abs(LS - RS) / H < 0.025 ? 6 : 0) + (I.v20[rs] && D.v[rs] < I.v20[rs] ? 4 : 0);
-        out.push({ id: (top ? 'hs' : 'ihs') + hd, n: top ? 'Head & shoulders' : 'Inverse head & shoulders', b: -sg, q, status,
+        out.push({ id: (top ? 'hs' : 'ihs') + T(hd), n: top ? 'Head & shoulders' : 'Inverse head & shoulders', b: -sg, q, status,
           note: `${status === 'confirmed' ? 'Neckline broken' : 'Neckline ' + R(nk) + ': a close ' + (top ? 'below' : 'above') + ' confirms'}. Pattern target ${R(tgt)}.`,
-          target: R(tgt), stop: R(val[rs] + sg * 0.2 * at),
+          target: R(tgt), stop: R(stopLv), entry: R(broke >= 0 ? c[i] : nk),
           lines: [{ pts: [[ls, LS], [n1, opp[n1]], [hd, H], [n2, opp[n2]], [rs, RS]], color: top ? RED : GREEN, w: 2 },
                   { pts: [[Math.max(0, n1 - 5), neck.at(Math.max(0, n1 - 5))], [i, nk]], color: GOLD, dash: 1, label: 'Neckline' }],
           marks: [{ i: ls, p: LS, t: 'LS', pos: top ? 'above' : 'below' }, { i: hd, p: H, t: 'H', pos: top ? 'above' : 'below' }, { i: rs, p: RS, t: 'RS', pos: top ? 'above' : 'below' }] });
@@ -498,10 +572,12 @@
       const mid = V.filter(j => j > a && j < b2); if (!mid.length) return;
       const nkI = mid.reduce((x, j) => (sg * opp[j] < sg * opp[x] ? j : x), mid[0]), nk = opp[nkI], depth = Math.abs((val[a] + val[b2]) / 2 - nk);
       if (depth < 2 * at) return;
-      let broke = false; for (let j = b2 + 1; j <= i; j++) if (sg * (c[j] - nk) < 0) broke = true;
+      let bk = -1; for (let j = b2 + 1; j <= i; j++) if (sg * (c[j] - nk) < 0) { bk = j; break; }
+      const broke = bk >= 0, tgtD = nk - sg * depth, stopD = (top ? Math.max : Math.min)(val[a], val[b2]) + sg * 0.2 * at;
       if (!broke && sg * (c[i] - Math.max(sg * val[a], sg * val[b2]) * sg) > 0) return;
-      out.push({ id: (top ? 'dt' : 'db') + a, n: top ? 'Double top' : 'Double bottom', b: -sg, q: 60 + (broke ? 12 : 0) + (b2 - a >= 20 ? 4 : 0), status: broke ? 'confirmed' : 'forming',
-        note: `Two ${top ? 'peaks' : 'troughs'} near ${R((val[a] + val[b2]) / 2)}; neckline ${R(nk)}. Target ${R(nk - sg * depth)}.`, target: R(nk - sg * depth), stop: R((top ? Math.max : Math.min)(val[a], val[b2]) + sg * 0.2 * at),
+      if (broke && resolved(-sg, bk, stopD, tgtD)) return;                                 // failed or played out
+      out.push({ id: (top ? 'dt' : 'db') + T(a), n: top ? 'Double top' : 'Double bottom', b: -sg, q: 60 + (broke ? 12 : 0) + (b2 - a >= 20 ? 4 : 0), status: broke ? 'confirmed' : 'forming',
+        note: `Two ${top ? 'peaks' : 'troughs'} near ${R((val[a] + val[b2]) / 2)}; neckline ${R(nk)}. Target ${R(nk - sg * depth)}.`, target: R(tgtD), stop: R(stopD), entry: R(broke ? c[i] : nk),
         lines: [{ pts: [[a, val[a]], [nkI, nk], [b2, val[b2]]], color: top ? RED : GREEN, w: 2 }, { pts: [[a, nk], [i, nk]], color: GOLD, dash: 1, label: 'Neckline' }],
         marks: [{ i: a, p: val[a], t: '1', pos: top ? 'above' : 'below' }, { i: b2, p: val[b2], t: '2', pos: top ? 'above' : 'below' }] });
     };
@@ -519,9 +595,10 @@
         const parallel = Math.abs(up.m - dn.m) * xs.length < 0.6 * flagH, retr = (h[hi] - Math.min(...ls2)) / poleUp;
         if (up.m <= at * 0.15 && parallel && retr < 0.5 && flagH < 0.6 * poleUp) {
           const brk = c[i] > up.at(i), tgt = (brk ? up.at(i) : h[hi]) + poleUp;
-          out.push({ id: 'bf' + hi, n: 'Bull flag', b: 1, q: 64 + (brk ? 12 : 0) + (retr < 0.35 ? 6 : 0) + (I.v20[i] && D.v.slice(hi, i + 1).reduce((a2, b3) => a2 + b3, 0) / xs.length < I.v20[i] ? 4 : 0), status: brk ? 'breaking out' : 'forming',
+          if (c[i] < dn.at(i) - 0.2 * at) continue;                                        // closed under the flag: failed
+          out.push({ id: 'bf' + T(hi), n: 'Bull flag', b: 1, q: 64 + (brk ? 12 : 0) + (retr < 0.35 ? 6 : 0) + (I.v20[i] && D.v.slice(hi, i + 1).reduce((a2, b3) => a2 + b3, 0) / xs.length < I.v20[i] ? 4 : 0), status: brk ? 'breaking out' : 'forming',
             note: `Pole +${(poleUp / l[lo] * 100).toFixed(1)}%, ${xs.length}-bar flag retracing ${(retr * 100).toFixed(0)}%. ${brk ? 'Broke the flag top.' : 'Buy on a close above ' + R(up.at(i)) + '.'} Target ${R(tgt)}.`,
-            target: R(tgt), stop: R(dn.at(i) - 0.2 * at),
+            target: R(tgt), stop: R(dn.at(i) - 0.2 * at), entry: R(brk ? c[i] : up.at(i)),
             lines: [{ pts: [[lo, l[lo]], [hi, h[hi]]], color: GREEN, w: 3, label: 'Pole' }, { pts: [[hi, up.at(hi)], [i, up.at(i)]], color: BLUE }, { pts: [[hi, dn.at(hi)], [i, dn.at(i)]], color: BLUE }],
             marks: [{ i: hi, p: h[hi], t: 'Flag', pos: 'above' }] });
           break;
@@ -537,9 +614,10 @@
         const parallel = Math.abs(up.m - dn.m) * xs.length < 0.6 * flagH, retr = (Math.max(...hs2) - l[loB]) / poleDn;
         if (dn.m >= -at * 0.15 && parallel && retr < 0.5 && flagH < 0.6 * poleDn) {
           const brk = c[i] < dn.at(i), tgt = (brk ? dn.at(i) : l[loB]) - poleDn;
-          out.push({ id: 'brf' + loB, n: 'Bear flag', b: -1, q: 64 + (brk ? 12 : 0) + (retr < 0.35 ? 6 : 0), status: brk ? 'breaking down' : 'forming',
+          if (c[i] > up.at(i) + 0.2 * at) continue;                                        // closed above the flag: failed
+          out.push({ id: 'brf' + T(loB), n: 'Bear flag', b: -1, q: 64 + (brk ? 12 : 0) + (retr < 0.35 ? 6 : 0), status: brk ? 'breaking down' : 'forming',
             note: `Pole −${(poleDn / h[hiB] * 100).toFixed(1)}%, ${xs.length}-bar flag. ${brk ? 'Broke the flag bottom.' : 'Sell on a close below ' + R(dn.at(i)) + '.'} Target ${R(tgt)}.`,
-            target: R(tgt), stop: R(up.at(i) + 0.2 * at),
+            target: R(tgt), stop: R(up.at(i) + 0.2 * at), entry: R(brk ? c[i] : dn.at(i)),
             lines: [{ pts: [[hiB, h[hiB]], [loB, l[loB]]], color: RED, w: 3, label: 'Pole' }, { pts: [[loB, up.at(loB)], [i, up.at(i)]], color: BLUE }, { pts: [[loB, dn.at(loB)], [i, dn.at(i)]], color: BLUE }],
             marks: [{ i: loB, p: l[loB], t: 'Flag', pos: 'below' }] });
           break;
@@ -559,9 +637,9 @@
       if (kind && span >= 15 && w0 > 3 * at && wi > 0 && wi < 0.75 * w0 && viol <= 2 && touchesOk) {
         const bu = c[i] > up.at(i), bd = c[i] < dn.at(i), dir = bu ? 1 : bd ? -1 : kind[1];
         const tgt = dir >= 0 ? up.at(i) + w0 : dn.at(i) - w0;
-        out.push({ id: 'tri' + x0, n: kind[0], b: dir, q: 60 + (bu || bd ? 14 : 0) + (tH.length + tL.length >= 5 ? 6 : 0), status: bu ? 'breaking out' : bd ? 'breaking down' : 'forming',
+        out.push({ id: 'tri' + T(x0), n: kind[0], b: dir, q: 60 + (bu || bd ? 14 : 0) + (tH.length + tL.length >= 5 ? 6 : 0), status: bu ? 'breaking out' : bd ? 'breaking down' : 'forming',
           note: `${tH.length} touches on top, ${tL.length} on the bottom. ${bu ? 'Broke out above ' + R(up.at(i)) : bd ? 'Broke down below ' + R(dn.at(i)) : 'Watch ' + R(up.at(i)) + ' (up) / ' + R(dn.at(i)) + ' (down)'}. Target ${R(tgt)}.`,
-          target: R(tgt), stop: R(dir >= 0 ? dn.at(i) - 0.2 * at : up.at(i) + 0.2 * at),
+          target: R(tgt), stop: R(dir >= 0 ? dn.at(i) - 0.2 * at : up.at(i) + 0.2 * at), entry: dir ? R(bu || bd ? c[i] : dir > 0 ? up.at(i) : dn.at(i)) : undefined,
           lines: [{ pts: [[x0, up.at(x0)], [i, up.at(i)]], color: RED, label: 'Resistance' }, { pts: [[x0, dn.at(x0)], [i, dn.at(i)]], color: GREEN, label: 'Support' }],
           marks: [] });
       }
@@ -569,7 +647,16 @@
     // one pattern per stretch of chart: drop weaker patterns that mostly overlap a stronger one
     const span = p => { const xs = p.lines.flatMap(L => L.pts.map(q => q[0])); return [Math.min(...xs), Math.max(...xs)]; };
     const kept = [];
-    for (const p of out) { const e = E.setupEdge && E.setupEdge(p.n); if (e) p.ev = e; }
+    for (const p of out) {
+      const e = E.setupEdge && E.setupEdge(p.n); if (e) p.ev = e;
+      if (p.entry === undefined) delete p.entry;
+      const t0 = p.target, s0 = p.stop;
+      if (p.b && !tradeSanity(p, c[i], at, R, true, tick)) { p.q = 0; continue; }          // dropped below: not tradable any more
+      if (p.target !== t0) p.note = p.note.split(String(t0)).join(String(p.target)) + ' Target capped at 6× risk.';
+      if (p.stop !== s0) p.note += ` Stop set at ${p.stop} (structure stop ${s0} gave a reward:risk ${b2rr(p, s0, t0)}).`;
+      const tg = triggerText(p, c[i], R); if (tg) p.trigger = tg;
+      const w = span(p), len = w[1] - w[0]; p.hz = len <= 30 ? 'swing' : len <= 90 ? 'short' : 'medium'; p.timeframe = HOLD[p.hz];
+    }
     for (const p of out.filter(p => p.q >= 60).sort((a, b) => b.q - a.q)) {
       const [a1, a2] = span(p);
       if (kept.some(k => { const [b1, b2] = span(k), ov = Math.min(a2, b2) - Math.max(a1, b1); return ov > 0.6 * Math.min(a2 - a1, b2 - b1); })) continue;
@@ -579,7 +666,7 @@
   };
   // horizontal support / resistance: price zones touched 3+ times (pivot clusters), nearest above and below
   E.levels = function (I) {
-    const D = I.D, i = I.n - 1, at = I.atr[i] || 1, pv = pivotsUpTo(D, Math.max(0, i - 250), i, 3);
+    const D = I.D, i = I.n - 1, at = atrAt(I, i, I.D.c[i]), pv = pivotsUpTo(D, Math.max(0, i - 250), i, 3);
     const pts = [...pv.hi.map(j => D.h[j]), ...pv.lo.map(j => D.l[j])].sort((a, b) => a - b), Z = [];
     for (const p of pts) { const z = Z.find(z => Math.abs(z.p - p) < 0.5 * at); if (z) { z.p = (z.p * z.n + p) / (z.n + 1); z.n++; } else Z.push({ p, n: 1 }); }
     const c = D.c[i], strong = Z.filter(z => z.n >= 3);
@@ -690,7 +777,7 @@
     const bt = H2.swing && H2.swing.bt; let edge = null, ew = 0;
     if (bt && bt.n >= 6) { const p = (bt.wins + 1) / (bt.n + 2), ev = p * 1.5 - (1 - p); edge = clamp(50 + 40 * ev, 0, 100); ew = Math.min(0.45, bt.n / 60); }
     let r = edge == null ? 50 + (signal - 50) * 0.85 : (1 - ew) * signal + ew * edge;
-    const reg = ok(ctx.regime) ? ctx.regime : 0, nw = ok(ctx.news) ? ctx.news : 0;
+    const reg = ok(ctx.regime) ? ctx.regime : 50, nw = ok(ctx.news) ? ctx.news : 0;
     const bt0 = ok(ctx.beta) ? clamp(ctx.beta, 0.3, 2) : 1, regAdj = Math.round(clamp((reg - 50) / 10 * bt0, -7, 7)), newsAdj = Math.round(8 * clamp(nw));
     r = Math.round(clamp(r + regAdj + newsAdj, 0, 100));
     const a = r >= 70 ? 'STRONG BUY' : r >= 58 ? 'BUY' : r > 42 ? 'HOLD / WAIT' : r > 30 ? 'SELL / AVOID' : 'STRONG SELL';
