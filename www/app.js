@@ -92,7 +92,7 @@ function render() {
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.t === S.tab));
   $('#navFno').style.display = ''; $('#navIpo').style.display = ''; $('#navFno').lastChild.textContent = S.mkt === 'US' ? 'Options' : 'F&O'; updBell();
   setLive(); window.scrollTo(0, 0);
-  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, settings: vSettings, ipo: vIpo, learn: vLearn })[S.tab]();
+  ({ home: vHome, scan: vScan, fno: vFno, saved: vSaved, detail: vDetail, broker: vBroker, alerts: vAlerts, ai: () => vAI(), settings: vSettings, ipo: vIpo, learn: vLearn })[S.tab]();
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
 }
 function rowHTML(sym, name, price, chg, sc, lbl, tags = '', rank, bear) {
@@ -211,6 +211,7 @@ async function dailyQuick(sym, mkt, Q) {
   const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price });
   if (!q.err && prev) q.chg = (q.price / prev - 1) * 100;
   if (!q.err) q.risk = riskOf(D, mkt, sym);
+  if (!q.err && window.Learn) { Learn.resolve(sym, mkt, D); Learn.log(sym, mkt, q.horizons, q.t, q.price); }
   return q;
 }
 // ---------- scanner ----------
@@ -606,9 +607,9 @@ function vSettings() {
    <div class="srow"><div><b>Trading capital</b><div class="note">Used for the suggested quantity</div></div><input id="cap" class="inp" style="width:130px;margin:0" inputmode="numeric" value="${S.sizing.capital}"></div>
    <div class="srow"><div><b>Risk per trade</b><div class="note">% of capital lost if the stop is hit</div></div><select id="rpct">${[0.25, 0.5, 1, 1.5, 2].map(x => `<option ${S.sizing.riskPct == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
    <div class="srow"><div><b>Risk-free rate (${S.mkt === 'IN' ? 'India' : 'US'})</b><div class="note">% per year, used for alpha, Sharpe & Sortino</div></div><input id="rf" class="inp" style="width:80px;margin:0" inputmode="decimal" value="${S.rf[S.mkt]}"></div></div>
-  <h3>Tools</h3><div class="list"><div class="row" id="goLearn"><div class="nm"><div class="s">📘 Alpha, beta & risk explained</div><div class="f">What each number means and where the app uses it</div></div><div class="px">›</div></div><div class="row" id="goDesk"><div class="nm"><div class="s">🧪 ORB Desk</div><div class="f">Opening-range breakout + 10,000-replay Time Machine</div></div><div class="px">›</div></div></div>
+  <h3>Tools</h3><div class="list"><div class="row" id="goAI"><div class="nm"><div class="s">🧠 Self-learning</div><div class="f">How accurate each score band really is · what the app learned</div></div><div class="px">›</div></div><div class="row" id="goLearn"><div class="nm"><div class="s">📘 Alpha, beta & risk explained</div><div class="f">What each number means and where the app uses it</div></div><div class="px">›</div></div><div class="row" id="goDesk"><div class="nm"><div class="s">🧪 ORB Desk</div><div class="f">Opening-range breakout + 10,000-replay Time Machine</div></div><div class="px">›</div></div></div>
   <p class="note">DayTrader Desk · analysis only, never places orders. Not investment advice.</p>`;
-  $('#back').onclick = back; $('#goBroker').onclick = () => go('broker'); $('#goDesk').onclick = () => { location.href = 'desk.html'; }; $('#goLearn').onclick = () => go('learn');
+  $('#back').onclick = back; $('#goBroker').onclick = () => go('broker'); $('#goDesk').onclick = () => { location.href = 'desk.html'; }; $('#goLearn').onclick = () => go('learn'); $('#goAI').onclick = () => go('ai');
   $('#cap').onchange = e => { S.sizing.capital = Math.max(0, +e.target.value || 0); store.set('sizingBy', S.sizingBy); };
   $('#rpct').onchange = e => { S.sizing.riskPct = +e.target.value; store.set('sizingBy', S.sizingBy); };
   $('#rf').onchange = e => { const v = +e.target.value; if (isFinite(v) && v >= 0 && v < 20) { S.rf[S.mkt] = v; store.set('rf', S.rf); } };
@@ -697,6 +698,7 @@ async function loadDetail() {
   const A = Engine.analyze(d.D, { intra: it && marketOpen(mkt) ? it.D : null, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
   if (prev && !A.err) A.chg = (A.price / prev - 1) * 100;
   if (!A.err) A.risk = riskOf(d.D, mkt, sym);
+  if (!A.err && window.Learn) { Learn.resolve(sym, mkt, d.D); Learn.log(sym, mkt, A.horizons, d.D.t[d.D.t.length - 1], A.price); }
   let R = null;
   if (!A.err) { const row = Object.assign({ sym }, rowFromA(A)); R = rateRow(row, mkt); upsertRow(mkt, row); store.set('scan', S.scan);
     Alerts.evaluate({ sym, mkt, price: A.price, rating: R.rating, action: R.action, setups: A.setups, chartPats: A.chartPats, cross: A.cross, news: newsOf(mkt, sym) }, S.saved[mkt].includes(sym)); Alerts.save(); Alerts.flush(); }
@@ -883,9 +885,12 @@ if (CapApp) {
     updBell(); if (S.tab === 'scan') vScan();
   });
 }
+const learnFetch = async (s, m) => (await chart(ySym(s, m), '1y', '1d')).D;
 Promise.all([loadNSE(), loadUS()]).then(async () => {
+  if (window.Learn) await Learn.ready;
   if (store.get('secure', false)) Alerts.setSecure(true);
   if (Sec.hasPin()) await pinPad('Enter your PIN', true);
   render();
   if (Alerts.prefs().watch) startWatch();
+  if (window.Learn) setTimeout(() => Learn.tick(learnFetch).catch(() => {}), 8000);
 });

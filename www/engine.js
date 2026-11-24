@@ -5,6 +5,37 @@
   const clamp = (x, a = -1, b = 1) => Math.max(a, Math.min(b, x));
   const ok = x => typeof x === 'number' && isFinite(x);
 
+  // ---------- self-learning hooks ----------
+  // MODEL: trained in CI every week on 80 NSE stocks × 5 years (tools/learn.js) — factor weight multipliers,
+  // score-band calibration (how often each score band actually hit Target 1 before the stop) and setup stats.
+  // LOCAL: what this phone learned from its own resolved predictions (www/learn.js), layered on top.
+  E.MODEL = { v: 0, w: {}, calib: {} };
+  E.LOCAL = { w: {}, calib: {} };
+  E.W0 = {}; E.LBL = {}; // base weight and a readable label of every factor key seen
+  E.label = k => String(E.LBL[k] || (E.MODEL.labels || {})[k] || k.replace(/^\w+: /, '')).replace(/^\w+: /, '').replace(/[+-]?\d+(\.\d+)?×/g, 'N×').replace(/[+-]?\d+(\.\d+)?%/g, 'N%').replace(/(RSI|ADX) \d+/g, '$1');
+  const fkey = t => String(t).replace(/[-+]?\d+(\.\d+)?×?%?/g, '#');
+  E.mult = k => { const a = E.MODEL.w[k], b = E.LOCAL.w[k]; return clamp((ok(a) ? a : 1) * (ok(b) ? b : 1), 0, 2.5); };
+  E.setModel = function (m) {
+    if (!m || typeof m !== 'object' || !m.v) return false;
+    const w = {}; for (const [k, x] of Object.entries(m.w || {})) if (ok(x)) w[k] = clamp(x, 0, 2.5);
+    const calib = {};
+    for (const [hz, bins] of Object.entries(m.calib || {})) if (Array.isArray(bins)) calib[hz] = bins.filter(b => b && ok(b.lo) && ok(b.hi) && ok(b.p) && ok(b.n)).map(b => ({ lo: b.lo, hi: b.hi, n: b.n, p: clamp(b.p, 0, 1), ret: ok(b.ret) ? b.ret : 0, up: ok(b.up) ? b.up : null }));
+    if (m.setups && typeof m.setups === 'object') for (const [k, a] of Object.entries(m.setups)) if (Array.isArray(a) && a.length === 4 && a.every(ok)) E.SETUP_STATS[k] = a;
+    E.MODEL = Object.assign({}, m, { w, calib });
+    return true;
+  };
+  E.calibBins = [0, 30, 42, 50, 58, 64, 70, 80, 101];
+  E.binOf = s => { const B = E.calibBins; for (let k = 0; k < B.length - 1; k++) if (s >= B[k] && s < B[k + 1]) return k; return B.length - 2; };
+  // Track record of a score (raw horizon signal) on a horizon: training prior + this phone's live results (Beta-Binomial).
+  E.calib = function (hz, score) {
+    const bins = E.MODEL.calib[hz]; if (!bins || !ok(score)) return null;
+    const b = bins.find(x => score >= x.lo && score < x.hi); if (!b) return null;
+    const L = ((E.LOCAL.calib[hz] || [])[E.binOf(score)]) || { w: 0, l: 0, r: 0, n: 0 };
+    const n0 = Math.min(b.n, 150), live = L.w + L.l;
+    const p = (b.p * n0 + L.w) / (n0 + live), ret = (b.ret * n0 + L.r) / (n0 + (L.n || 0));
+    return { p: Math.round(p * 100), ret: Math.round(ret * 100) / 100, n: b.n, live, liveHit: live ? Math.round(100 * L.w / live) : null, lo: b.lo, hi: b.hi, be: H[hz] ? Math.round(100 / (1 + H[hz].t1)) : 40 };
+  };
+
   // ---------- indicators ----------
   function ema(a, n) {
     const o = new Array(a.length).fill(NaN), k = 2 / (n + 1);
@@ -316,7 +347,7 @@
   function factors(I, i, hz, ex) {
     ex = ex || {};
     const D = I.D, C = D.c, c = C[i], f = [];
-    const add = (w, x, up, dn) => { if (ok(x)) f.push([w, clamp(x), up, dn]); };
+    const add = (w, x, up, dn) => { if (!ok(x)) return; const key = hz + ': ' + fkey(up); E.W0[key] = w; E.LBL[key] = up; f.push([ex.raw ? w : w * E.mult(key), clamp(x), up, dn, key, w]); };
     const sgn = x => x > 0 ? 1 : x < 0 ? -1 : 0;
     const roc = n => i >= n ? (c / C[i - n] - 1) * 100 : NaN;
     const r = I.rsi[i], mh = I.macd.hist[i], mp = I.macd.hist[i - 1];
@@ -714,7 +745,9 @@
       const lv = act.d ? levels(I, i, k, act.d, tick, price) : null;
       if (lv && k === 'intraday' && ok(f.vwap)) lv.vwap = roundTick(f.vwap, tick);
       const bt = opts.backtest && k !== 'intraday' && k !== 'long' && (opts.backtest !== 'swing' || k === 'swing') ? backtest(I, k) : null;
-      hz[k] = { label: H[k].label, dur: H[k].dur, score, action: act.a, dir: act.d, noShort: act.noShort, levels: lv, why, bt };
+      const fv = k === 'intraday' ? null : Object.fromEntries(f.filter(x => x[4]).map(x => [x[4], Math.round(x[1] * 1000) / 1000]));
+      const lvL = fv ? levels(I, i, k, 1, tick, price) : null; // long-side levels: what the learner scores the call against
+      hz[k] = { label: H[k].label, dur: H[k].dur, score, action: act.a, dir: act.d, noShort: act.noShort, levels: lv, why, bt, fv, calib: E.calib(k, score), lvL: lvL && { sl: lvL.stop, t1: lvL.t1 } };
     }
     const wts = { intraday: 0.15, swing: 0.3, short: 0.25, medium: 0.2, long: 0.1 };
     let s = 0, w = 0; for (const k in wts) if (!hz[k].na) { s += wts[k] * hz[k].score; w += wts[k]; }
@@ -801,10 +834,13 @@
     const r = E.analyze(D, Object.assign({}, opts, { backtest: true }));
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
-    const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt } : h;
-    return { price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
+    const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt, fv: h.fv, calib: h.calib, lvL: h.lvL } : h;
+    return { t: D.t[D.t.length - 1], price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
   };
 
   E._factors = (I, i, hz) => factors(I, i, hz, {});
+  E._rawFactors = (I, i, hz) => factors(I, i, hz, { raw: 1 });
+  E._combine = combine; E._toScore = toScore; E._fkey = fkey; E._atrAt = (I, i, px) => atrAt(I, i, px);
+  E._levels = (I, i, hz, dir, tick, price) => levels(I, i, hz, dir, tick, price);
   if (typeof module !== 'undefined' && module.exports) module.exports = E; else root.Engine = E;
 })(typeof self !== 'undefined' ? self : this);

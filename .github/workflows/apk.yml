@@ -1,5 +1,8 @@
 name: Build Android APK
-on: {push: {branches: [main]}, workflow_dispatch: {}}
+on:
+  push: {branches: [main]}
+  workflow_dispatch: {}
+  schedule: [{cron: '17 2 * * 0'}]   # every Sunday ~07:47 IST: retrain the model on fresh data
 permissions: {contents: write}
 jobs:
   apk:
@@ -17,10 +20,17 @@ jobs:
       - name: Live data smoke test
         continue-on-error: true
         run: node tools/livetest.js
-      - name: Algorithm validation on real data
+      - name: Self-learning — retrain weights, score bands and setup stats (champion/challenger)
         continue-on-error: true
-        timeout-minutes: 12
-        run: node tools/validate.js
+        timeout-minutes: 20
+        run: node tools/learn.js
+      - name: Save the learned model to the repo (the app fetches it weekly)
+        continue-on-error: true
+        run: |
+          if [ -f www/model.json ] && ! git diff --quiet --exit-code -- www/model.json 2>/dev/null || [ -n "$(git status --porcelain www/model.json)" ]; then
+            git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
+            git add www/model.json && git commit -m "Model update: $(node -e "const m=require('./www/model.json');console.log('v'+m.v+' '+m.date)") [skip ci]" && git push
+          fi
       - name: Build web assets
         run: python3 build.py && rm www/desk_template.html www/tsla.json
       - name: Build APK
