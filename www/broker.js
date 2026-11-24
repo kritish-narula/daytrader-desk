@@ -156,7 +156,7 @@
 
     // Script master -> NSE equities, NSE/BSE indices, NFO/BFO index options (cached per day)
     async map() {
-      const m = get('map'); if (m && m.day === istDay() && m.v === 2) return m;
+      const m = get('map'); if (m && m.day === istDay() && m.v === 3) return m;
       const csv = await this._req('GET', 'instruments/scriptmaster');
       const text = typeof csv === 'string' ? csv : JSON.stringify(csv);
       const lines = text.split(/\r?\n/), hd = lines[0].split(',').map(x => x.trim().toLowerCase().replace(/"/g, ''));
@@ -178,8 +178,9 @@
         if (ex !== 'NSE' && ex !== 'BSE') continue;
         if (/IND/.test(seg) || /IND/.test(typ)) { idx[ex + ':' + (cl(iName) || ts).toUpperCase()] = [ex, ts, cl(iTok)]; idx[ex + ':' + ts.toUpperCase()] = [ex, ts, cl(iTok)]; continue; }
         if (ex !== 'NSE') continue;
-        const b2 = ts.replace(/-EQ$/, '');
-        if (/-EQ$/.test(ts) || !eq[b2]) eq[b2] = [ts, cl(iTok)];
+        // equities: master lists "RELIANCE" + series EQ; the quote API wants "RELIANCE-EQ"
+        const ser = (typ || seg || 'EQ').replace(/[^A-Z0-9]/g, '') || 'EQ', b2 = ts.replace(/-[A-Z0-9]{1,2}$/, '');
+        if (!eq[b2] || ser === 'EQ') eq[b2] = [b2, cl(iTok), ser];
       }
       for (const k in opt) {
         // strikes in paise in some masters: normalise to rupees using the spread of strikes
@@ -187,7 +188,7 @@
         if (med > cap) for (const x of opt[k]) x[3] = x[3] / 100;
         const exps = [...new Set(opt[k].map(x => x[2]))].sort().slice(0, 2); opt[k] = opt[k].filter(x => exps.includes(x[2]));
       }
-      const out = { v: 2, day: istDay(), eq, idx, opt, counts: Object.fromEntries(Object.entries(opt).map(([k, v]) => [k, v.length])) };
+      const out = { v: 3, day: istDay(), eq, idx, opt, counts: Object.fromEntries(Object.entries(opt).map(([k, v]) => [k, v.length])) };
       set('map', out); return out;
     },
     // index quote key: NIFTY → NSE:NIFTY 50, SENSEX → BSE:SENSEX
@@ -195,8 +196,10 @@
       const IDX = { NIFTY: ['NSE:NIFTY 50', 'NSE:NIFTY'], BANKNIFTY: ['NSE:NIFTY BANK', 'NSE:BANKNIFTY'], FINNIFTY: ['NSE:NIFTY FIN SERVICE', 'NSE:FINNIFTY'], MIDCPNIFTY: ['NSE:NIFTY MID SELECT', 'NSE:MIDCPNIFTY'], SENSEX: ['BSE:SENSEX'], BANKEX: ['BSE:BANKEX'], INDIAVIX: ['NSE:INDIA VIX'] };
       let m = null; try { m = await this.map(); } catch (e) {}
       if (IDX[sym]) { for (const n of IDX[sym]) { const x = m && m.idx[n]; if (x) return { k: x[0] + ':' + x[1], tok: x[2], ex: x[0], idx: 1 }; } const n = IDX[sym][0]; return { k: n, tok: null, ex: n.split(':')[0], idx: 1 }; }
-      if (m && m.eq[sym]) return { k: 'NSE:' + m.eq[sym][0], tok: m.eq[sym][1], ex: 'NSE' };
-      return { k: `NSE:${sym}-EQ`, tok: null, ex: 'NSE' };
+      const e = m && m.eq[sym], base = e ? e[0] : sym, ser = e && e[2] || 'EQ';
+      const alt = [`NSE:${base}-${ser}`, `NSE:${base}`]; if (ser !== 'EQ') alt.push(`NSE:${base}-EQ`);
+      const f = get('symfmt') || 0; // which form mStock accepted last time (learned)
+      return { k: alt[Math.min(f, alt.length - 1)], alt, tok: e ? e[1] : null, ex: 'NSE' };
     },
     // fastest price call: {key: last_price}
     async ltp(keys) {
@@ -228,16 +231,28 @@
     },
     // Live quotes for many symbols: {SYM: {last_price, ohlc:{open,high,low,close(prev)}}}
     async quotes(syms) {
-      const keys = await Promise.all(syms.map(s => this.key(s))), out = {};
-      for (let i = 0; i < syms.length; i += 50) {
-        const part = [], back = {};
-        for (let j = i; j < Math.min(syms.length, i + 50); j++) if (keys[j]) { part.push(['i', keys[j].k]); back[keys[j].k] = syms[j]; }
-        if (!part.length) continue;
-        const d = await this._req('GET', 'instruments/quote/ohlc', { params: part }); this.lastRaw = JSON.stringify(d).slice(0, 400);
-        const m = normMap(d, Object.keys(back)); for (const k in m) out[back[k]] = m[k];
+      const keys = await Promise.all(syms.map(s => this.key(s))), out = {}, bad = {};
+      const run = async (pairs) => { // pairs: [sym, key]
+        for (let i = 0; i < pairs.length; i += 50) {
+          const part = pairs.slice(i, i + 50), back = {}; for (const [s, k] of part) back[k] = s;
+          const d = await this._req('GET', 'instruments/quote/ohlc', { params: part.map(([, k]) => ['i', k]) }); this.lastRaw = JSON.stringify(d).slice(0, 400);
+          const m = normMap(d, Object.keys(back)); for (const k in m) out[back[k]] = m[k];
+          for (const k in d || {}) { const v = d[k]; if (v && v.message && !m[k]) bad[back[k] || k] = String(v.message).slice(0, 80); }
+        }
+      };
+      await run(syms.map((s, j) => keys[j] && [s, keys[j].k]).filter(Boolean));
+      // second try for anything rejected, with the other key form (e.g. RELIANCE vs RELIANCE-EQ)
+      const miss = syms.map((s, j) => [s, keys[j]]).filter(([s, kk]) => !out[s] && kk && kk.alt);
+      if (miss.length) {
+        const f0 = get('symfmt') || 0, tries = {};
+        for (const [s, kk] of miss) kk.alt.forEach((k, i) => { if (i !== f0 && k !== kk.k) (tries[i] = tries[i] || []).push([s, k]); });
+        for (const [i, pairs] of Object.entries(tries)) {
+          const before = Object.keys(out).length; await run(pairs.filter(([s]) => !out[s]));
+          if (Object.keys(out).length - before > pairs.length / 2) set('symfmt', +i); // most worked: remember this form
+        }
       }
-      const C = this.cov = this.cov || { ok: {}, miss: {} }, now = Date.now();
-      for (const s of syms) { if (out[s]) { C.ok[s] = now; delete C.miss[s]; } else C.miss[s] = now; }
+      const C = this.cov = this.cov || { ok: {}, miss: {}, why: {} }, now = Date.now();
+      for (const s of syms) { if (out[s]) { C.ok[s] = now; delete C.miss[s]; delete C.why[s]; } else { C.miss[s] = now; if (bad[s]) C.why[s] = bad[s]; } }
       return out;
     },
 

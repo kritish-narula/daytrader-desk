@@ -572,7 +572,7 @@ function vSaved() {
 function covHTML(list) {
   const C = MS.cov || { ok: {}, miss: {} }, ok = Object.keys(C.ok), miss = Object.keys(C.miss).filter(s => !C.ok[s]);
   if (list) { const got = list.filter(s => C.ok[s] && Date.now() - C.ok[s] < 60e3), bad = list.filter(s => !got.includes(s));
-    return `<b class="${bad.length ? 'wa' : 'up'}">${got.length} of ${list.length} live from mStock</b>${bad.length ? `<br>No mStock price for: ${bad.map(esc).join(', ')} (these use Yahoo)` : '<br>Every one returned a live mStock price.'}`; }
+    return `<b class="${bad.length ? 'wa' : 'up'}">${got.length} of ${list.length} live from mStock</b>${bad.length ? `<br>No mStock price for: ${bad.map(esc).join(', ')} (these use Yahoo)${bad.some(x => (C.why || {})[x]) ? `<br><span class="mu">mStock said: ${esc((C.why || {})[bad.find(x => (C.why || {})[x])])}</span>` : ''}` : '<br>Every one returned a live mStock price.'}`; }
   if (!ok.length && !miss.length) return 'No prices fetched yet in this session. Run a scan or tap the check below.';
   return `This session: <b class="up">${ok.length} stocks priced live by mStock</b>${miss.length ? ` · <b class="wa">${miss.length} fell back to Yahoo</b>: ${miss.slice(0, 15).map(esc).join(', ')}${miss.length > 15 ? '…' : ''}` : ' · none fell back to Yahoo'}.<br>In lists, a <span class="up">●</span> after a price = mStock live, <span class="wa">●</span> = Yahoo.`;
 }
