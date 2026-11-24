@@ -260,35 +260,35 @@
     for (const s of out) { const e = E.setupEdge(s.n); if (e) s.ev = e; }
     return out.sort((a, b) => (b.ev && b.ev.edge ? 1 : 0) - (a.ev && a.ev.edge ? 1 : 0) || b.q - a.q);
   };
-  // Measured on real data (tools/validate.js: 40 NSE large caps, 5 years daily, walk-forward, target vs stop within 30 days).
+  // Re-measured 2026-11-24 after stale-pattern fix (tools/validate.js: 40 NSE large caps, 5 years daily, walk-forward, target vs stop within 30 days).
   // [signals, target-first %, avg reward:risk]. Expectancy = p·RR − (1 − p) in R units.
   // [signals, target-first %, avg reward:risk, edge in BOTH train (40 large caps) and out-of-sample test (40 other stocks)]
   E.SETUP_STATS = {
-    'SMC: Retest of bullish fair value gap': [2728, 51, 1.52, 1],
     'Pullback to 20 EMA in uptrend': [2609, 27, 4.23, 1],
-    'SMC: Retest of bearish fair value gap': [2179, 40, 1.67, 1],
-    'Double top': [1497, 47, 3.71, 1],
-    'Double bottom': [1456, 73, 1.92, 1],
-    'Pocket pivot': [1392, 35, 2.0, 1],
-    'SMC: Liquidity sweep above highs': [1235, 32, 2.95, 1],
+    'SMC: Retest of bullish fair value gap': [1891, 39, 2.19, 1],
+    'SMC: Retest of bearish fair value gap': [1589, 29, 2.28, 0],
     'Rally into 20 EMA in downtrend': [1326, 19, 3.71, 0],
-    'SMC: Liquidity sweep below lows': [1138, 40, 2.65, 1],
-    'SMC: Break of structure (bullish)': [807, 32, 2.0, 0],
-    'Head & shoulders': [746, 41, 8.44, 1],
-    'Inverse head & shoulders': [755, 69, 2.99, 1],
-    'SMC: Change of character (bullish)': [732, 37, 2.0, 1],
-    'SMC: Change of character (bearish)': [705, 23, 2.0, 0],
-    'Bull flag': [670, 24, 4.39, 1],
-    'SMC: Break of structure (bearish)': [669, 20, 2.0, 0],
-    'Bear flag': [575, 8, 4.81, 0],
-    'Clean volume breakout': [519, 37, 2.0, 0],
-    'VCP (volatility contraction) forming': [205, 20, 5.64, 1],
-    'Gap-down and go': [148, 26, 2.0, 0],
+    'Pocket pivot': [1148, 34, 2.0, 0],
+    'SMC: Liquidity sweep above highs': [1124, 27, 2.79, 0],
+    'SMC: Liquidity sweep below lows': [1023, 34, 2.65, 1],
+    'Bull flag': [813, 23, 4.17, 1],
+    'SMC: Change of character (bullish)': [732, 39, 1.86, 1],
+    'SMC: Break of structure (bullish)': [712, 35, 1.84, 0],
+    'SMC: Change of character (bearish)': [705, 25, 1.85, 0],
+    'SMC: Break of structure (bearish)': [669, 22, 1.87, 0],
+    'Bear flag': [653, 8, 4.41, 0],
+    'Clean volume breakout': [505, 37, 2.0, 0],
+    'Double top': [428, 42, 1.02, 0],
+    'Double bottom': [426, 57, 1.04, 1],
+    'VCP (volatility contraction) forming': [197, 21, 4.23, 0],
     'Gap-up and go': [153, 42, 2.0, 1],
-    'Oversold dip in long-term uptrend': [124, 28, 3.29, 0],
-    'Ascending triangle': [82, 45, 2.2, 1],
-    'Descending triangle': [74, 34, 1.88, 0],
-    'Symmetrical triangle': [52, 0, 4.61, 0],
+    'Gap-down and go': [148, 26, 2.0, 0],
+    'Oversold dip in long-term uptrend': [76, 30, 3.2, 1],
+    'Head & shoulders': [70, 30, 2.22, 0],
+    'Inverse head & shoulders': [58, 64, 2.25, 1],
+    'Ascending triangle': [57, 40, 2.29, 1],
+    'Descending triangle': [53, 31, 1.92, 0],
+    'Symmetrical triangle': [40, 0, 3.47, 0],
   };
   E.setupEdge = function (name) {
     const s = E.SETUP_STATS[name]; if (!s || s[0] < 60) return null;
