@@ -9,9 +9,10 @@
 
   window.vSaved = function () {
     const seg = S.savedSeg || 'pf';
-    $('#view').innerHTML = `<div class="chips pf-seg" id="pfSeg"><button class="chip ${seg === 'pf' ? 'on' : ''}" data-v="pf">💼 Portfolio</button><button class="chip ${seg === 'wl' ? 'on' : ''}" data-v="wl">⭐ Watchlist</button></div><div id="pfBody"></div>`;
+    $('#view').innerHTML = `<div class="chips pf-seg" id="pfSeg"><button class="chip ${seg === 'pf' ? 'on' : ''}" data-v="pf">💼 Portfolio</button><button class="chip ${seg === 'tr' ? 'on' : ''}" data-v="tr">📈 Trades</button><button class="chip ${seg === 'wl' ? 'on' : ''}" data-v="wl">⭐ Watchlist</button></div><div id="pfBody"></div>`;
     document.querySelectorAll('#pfSeg .chip').forEach(b => b.onclick = () => { S.savedSeg = b.dataset.v; vSaved(); });
     if (seg === 'wl') { const v = $('#view'), keep = v.innerHTML; vWatch(); v.insertAdjacentHTML('afterbegin', keep.replace('<div id="pfBody"></div>', '')); document.querySelectorAll('#pfSeg .chip').forEach(b => b.onclick = () => { S.savedSeg = b.dataset.v; vSaved(); }); return; }
+    if (seg === 'tr' && window.vTrades) return vTrades($('#pfBody')); // trades agent hook: 📈 Trades segment
     vPortfolio();
   };
 

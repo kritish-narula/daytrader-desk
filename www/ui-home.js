@@ -90,6 +90,7 @@ function vHome() {
   ${marketSummaryHTML(m)}
   ${window.flowsCardHTML ? flowsCardHTML() : ''}
   ${window.morningCardHTML ? morningCardHTML() : ''}
+  ${window.tradesCardHTML ? tradesCardHTML() : ''}
   ${window.pfCardHTML ? pfCardHTML() : ''}
   ${window.paperCardHTML ? paperCardHTML() : ''}
   <div class="chips quick" id="quick">${QUICK.map(x => `<button data-q="${x[0]}">${x[1]}</button>`).join('')}</div>
@@ -111,7 +112,7 @@ function vHome() {
   });
   hydrateRows($('#wl'), 30, true); hydrateRows($('#picks'), 8); hydrateRows($('#movers'), 5);
   if (!navigator.onLine) v.insertAdjacentHTML('afterbegin', '<div class="warn">You are offline.</div>');
-  window.bindMorningCard && bindMorningCard(); window.bindPfCard && bindPfCard(); window.bindPaperCard && bindPaperCard(); window.bindFlowsCard && bindFlowsCard();
+  window.bindMorningCard && bindMorningCard(); window.bindTradesCard && bindTradesCard(); window.bindPfCard && bindPfCard(); window.bindPaperCard && bindPaperCard(); window.bindFlowsCard && bindFlowsCard();
 }
 
 function vScan() {

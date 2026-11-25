@@ -3,7 +3,7 @@
    Without a PIN, secrets fall back to app-private storage (as before). */
 'use strict';
 (function () {
-  const LS = 'dtd2_sec_', PLAIN = 'dtd2_ms_', SECRET_KEYS = ['cfg', 'session', 'pf'];
+  const LS = 'dtd2_sec_', PLAIN = 'dtd2_ms_', SECRET_KEYS = ['cfg', 'session', 'pf', 'trades'];
   const te = new TextEncoder(), td = new TextDecoder();
   const b64 = u => btoa(String.fromCharCode(...new Uint8Array(u)));
   const ub64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));

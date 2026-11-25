@@ -184,6 +184,7 @@
       const ix = n => hd.indexOf(n), iTok = ix('instrument_token'), iSym = ix('tradingsymbol'), iEx = ix('exchange'), iSeg = ix('segment'), iTyp = ix('instrument_type'), iName = ix('name'), iExp = ix('expiry'), iStk = ix('strike'), iLot = ix('lot_size');
       if (iTok < 0 || iSym < 0) throw new Error('Unexpected script master format');
       const eq = {}, idx = {}, opt = {}, fo = {}, today = istDay(), OPT = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY', 'BANKEX'];
+      const all = {}; // [options agent] every live NFO/BFO option of every underlying, all expiries (memory only, see optContracts)
       for (const n of OPT) opt[n] = [];
       for (let k = 1; k < lines.length; k++) {
         const r = lines[k].split(','); if (r.length < hd.length - 1) continue;
@@ -197,6 +198,13 @@
             const isIdx = /IDX$/.test(typ) || ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50', 'SENSEX', 'BANKEX', 'SENSEX50'].includes(und), lot = +cl(iLot) || 0, cur = fo[und];
             if (!cur) fo[und] = { lot, ex, type: isIdx ? 'index' : 'stock' };
             else { if (ex === 'NFO' && cur.ex === 'BFO') { cur.ex = 'NFO'; if (lot) cur.lot = lot; } if (!cur.lot && lot) cur.lot = lot; }
+            // [options agent] keep option rows for MS.optContracts(): [ts, token, exp, strike, 'CE'|'PE', lot, exch]
+            const cp = typ === 'CE' || typ === 'PE' ? typ : /(CE|PE)$/.test(ts) ? ts.slice(-2) : null;
+            if (cp && ed0) {
+              let k = +cl(iStk) || 0; const ks = strikeFromSymbol(ts);
+              if (!(k > 0)) k = ks; else if (ks > 0 && Math.abs(k / 100 - ks) <= ks * 0.001) k = k / 100; // strike in paise in some masters
+              (all[und] = all[und] || []).push([ts, cl(iTok), ed0, k, cp, lot, ex]);
+            }
           }
         }
         if ((ex === 'NFO' || ex === 'BFO') && (typ === 'CE' || typ === 'PE' || /(CE|PE)$/.test(ts))) {
@@ -220,7 +228,22 @@
         const exps = [...new Set(opt[k].map(x => x[2]))].sort().slice(0, 2); opt[k] = opt[k].filter(x => exps.includes(x[2]));
       }
       const out = { v: 4, day: istDay(), eq, idx, opt, fo, counts: Object.fromEntries(Object.entries(opt).map(([k, v]) => [k, v.length])) };
-      this._map = out; this._keys = new Map(); set('map', out); return out;
+      this._map = out; this._keys = new Map(); set('map', out);
+      this._optAll = { day: out.day, u: all }; // [options agent] not persisted: too big for localStorage
+      return out;
+    },
+    // [options agent] Every live option contract of one underlying (stock or index), ALL expiries, from today's script master:
+    // [[ts, token, 'YYYY-MM-DD', strike, 'CE'|'PE', lot, 'NFO'|'BFO'], ...] sorted by expiry, strike. Reuses the map() CSV pass;
+    // kept in memory for the day (one extra download per app session only when map() came from the localStorage cache).
+    async optContracts(und) {
+      und = String(und || '').toUpperCase();
+      if (this._mapP) { try { await this._mapP; } catch (e) {} } // a map() download in flight fills _optAll too
+      if (!this._optAll || this._optAll.day !== istDay()) {
+        if (!this._optP) this._optP = this._loadMap().finally(() => { this._optP = null; });
+        await this._optP;
+      }
+      const L = ((this._optAll || {}).u || {})[und] || [];
+      return L.slice().sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : a[3] - b[3]);
     },
     // your demat holdings (read-only): [{sym, isin, qty, avg, ltp, close, ex}]
     async holdings() {

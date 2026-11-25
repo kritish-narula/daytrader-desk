@@ -30,3 +30,11 @@ Lead: Opus (main session). Agents edit files; **do not commit, push, or run gh**
 ## Testing
 - Local static server + Playwright harness: `python3 /home/claude/qa/qa.py` (mocks Yahoo; report at /home/claude/qa/report.txt, screenshots /home/claude/qa/shots/). Chrome at /usr/bin/google-chrome. No outbound internet to Yahoo/NSE here, so test CI scripts with a stub fetch (see /home/claude/strat/fakefetch.js: `node -r /home/claude/strat/fakefetch.js tools/x.js`) and Playwright route mocks (examples: /tmp/dbg_fno.py, /tmp/dbg_ms.py for mStock mocks).
 - `node --check` every JS file you touch. End with a report: what changed, files, how tested, known limits.
+
+## Round 4 (options desk + trade tracker)
+| Agent | Owns |
+|---|---|
+| options (Opus) | NEW www/optchain.js, www/ui-options.js, www/options.css; in www/app.js: `vFno`, `indexOption`, `optCard`, `bindOpt` and F&O helpers (replace the old index option cards); index.html CSP (may add https://www.nseindia.com) and script/link tags for its files |
+| trades (Sonnet) | NEW www/trades.js, www/ui-trades.js, www/trades.css; minimal hooks in www/ui-portfolio.js (add a "📈 Trades" segment to the Portfolio tab), www/app.js `watchTick` and `back()` (one line each), index.html script/link tags for its files |
+Contract: options agent's "Track this trade" buttons call `window.Trades && Trades.openAdd(prefill)` where prefill = `{kind:'OPT'|'FUT'|'EQ', mkt:'IN', und, sym, exp:'YYYY-MM-DD', strike, cp:'CE'|'PE', k (mStock key e.g. 'NFO:NIFTY2612524000CE'), lot, lots, qty, side:'BUY'|'SELL', entry, sl, t1, t2, slU, t1U, t2U (underlying levels), note, source:'call'|'chain'}`.
+Today's state: Portfolio tab segments are 💼 Portfolio | ⭐ Watchlist (www/ui-portfolio.js). MS (broker.js) has: map() (scriptmaster: m.opt[NAME] = [ts, token, expYYYY-MM-DD, strike, 'CE'|'PE', lot, exch] for NIFTY/BANKNIFTY/SENSEX/FINNIFTY/MIDCPNIFTY/BANKEX only — first 2 expiries; m.fo = all F&O underlyings), option(name, strike, cp, n?) → {k, ts, exp, lot, strike}, ltp(keys) → {key: price}, quotes(syms), index(sym), candles(), basis(), foUniverse(), holdings(). Paper.js has Black-Scholes helpers (Paper.bs*, expiry calendar, lot sizes, costs) usable in the browser.

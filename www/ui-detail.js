@@ -305,7 +305,7 @@ function drawDetail(isRefresh) {
   ${riskCard(A, mkt)}
   ${A.fno ? `<h3>F&O</h3><div class="card"><div class="kv"><div><div class="l">Lot size</div><div class="v">${A.fno.lot || '–'}</div></div><div><div class="l">ATM strike (approx.)</div><div class="v">${fmt(A.fno.atm, 0)}</div></div>
    <div><div class="l">Expected 1-day move</div><div class="v">±${fmt(A.fno.moveDay)}</div></div><div><div class="l">Expected 1-week move</div><div class="v">±${fmt(A.fno.moveWeek)}</div></div></div>
-   <p style="margin:10px 0 4px;font-weight:700">${esc(A.fno.idea)}</p><p class="note">Exit on the underlying's SL/targets. Confirm strikes in the option chain.</p></div>` : ''}
+   <p style="margin:10px 0 4px;font-weight:700">${esc(A.fno.idea)}</p><p class="note">Exit on the underlying's SL/targets. Confirm strikes in the option chain.</p>${mkt === 'IN' ? `<button class="btn sm" data-oc="${esc(sym)}" style="margin-top:6px">⛓ Option chain · professional call</button>` : ''}</div>` : ''}
   <h3>News <span class="note">${newsHead(S.detail.news)}</span></h3><div class="card dnews">${newsHTML(S.detail.news)}</div>
   <p class="note dfoot">Rating blends signal, past edge on this stock, market trend and news. Not investment advice.</p>`;
 

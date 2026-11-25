@@ -101,6 +101,7 @@ function go(tab) { if (tab !== S.tab) S.stack.push(S.tab); if (S.stack.length > 
 function back() {
   const sh = document.querySelector('.sheet'); if (sh) { sh.remove(); return true; }
   if (document.querySelector('#pfBg')) { window.closePfSheet && closePfSheet(); return true; }
+  if (document.querySelector('#trBg')) { window.closeTrSheet && closeTrSheet(); return true; } // trades sheet
   if (window.ChartView && document.querySelector('.cfull')) { ChartView.close(); return true; }
   const sr = $('#sres'); if (sr && sr.innerHTML) { $('#q').value = ''; sr.innerHTML = ''; return true; }
   if (S.stack.length) { S.tab = S.stack.pop(); render(); return true; }
@@ -115,7 +116,7 @@ function render() {
   $('#navFno').style.display = ''; $('#navFno').lastChild.textContent = S.mkt === 'US' ? 'Options' : 'F&O'; updBell();
   setLive(); window.scrollTo(0, 0);
   try {
-    ({ home: () => vHome(), scan: () => vScan(), fno: () => vFno(), saved: () => vSaved(), detail: () => vDetail(), broker: vBroker, alerts: vAlerts, ai: () => vAI(), settings: vSettings, learn: vLearn, paper: () => window.vPaper ? vPaper() : $('#view').innerHTML = '<div class="empty"><span class="spin"></span> Paper trading loading…</div>', flows: () => window.vFlows ? vFlows() : $('#view').innerHTML = '<div class="empty"><span class="spin"></span> Money flow loading…</div>' })[S.tab]();
+    ({ home: () => vHome(), scan: () => vScan(), fno: () => vFno(), saved: () => vSaved(), detail: () => vDetail(), broker: vBroker, alerts: vAlerts, ai: () => vAI(), settings: vSettings, learn: vLearn, paper: () => window.vPaper ? vPaper() : $('#view').innerHTML = '<div class="empty"><span class="spin"></span> Paper trading loading…</div>', flows: () => window.vFlows ? vFlows() : $('#view').innerHTML = '<div class="empty"><span class="spin"></span> Money flow loading…</div>', chain: () => window.vChain ? vChain() : $('#view').innerHTML = '<div class="empty"><span class="spin"></span> Option chain loading…</div>' })[S.tab](); // chain: options agent (ui-options.js)
   } catch (e) { if (e instanceof ReferenceError && !render._retry) { render._retry = 1; setTimeout(() => { render._retry = 0; render(); }, 60); return; } throw e; } // view scripts still loading
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
 }
@@ -334,9 +335,15 @@ function vFno() {
   const st = S.fnoF = S.fnoF || { q: '', sec: '', side: 'all', n: 80 };
   const cat = S.nse.cat || {}, secs = [...new Set(foStocks().map(s => (cat[s] || [])[1]).filter(Boolean))].sort();
   const n = foStocks().length, nb = foStocks().filter(s => S.fo[s].bse || S.fo[s].bseOnly).length;
-  $('#view').innerHTML = `<h3>Index options <a id="optRef">Refresh</a></h3>
+  const stk = window.topFoCalls ? topFoCalls(10) : [], scAt = S.scan.IN && S.scan.IN.at;
+  $('#view').innerHTML = `<h3>⛓ Option chain</h3>
+  <div class="chips wrap" id="ocIdx">${FNO_IDX.map(x => `<button data-oc="${x[0]}">${x[1]}</button>`).join('')}</div>
+  <h3>Index option calls <a id="optRef">Refresh</a></h3>
   <div class="chips wrap" id="idxSel">${FNO_IDX.map(x => `<button data-i="${x[0]}" class="${sel.includes(x[0]) ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
   <div id="optBox">${sel.map(s => `<div class="card" id="opt_${s}"><span class="spin"></span> ${s}…</div>`).join('')}</div>
+  <h3>F&O stock calls <span class="note">${stk.length ? `top ${stk.length} from your scan${scAt ? ' · ' + new Date(scAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}` : ''}</span></h3>
+  <div id="stkBox">${stk.length ? stk.map(s => `<div class="card" id="opt_${s}"><span class="spin"></span> ${s}…</div>`).join('') : '<div class="note" style="margin:0 2px 8px">Scan the F&O stocks (button below) to get option calls on the strongest ones.</div>'}</div>
+  <p class="note" style="margin:0 2px 6px">Calls use real option-chain premiums (NSE, or mStock live) when available; otherwise premiums are labelled ESTIMATED. Not investment advice. Option buyers can lose 100% of the premium.</p>
   <h3>F&O stocks <span class="note" id="foCnt">${n ? `${n} · NSE${nb ? ' + ' + nb + ' on BSE' : ''}` : ''}</span> <a id="fscan">${n ? 'Scan all F&O' : ''}</a></h3>
   ${n ? `<div class="prog" id="foProg" style="display:${S.scanning ? '' : 'none'}"><div style="width:${S.scanPct || 0}%"></div></div>
   <div class="search" style="margin:0 0 8px"><input id="foQ" placeholder="Search F&O stocks" value="${esc(st.q)}" autocomplete="off"></div>
@@ -347,7 +354,7 @@ function vFno() {
   S.optO = {};
   const loadOne = s => indexOption(s).then(o => { S.optO[s] = o; const el = $('#opt_' + s); if (el) el.outerHTML = optCard(o); bindOpt(); }).catch(e => { const el = $('#opt_' + s); if (el) el.innerHTML = `<b>${s}</b><div class="note dn">Could not analyse: ${esc(e.message)}</div>`; });
   const loadOpts = () => store.get('fnoIdx', sel).forEach(loadOne);
-  loadOpts(); $('#optRef').onclick = () => { store.get('fnoIdx', sel).forEach(s => { const el = $('#opt_' + s); if (el) el.innerHTML = '<span class="spin"></span>'; }); loadOpts(); };
+  loadOpts(); pool(stk, 2, s => loadOne(s)); $('#optRef').onclick = () => { store.get('fnoIdx', sel).forEach(s => { const el = $('#opt_' + s); if (el) el.innerHTML = '<span class="spin"></span>'; }); loadOpts(); };
   document.querySelectorAll('#idxSel [data-i]').forEach(b => b.onclick = () => {
     const cur_ = store.get('fnoIdx', sel), s = b.dataset.i, on = !cur_.includes(s), next = on ? FNO_IDX.map(x => x[0]).filter(x => x === s || cur_.includes(x)) : cur_.filter(x => x !== s);
     store.set('fnoIdx', next); b.classList.toggle('on', on);
@@ -362,24 +369,23 @@ function vFno() {
     $('#fscan').onclick = () => { if (!S.scanning) { S.scanPct = 0; runScan(foScannable()); const p = $('#foProg'); if (p) p.style.display = ''; } };
   }
   refreshFoLive().then(ch => { if (ch && S.tab === 'fno') { buildFo(); drawFoList(); const c = $('#foCnt'); if (c) c.textContent = `${foStocks().length} · NSE + BSE`; } });
-  if (marketOpen('IN')) {
+  if (marketOpen('IN')) { // live: premiums + spot every 3 s with mStock (same strike kept), chain re-read every 30 s, full re-analysis every 2 min
     let k = 0, busyT = false;
     S.timer = setInterval(async () => {
-      if (S.tab !== 'fno' || document.hidden) return;
-      if (++k % 30 === 0) return loadOpts(); // full re-analysis every 60 s
-      if (busyT || !(window.MS && MS.ok())) return; busyT = true;
+      if (S.tab !== 'fno' || document.hidden || busyT) return;
+      if (++k % 40 === 0) return loadOpts();
+      const ms = window.MS && MS.ok(); if (!ms && k % 10) return;
+      busyT = true;
       try {
-        const O = Object.values(S.optO || {}).filter(o => o.idxKey), keys = O.flatMap(o => [o.idxKey, ...(o.live || []).filter(Boolean).map(x => x.k)]);
-        if (!keys.length) return;
-        const q = await MS.ltp([...new Set(keys)]), at = Date.now();
-        for (const o of O) {
-          const px = q[o.idxKey]; if (px) o.A = Object.assign({}, o.A, { price: px, chg: o.prev ? (px / o.prev - 1) * 100 : o.A.chg });
-          for (const x of o.live || []) if (x && q[x.k] != null) x.prem = q[x.k];
-          o.tickAt = at; const el = $('#opt_' + o.sym); if (el) el.outerHTML = optCard(o);
+        for (const o of Object.values(S.optO || {})) {
+          if (!o.ch || !window.OC || !$('#opt_' + o.sym)) continue;
+          if (ms && k % 10) { if (!(await OC.overlay(o.ch, 2))) continue; } else o.ch = await OC.get(o.sym, o.ch.exp);
+          const prev = o.call || {}; o.call = OC.buildCall(o, o.ch, Object.assign({}, prev.ctx, { lockK: prev.k })); o.call.ctx = prev.ctx; o.call.expWhy = prev.expWhy;
+          const el = $('#opt_' + o.sym); if (el) el.outerHTML = optCard(o);
         }
         bindOpt();
       } catch (e) {} finally { busyT = false; }
-    }, 2000);
+    }, 3000);
   }
 }
 // the searchable, sector-filtered list of every F&O stock: rated ones first (best rating first), then unscanned A-Z
@@ -402,7 +408,7 @@ function drawFoList() {
   el.innerHTML = `<div class="note" style="margin:0 2px 8px">${items.length} stocks${done < items.length && !S.scanning ? ` · ${items.length - done} not scanned` : ''}${sc && done ? ` · scan ${new Date(sc.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}${S.foSrc ? ' · ' + esc(S.foSrc) : ''}</div>
   <div class="list">${shown.map((x, k) => { const sub = lotTxt(x.s) + x.nm + (U[x.s].bseOnly ? ' · BSE only' : ''); return x.R ? rowHTML(x.s, sub, x.r.price, x.r.chg, x.R.rating, actLabel(x.R.action), tagsOf(x.r)) : rowHTML(x.s, sub, null, null, null); }).join('') || '<div class="empty">No F&O stock matches.</div>'}</div>
   ${items.length > shown.length ? `<button class="btn w" id="foMore" style="margin-top:10px">Show ${Math.min(80, items.length - shown.length)} more (${items.length - shown.length} left)</button>` : ''}`;
-  bindRows(el); const m = $('#foMore'); if (m) m.onclick = () => { st.n += 80; drawFoList(); };
+  bindRows(el); el.querySelectorAll('.row[data-sym] .px').forEach(px => px.insertAdjacentHTML('afterend', `<button class="ocb" data-oc="${px.closest('.row').dataset.sym}" title="Option chain">⛓</button>`)); const m = $('#foMore'); if (m) m.onclick = () => { st.n += 80; drawFoList(); };
   if (window.hydrateRows) hydrateRows(el, 12, true);
 }
 
@@ -448,8 +454,10 @@ async function indexOption(sym, mkt = 'IN') {
   const L = side && src.levels && src.dir === dirN ? src.levels : null;
   // three strikes: safer (1 ITM), balanced (ATM), aggressive (1 OTM)
   const strikes = side ? [['ITM', 'Safer', atm - dirN * step, 0.62], ['ATM', 'Balanced', atm, 0.5], ['OTM', 'Aggressive', atm + dirN * step, 0.4]] : [];
-  const o = { sym, mkt, A, ce, pe, side, atm, step, L, late, open, why: (open ? H.intraday : H.swing).why, hzUsed: src.label, strikes, dataSrc: srcLbl, prev: live && !live.err ? live.prev : null, idxKey: live && !live.err ? live.key.k : null, liveErr: live && live.err };
-  if (useMS && side) { // exact contracts + live premiums from mStock
+  const o = { sym, mkt, A, ce, pe, side, atm, step, L, late, open, why: (open ? H.intraday : H.swing).why, hzUsed: src.label, hzKey: src === H.intraday ? 'intraday' : 'swing', hzLabel: src.label, strikes, dataSrc: srcLbl, prev: live && !live.err ? live.prev : null, idxKey: live && !live.err ? live.key.k : null, liveErr: live && live.err };
+  if (!US && window.OC) { // India: professional call from the real option chain (optchain.js); old guessed-delta premiums removed
+    try { const r = await OC.callFor(o); o.call = r.call; o.ch = r.ch; } catch (e) { o.callErr = e.message; }
+  } else if (useMS && side) { // exact contracts + live premiums from mStock
     try {
       const cs = await Promise.all(strikes.map(s => MS.option(sym, s[2], side))), q = await MS.ltp(cs.filter(Boolean).map(c => c.k));
       o.live = cs.map(c => c && { k: c.k, ts: c.ts, exp: c.exp, lot: c.lot, strike: c.strike, prem: q[c.k] != null ? q[c.k] : null });
@@ -465,7 +473,8 @@ async function indexOption(sym, mkt = 'IN') {
   o.pick = pick; o.pickReason = reason;
   return o;
 }
-function optCard(o) {
+function optCard(o) { // India → professional call card (ui-options.js); US ETFs keep the simple card
+  if (o.mkt !== 'US' && window.callCardHTML) return callCardHTML(o);
   const A = o.A, US = o.mkt === 'US', name = { NIFTY: 'Nifty 50', BANKNIFTY: 'Bank Nifty', FINNIFTY: 'Fin Nifty', MIDCPNIFTY: 'Midcap Select', SENSEX: 'Sensex', BANKEX: 'Bankex', SPY: 'SPY · S&P 500', QQQ: 'QQQ · Nasdaq-100', IWM: 'IWM · Russell 2000' }[o.sym] || o.sym;
   const SN = s => US ? (s === 'CE' ? 'CALL' : 'PUT') : s, cur$ = US ? '$' : '₹';
   const L = o.L, s = o.side ? o.strikes[o.pick] : null, lv = o.live && o.live[o.pick];
@@ -673,6 +682,7 @@ function startWatch() { stopWatch(true); Alerts.keepAlive(true, 'Watching your s
 function stopWatch(keep) { clearInterval(watchTimer); watchTimer = null; if (!keep && !S.scanning) Alerts.keepAlive(false); }
 async function watchTick() {
   if (window.Morning) Morning.sync().catch(() => {});
+  if (window.Trades) Trades.check(); // open trades: SL / target / expiry alerts (own 15 s timer also runs while the app is open)
   if (S.scanning) return;
   for (const mkt of ['IN', 'US']) {
     if (!marketOpen(mkt) || !S.saved[mkt].length) continue;
