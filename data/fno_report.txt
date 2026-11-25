@@ -1,4 +1,4 @@
-DayTrader Desk · F&O research · 2026-11-25T10:24:28.378Z
+DayTrader Desk · F&O research · 2026-11-25T10:29:05.912Z
 All option premiums are SIMULATED (Black-Scholes, IV = India VIX × per-index factor + put skew). Results rank rules; they are not live results.
 STT/costs: {"optSttSell":0.0015,"slipOpt":0.01} (STT 0.15% on premium from 2026-04-01) · lots {"NIFTY":65,"BANKNIFTY":30,"FINNIFTY":60,"MIDCPNIFTY":120,"SENSEX":20}
 
@@ -90,39 +90,39 @@ B. COORDINATE SEARCH on TRAIN only (246 configurations, 0s; objective = t-stat o
   pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=2.51)
   pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=2.51)
 
-C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 35% of default trades)
+C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 60% of default trades)
   parameter                                           default → tuned                              trainΔt train R  test R test n  verdict
   target (engine T1/T2 · premium multiple · ATR · none)engine T1 half / T2 → +100% premium            +1.63   +0.02   +0.17     59  keep default (no OOS gain)
   horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.15/0.85/0                        +1.02   -0.02   +0.13     70  keep default (no OOS gain)
   premium stop (% of premium)                         50% → 40%                                      +0.24   -0.09   +0.12     59  keep default (no OOS gain)
   skip if open gaps against the trade by >%           off → 0.2                                      +0.18   +0.05   +0.29     38  ADOPT
   strike (delta aim / ITM1-ATM-OTM1)                  delta 0.55 → delta 0.4                         +0.16   +0.10   +0.30     38  keep default (no OOS gain)
-  skip if open gaps with the trade by >% (chasing)    off → 0.5                                      +0.14   +0.10   +0.47     30  ADOPT
-  trend filter                                        none → e2050                                   +0.13   +0.19   +0.47     25  keep default (no OOS gain)
-  skip when VIX 1-yr percentile >                     100 → 90                                       +0.11   +0.19   +0.52     29  ADOPT
-  holding period (sessions; 1 = same-day close)       3 → 5                                          +0.09   +0.04   +0.50     29  keep default (no OOS gain)
+  skip if open gaps with the trade by >% (chasing)    off → 0.5                                      +0.14   +0.10   +0.47     30  keep default (too few OOS trades)
+  trend filter                                        none → e2050                                   +0.13   +0.09   +0.28     32  keep default (too few OOS trades)
+  skip when VIX 1-yr percentile >                     100 → 90                                       +0.11   +0.14   +0.44     32  keep default (too few OOS trades)
+  holding period (sessions; 1 = same-day close)       3 → 5                                          +0.09   -0.11   +0.23     38  keep default (no OOS gain)
 
 D. RESULT (simulated option P&L, 1 lot, after costs + slippage; R = P&L / premium risked at the stop)
   TRAIN
   today's defaults           n= 80  hit  35%  avgR  -0.09  exp   -4.5%/trade  PF  0.69  maxDD  15.8R  worst -1.54R  t=-0.60
   search optimum (unvalidated) n= 30  hit  57%  avgR  +1.04  exp  +41.7%/trade  PF  3.51  maxDD   4.5R  worst -1.94R  t= 2.51
-  ADOPTED parameters         n= 37  hit  43%  avgR  +0.19  exp   +9.7%/trade  PF  1.24  maxDD   7.2R  worst -1.54R  t= 0.75
+  ADOPTED parameters         n= 56  hit  41%  avgR  +0.05  exp   +2.5%/trade  PF  0.90  maxDD  10.4R  worst -1.54R  t= 0.27
   TEST (out-of-sample)
   today's defaults           n= 59  hit  41%  avgR  +0.14  exp   +6.9%/trade  PF  1.23  maxDD  12.5R  worst -1.23R  t= 0.75
   search optimum (unvalidated) n= 23  hit  43%  avgR  +0.45  exp  +18.1%/trade  PF  1.58  maxDD   7.8R  worst -1.48R  t= 1.20
-  ADOPTED parameters         n= 29  hit  55%  avgR  +0.52  exp  +26.2%/trade  PF  2.28  maxDD   5.4R  worst -1.20R  t= 1.90
-  ADOPTED test avgR 95% bootstrap CI [+0.07, +1.10]   ·  default test avgR CI [-0.19, +0.50]
-  adopted config: mix 0.3/0.7/0 · thr 65 · trend none · VIXpct≤90 · VIX 0–99 · gapAgainst 0.2 · gapWith 0.5 · skipDow none · bigSkip off · strike delta 0.55 · minDays 4 · hold 3 · SL 50% · stopU engine swing stop · target engine T1 half / T2 · trail off · spread@VIXpct>100
-  by year (ADOPTED): 2021: n=1 -0.71R · 2022: n=15 -0.19R · 2023: n=13 +0.80R · 2024: n=12 -0.02R · 2025: n=9 +0.05R · 2026: n=16 +0.96R
-  exits (TEST): stop 9 · time 17 · gap stop 2 · breakeven/trail stop 1
+  ADOPTED parameters         n= 38  hit  45%  avgR  +0.29  exp  +14.5%/trade  PF  1.45  maxDD   8.6R  worst -1.20R  t= 1.28
+  ADOPTED test avgR 95% bootstrap CI [-0.14, +0.73]   ·  default test avgR CI [-0.19, +0.50]
+  adopted config: mix 0.3/0.7/0 · thr 65 · trend none · VIXpct≤100 · VIX 0–99 · gapAgainst 0.2 · gapWith off · skipDow none · bigSkip off · strike delta 0.55 · minDays 4 · hold 3 · SL 50% · stopU engine swing stop · target engine T1 half / T2 · trail off · spread@VIXpct>100
+  by year (ADOPTED): 2021: n=2 -0.86R · 2022: n=25 -0.23R · 2023: n=17 +0.78R · 2024: n=16 -0.21R · 2025: n=12 -0.07R · 2026: n=22 +0.56R
+  exits (TEST): stop 11 · time 22 · gap stop 4 · breakeven/trail stop 1
 
 E. ROBUSTNESS on TEST (avgR; does the edge survive other IV levels and double slippage?)
-  model IV ×1.00 (base)    default  +0.14R (n=59)   adopted  +0.52R (n=29)
-  IV ×0.90                 default  +0.23R (n=59)   adopted  +0.67R (n=29)
-  IV ×1.10                 default  +0.10R (n=59)   adopted  +0.44R (n=29)
-  IV ×1.25                 default  +0.04R (n=59)   adopted  +0.37R (n=29)
-  slippage ×2              default  +0.10R (n=59)   adopted  +0.48R (n=29)
-  slippage ×3              default  +0.06R (n=59)   adopted  +0.43R (n=29)
+  model IV ×1.00 (base)    default  +0.14R (n=59)   adopted  +0.29R (n=38)
+  IV ×0.90                 default  +0.23R (n=59)   adopted  +0.41R (n=38)
+  IV ×1.10                 default  +0.10R (n=59)   adopted  +0.23R (n=38)
+  IV ×1.25                 default  +0.04R (n=59)   adopted  +0.18R (n=38)
+  slippage ×2              default  +0.10R (n=59)   adopted  +0.25R (n=38)
+  slippage ×3              default  +0.06R (n=59)   adopted  +0.21R (n=38)
 
 ======================================================================================================================
 BANKNIFTY  (^NSEBANK)   data 2021-10-13 → 2026-11-23  ·  TRAIN 2021-10-13 → 2024-11-04 (756 sessions)  ·  TEST 2024-11-05 → 2026-11-23 (504 sessions)  ·  lot 30  ·  IV = ^INDIAVIX × 1.15 + put skew
@@ -212,9 +212,9 @@ B. COORDINATE SEARCH on TRAIN only (246 configurations, 0s; objective = t-stat o
   pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=1.14)
   pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=1.14)
 
-C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 35% of default trades)
+C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 60% of default trades)
   parameter                                           default → tuned                              trainΔt train R  test R test n  verdict
-  entry threshold (side score ≥)                      65 → 70                                        +1.23   -0.36   -0.19     21  keep default (no OOS gain)
+  entry threshold (side score ≥)                      65 → 70                                        +1.23   -0.36   -0.19     21  keep default (too few OOS trades)
   skip when VIX 1-yr percentile >                     100 → 90                                       +0.47   -0.27   -0.18     49  keep default (no OOS gain)
   horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.7/0.3/0                          +0.37   -0.12   -0.12     77  ADOPT
   strike (delta aim / ITM1-ATM-OTM1)                  delta 0.55 → OTM1                              +0.26   -0.13   -0.12     77  keep default (no OOS gain)
@@ -332,7 +332,7 @@ B. COORDINATE SEARCH on TRAIN only (246 configurations, 0s; objective = t-stat o
   pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=3.28)
   pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=3.28)
 
-C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 35% of default trades)
+C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 60% of default trades)
   parameter                                           default → tuned                              trainΔt train R  test R test n  verdict
   holding period (sessions; 1 = same-day close)       3 → 1                                          +1.83   +0.03   -0.01     65  ADOPT
   horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.15/0.85/0                        +0.69   +0.05   +0.05     91  ADOPT
@@ -346,27 +346,29 @@ C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST 
   target (engine T1/T2 · premium multiple · ATR · none)engine T1 half / T2 → none (time exit)         +0.08   +0.35   +0.34     71  keep default (no OOS gain)
   skip when VIX 1-yr percentile >                     100 → 90                                       +0.05   +0.40   +0.27     53  keep default (no OOS gain)
 
+  SIMPLER ALTERNATIVE (hold + mix): TEST n=91 avgR +0.05 CI [-0.08, +0.21]  vs full (5 params): n=71 avgR +0.33 CI [+0.02, +0.69]  → CIs overlap: the SIMPLER version is used
+
 D. RESULT (simulated option P&L, 1 lot, after costs + slippage; R = P&L / premium risked at the stop)
   TRAIN
   today's defaults           n= 79  hit  35%  avgR  -0.22  exp  -10.9%/trade  PF  0.54  maxDD  17.8R  worst -1.54R  t=-1.74
   search optimum (unvalidated) n= 52  hit  54%  avgR  +0.79  exp  +39.7%/trade  PF  3.37  maxDD   3.2R  worst -1.06R  t= 3.28
-  ADOPTED parameters         n= 62  hit  45%  avgR  +0.35  exp  +17.5%/trade  PF  1.86  maxDD   8.9R  worst -1.06R  t= 1.73
+  ADOPTED parameters         n= 79  hit  46%  avgR  +0.05  exp   +2.7%/trade  PF  1.02  maxDD   3.1R  worst -1.02R  t= 0.71
   TEST (out-of-sample)
   today's defaults           n= 65  hit  31%  avgR  -0.18  exp   -8.9%/trade  PF  0.60  maxDD  19.5R  worst -1.52R  t=-1.20
   search optimum (unvalidated) n= 66  hit  50%  avgR  +0.52  exp  +25.9%/trade  PF  2.47  maxDD   8.0R  worst -1.05R  t= 2.12
-  ADOPTED parameters         n= 71  hit  48%  avgR  +0.33  exp  +16.6%/trade  PF  1.95  maxDD   5.8R  worst -1.05R  t= 1.85
-  ADOPTED test avgR 95% bootstrap CI [+0.02, +0.69]   ·  default test avgR CI [-0.46, +0.10]
-  adopted config: mix 0.15/0.85/0 · thr 65 · trend none · VIXpct≤100 · VIX 0–99 · gapAgainst off · gapWith off · skipDow 2 · bigSkip off · strike delta 0.4 · minDays 1 · hold 1 · SL 50% · stopU engine swing stop · target engine T1 half / T2 · trail off · spread@VIXpct>100
-  by year (ADOPTED): 2021: n=3 -0.35R · 2022: n=29 -0.03R · 2023: n=17 +0.64R · 2024: n=17 +0.84R · 2025: n=25 +0.31R · 2026: n=42 +0.34R
-  exits (TEST): time 51 · stop 20
+  ADOPTED parameters         n= 91  hit  43%  avgR  +0.05  exp   +2.6%/trade  PF  1.16  maxDD   4.3R  worst -1.02R  t= 0.70
+  ADOPTED test avgR 95% bootstrap CI [-0.08, +0.21]   ·  default test avgR CI [-0.46, +0.10]
+  adopted config: mix 0.15/0.85/0 · thr 65 · trend none · VIXpct≤100 · VIX 0–99 · gapAgainst off · gapWith off · skipDow none · bigSkip off · strike delta 0.55 · minDays 4 · hold 1 · SL 50% · stopU engine swing stop · target engine T1 half / T2 · trail off · spread@VIXpct>100
+  by year (ADOPTED): 2021: n=5 -0.21R · 2022: n=36 -0.03R · 2023: n=21 +0.26R · 2024: n=22 +0.07R · 2025: n=33 -0.03R · 2026: n=53 +0.10R
+  exits (TEST): time 84 · stop 7
 
 E. ROBUSTNESS on TEST (avgR; does the edge survive other IV levels and double slippage?)
-  model IV ×1.00 (base)    default  -0.18R (n=65)   adopted  +0.33R (n=71)
-  IV ×0.90                 default  -0.13R (n=65)   adopted  +0.36R (n=71)
-  IV ×1.10                 default  -0.22R (n=65)   adopted  +0.27R (n=71)
-  IV ×1.25                 default  -0.24R (n=65)   adopted  +0.18R (n=71)
-  slippage ×2              default  -0.23R (n=65)   adopted  +0.29R (n=71)
-  slippage ×3              default  -0.26R (n=65)   adopted  +0.20R (n=71)
+  model IV ×1.00 (base)    default  -0.18R (n=65)   adopted  +0.05R (n=91)
+  IV ×0.90                 default  -0.13R (n=65)   adopted  +0.06R (n=91)
+  IV ×1.10                 default  -0.22R (n=65)   adopted  +0.03R (n=91)
+  IV ×1.25                 default  -0.24R (n=65)   adopted  +0.02R (n=91)
+  slippage ×2              default  -0.23R (n=65)   adopted  +0.01R (n=91)
+  slippage ×3              default  -0.26R (n=65)   adopted  -0.03R (n=91)
 
 ======================================================================================================================
 STOCK FUTURES  (148 F&O stocks · 2021-10-14 → 2026-11-25 · TRAIN → 2024-11-06 · TEST 2024-11-06 → ; lots 148 from NSE list, 0 estimated from the ₹15 lakh minimum contract)
@@ -435,9 +437,9 @@ D. RESULT (after costs)
 ======================================================================================================================
 SUMMARY (what changes in the app)
 ======================================================================================================================
-  NIFTY      3 parameter(s) tuned: vixPctMax, gapAgainst, gapWith · TEST avgR +0.52 (default +0.14), exp +26.2%/trade, hit 55%, n=29 · calls ON
-  BANKNIFTY  1 parameter(s) tuned: mix · TEST avgR -0.12 (default -0.18), exp -5.8%/trade, hit 31%, n=77 · calls ON · fragile: edge disappears under IV×/slippage stress
-  SENSEX     5 parameter(s) tuned: mix, dowSkip, strike, minDays, hold · TEST avgR +0.33 (default -0.18), exp +16.6%/trade, hit 48%, n=71 · calls ON
-  STOCKS     tuned: fam, stopAtr · mom126 both thr 70; TEST avgR -0.00 (default -0.07), n=6386 · ON
+  NIFTY      1 parameter(s) tuned: gapAgainst · TEST avgR +0.29 (default +0.14), exp +14.5%/trade, hit 45%, n=38 · calls ON
+  BANKNIFTY  1 parameter(s) tuned: mix · TEST avgR -0.12 (default -0.18), exp -5.8%/trade, hit 31%, n=77 · CALLS OFF: Measured on 5y of data (simulated premiums, 77 out-of-sample trades): average -0.12R per trade after costs for the best rule set and -0.18R for today's rules, negative under every IV/slippage stress: no edge. · fragile: edge disappears under IV×/slippage stress
+  SENSEX     2 parameter(s) tuned: mix, hold · TEST avgR +0.05 (default -0.18), exp +2.6%/trade, hit 43%, n=91 · calls ON
+  STOCKS     tuned: fam, stopAtr · mom126 both thr 70; TEST avgR -0.00 (default -0.07), n=6386 · OFF: no OOS edge
 
-Runtime 0.3 min.
+Runtime 0.2 min.
