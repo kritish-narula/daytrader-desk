@@ -172,13 +172,26 @@ async function msQuotes(syms, mkt) {
   if (mkt !== 'IN' || !window.MS || !MS.ok()) return null;
   try { return await MS.quotes(syms); } catch (e) { MS.lastError = e.message; return null; }
 }
+// today's 5-minute candles (mStock when connected, else Yahoo) — the stock page uses exactly these for the Intraday rating
+async function intraBars(sym, mkt) {
+  if (!marketOpen(mkt)) return null;
+  let it = mkt === 'IN' && window.MS && MS.ok() ? await MS.candles(sym, '5minute', 6).then(D => ({ D })).catch(() => null) : null;
+  if (!it) it = await chart(ySym(sym, mkt), '5d', '5m').catch(() => null);
+  return it && it.D && it.D.c && it.D.c.length > 5 ? it.D : null;
+}
+// share of today's session elapsed (volume projection for the Tomorrow score); 1 when closed
+function sessionFrac(mkt) { if (!marketOpen(mkt)) return 1; const p = new Intl.DateTimeFormat('en-US', { timeZone: MK[mkt].tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()); const m = +p.find(x => x.type === 'hour').value * 60 + +p.find(x => x.type === 'minute').value; return Math.max(0.05, Math.min(1, (m - MK[mkt].open) / (MK[mkt].close - MK[mkt].open))); }
+function idxChg(mkt) { const D = S.idxD[mkt]; if (!D || D.c.length < 2) return null; const n = D.c.length - 1; return (D.c[n] / D.c[n - 1] - 1) * 100; }
+const freshIntra = r => !!(r && r.intraAt && Date.now() - r.intraAt < 40 * 60e3);
 async function dailyQuick(sym, mkt, Q) {
-  const { D, meta } = await chart(ySym(sym, mkt), '2y', '1d');
+  const [{ D, meta }, intra] = await Promise.all([chart(ySym(sym, mkt), '2y', '1d'), intraBars(sym, mkt).catch(() => null)]);
   // one rule-set for price + previous close (see MS.basis in broker.js); meta.chartPreviousClose is NOT used (for a 2y range it is
   // the close before the range start). mStock quote when connected, else Yahoo's last price, marked src 'yf'.
   const mq = Q && Q[sym], hasMs = !!(mq && mq.last_price);
   const b = MS.basis(D, { mkt, lp: hasMs ? mq.last_price : meta.regularMarketPrice, pq: hasMs && mq.ohlc ? mq.ohlc.close : null, q: mq, ms: hasMs, ts: meta.regularMarketTime });
-  const q = Engine.quick(D, { tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price: b ? b.price : undefined });
+  const q = Engine.quick(D, { intra, tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price: b ? b.price : undefined });
+  if (!q.err && intra) q.intraAt = Date.now();
+  if (!q.err) try { q.btst = Engine.btst(D, intra, { regime: (S.regime[mkt] || {}).v, nifChg: idxChg(mkt), frac: sessionFrac(mkt) }); } catch (e) {}
   if (!q.err && b && b.prev) { q.chg = (q.price / b.prev - 1) * 100; q.prev = b.prev; }
   if (!q.err) { q.risk = riskOf(D, mkt, sym); q.src = b ? b.src : 'yf'; q.srcAt = Date.now(); if (b && b.official) q.closeDay = b.day; }
   if (!q.err && window.Learn) { Learn.resolve(sym, mkt, D); Learn.log(sym, mkt, q.horizons, q.t, q.price); }
@@ -186,7 +199,7 @@ async function dailyQuick(sym, mkt, Q) {
   return q;
 }
 // ---------- scanner ----------
-const FILTERS = [['top', '⭐ Overall'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
+const FILTERS = [['top', '⭐ Overall'], ['btst', '🌙 Tomorrow'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
 const HZ = ['intraday', 'swing', 'short', 'medium', 'long'], HZL = { intraday: 'INTRA', swing: 'SWING', short: 'SHORT', medium: 'MEDIUM', long: 'LONG' };
 // Overall lists show the overall rating; a horizon list (Swing, Intraday…) shows only stocks rated BUY on that
 // horizon, ranked by that horizon's rating, high → low. The stock page opens on the same horizon with the same number.
@@ -196,9 +209,14 @@ function rated(rows, f, mkt = S.mkt) {
     if (!r || r.err) continue;
     if (minT && r.turnover != null && r.turnover < minT) continue;
     if (HZ.includes(f)) {
+      if (f === 'intraday' && marketOpen(mkt) && !freshIntra(r)) continue; // not yet rated on today's 5-min candles
       const Rh = hzRate(r, f, mkt); if (!Rh || Rh.rating < 58) continue;
       out.push({ r, rating: Rh.rating, label: HZL[f], R: Rh, sub: `${actLabel(Rh.action)} · signal ${Rh.signal}${Rh.edge != null ? ' · edge ' + Rh.edge : ''}`, hz: f });
       continue;
+    }
+    if (f === 'btst') { // Tomorrow: set up for a gain next session (judged on today's candle; final after ~3 PM)
+      const t = r.btst; if (!t || t.score < 65) continue;
+      out.push({ r, rating: t.score, label: 'TMRW', sub: `${(t.why[0] || '').replace(/^[+-]\d+ /, '')} · SL ${fmt(t.stop)} · T ${fmt(t.t1)}`, hz: 'overall', btst: t }); continue;
     }
     const R = rateRow(r, mkt); if (!R) continue;
     const proven = x => { const e = Engine.setupEdge(x.n); return e ? e.edge : true; };
@@ -739,7 +757,7 @@ async function loadDetail() {
   if (!A.err) A.risk = riskOf(d.D, mkt, sym);
   if (!A.err && window.Learn) { Learn.resolve(sym, mkt, d.D); Learn.log(sym, mkt, A.horizons, d.D.t[d.D.t.length - 1], A.price); }
   let R = null;
-  if (!A.err) { const row = Object.assign({ sym }, rowFromA(A)); R = rateRow(row, mkt); upsertRow(mkt, row); store.set('scan', S.scan);
+  if (!A.err) { const row = Object.assign({ sym, at: Date.now() }, rowFromA(A), it && marketOpen(mkt) ? { intraAt: Date.now() } : {}); R = rateRow(row, mkt); upsertRow(mkt, row); store.set('scan', S.scan);
     Alerts.evaluate({ sym, mkt, price: A.price, rating: R.rating, action: R.action, setups: A.setups, chartPats: A.chartPats, cross: A.cross, news: newsOf(mkt, sym) }, S.saved[mkt].includes(sym)); Alerts.save(); Alerts.flush(); }
   Object.assign(S.detail, { A, R, D: d.D, intra: it && it.D, meta: d.meta, at: Date.now(), src, msErr, news, px: bs ? { price: A.price, prev: A.prev, src: bs.src, official: bs.official, idle: bs.idle, day: bs.day, at: bs.at } : null });
 }

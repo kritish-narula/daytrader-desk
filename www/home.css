@@ -71,3 +71,4 @@
 .fmode button{background:var(--card2);border:1px solid var(--line);color:var(--tx);border-radius:999px;padding:4px 10px;font-size:12px}
 .fmode button.on{background:var(--accent,#3b82f6);color:#fff;border-color:transparent}
 .fhint{margin:-2px 2px 8px;font-size:11.5px}
+.btst-note{font-size:13px;line-height:1.45;border-color:rgba(99,102,241,.45)}

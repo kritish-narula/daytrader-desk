@@ -28,11 +28,16 @@ jobs:
         run: python3 tools/nse_symbols.py || true
       - name: Scan every NSE stock with the app's engine
         run: node tools/morning.js
+      - name: Tomorrow (BTST) track record — once a day after the close
+        continue-on-error: true
+        run: |
+          now=$(TZ=Asia/Kolkata date +%H%M); have=$(git log -1 --format=%cd --date=format:%F -- data/btst_stats.json 2>/dev/null)
+          if [ "$now" -ge 1530 ] || [ ! -f data/btst_stats.json ] || [ "$have" != "$(TZ=Asia/Kolkata date +%F)" -a "$now" -ge 1530 ]; then timeout 600 node tools/btst_eval.js; fi
       - name: Publish results
         run: |
           [ -f data/morning.json ] || exit 0
           git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
-          git add data/morning.json data/scan_in.json
+          git add data/morning.json data/scan_in.json; [ -f data/btst_stats.json ] && git add data/btst_stats.json
           git diff --cached --quiet && exit 0
           git commit -m "Auto scan $(date -u +%F' '%H:%M) UTC [skip ci]"
           for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && exit 0; sleep $((i*5)); done; exit 1

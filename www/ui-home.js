@@ -156,6 +156,41 @@ function ratedMulti(rows, fs, mode) {
   const sellOnly = fs.every(k => k === 'sell');
   return out.sort((a, b) => (mode === 'any' ? b.match - a.match : 0) || (sellOnly ? a.rating - b.rating : b.rating - a.rating));
 }
+// stocks a fresh list needs re-checked: top 40 candidates per selected filter (ignoring staleness) whose analysis is >5 min old,
+// or (Intraday) not yet rated on today's 5-minute candles
+function verifyNeed(fs, sc, inUni, all) {
+  S.verified = S.verified || {}; const key = S.mkt + '|' + fs.join('+') + '|' + uniLabel();
+  if (S.verified[key] && Date.now() - S.verified[key] < 3 * 60e3) return [];
+  const rows = sc.rows.filter(r => inUni.has(r.sym) && !r.err), old = r => Date.now() - (r.at || sc.at || 0) > 5 * 60e3, need = new Set();
+  for (const k of fs) {
+    let cand;
+    if (HZ.includes(k)) cand = rows.map(r => [r, (hzRate(r, k) || {}).rating || 0]).sort((a, b) => b[1] - a[1]).slice(0, 40).map(x => x[0]);
+    else cand = rated(rows, k).slice(0, 40).map(x => x.r);
+    for (const r of cand) if (old(r) || (k === 'intraday' && !freshIntra(r))) need.add(r.sym);
+  }
+  for (const x of all.slice(0, 40)) if (old(x.r)) need.add(x.r.sym);
+  return [...need].slice(0, 80);
+}
+function verifyHTML(fl) { const v = S.verifying || { done: 0, total: 0 }; return `<div class="card verify"><b>${esc(fl)}</b><div class="note" style="margin-top:6px"><span class="spin"></span> Updating ratings with live prices${S.mkt === 'IN' ? ' and today\'s 5-min candles' : ''}… ${v.done}/${v.total}</div><div class="prog"><div style="width:${v.total ? 100 * v.done / v.total : 0}%"></div></div><div class="note">So the list matches each stock's page. Takes a few seconds.</div></div>`; }
+async function startVerify(need, fkey) {
+  if (S.verifying) return; const mkt = S.mkt, key = mkt + '|' + scanFs().join('+') + '|' + uniLabel();
+  S.verifying = { done: 0, total: need.length };
+  try {
+    const Q = await msQuotes(need, mkt);
+    await pool(need, 6, async s => { try { const q = await dailyQuick(s, mkt, Q); if (!q.err) upsertRow(mkt, Object.assign({ sym: s, at: Date.now() }, q)); } catch (e) {}
+      S.verifying.done++; const pr = document.querySelector('.verify .prog div'), n = document.querySelector('.verify .note'); if (pr) pr.style.width = (100 * S.verifying.done / S.verifying.total) + '%'; if (n) n.lastChild.textContent = ` Updating ratings with live prices… ${S.verifying.done}/${S.verifying.total}`; });
+  } finally { S.verifying = null; S.verified = S.verified || {}; S.verified[key] = Date.now(); }
+  if (S.tab === 'scan' && S.mkt === mkt) drawScan();
+}
+// Tomorrow filter: when to act + the measured track record (data/btst_stats.json from GitHub)
+function btstNoteHTML() {
+  const t = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()), open = marketOpen('IN');
+  const when = open ? (t < '14:45' ? '⏳ Provisional — today\'s candle is still forming. The list firms up after 3:00 PM.' : '🌙 Near the close: buy 3:15–3:25 PM near the price shown. Next day: sell into strength in the first hour, at the target, or by 11:00 AM; exit at the open if it gaps below the stop.')
+    : '🌙 Based on the last session\'s close — for the next trading day. Buy only if it holds up into the close again; otherwise skip.';
+  const st = store.get('btstStats', null), b = st && st.bands && st.bands.find(x => x.band === '70–79'), b8 = st && st.bands && st.bands.find(x => x.band === '80+'), base = st && st.bands && st.bands.find(x => x.band === 'below 60');
+  const rec = b8 && b8.n ? `History (${st.stocks} stocks, ~5 yrs): score 80+ → next day up ${b8.upPct}% of the time, avg ${b8.avgRet > 0 ? '+' : ''}${b8.avgRet}%, target before stop ${b8.t1Pct}%${b ? ` · 70–79 → up ${b.upPct}%, avg ${b.avgRet > 0 ? '+' : ''}${b.avgRet}%` : ''}${base ? ` · other days: avg ${base.avgRet > 0 ? '+' : ''}${base.avgRet}%` : ''}. Before ~0.25% costs.` : 'Track record appears after the first GitHub run.';
+  return `<div class="card btst-note"><div>${when}</div><div class="note" style="margin-top:6px">${esc(rec)}</div></div>`;
+}
 function drawScan() {
   const sc = S.scan[S.mkt], el = $('#sl'); if (!el) return;
   if (!sc) { el.innerHTML = '<div class="empty">Pick a group and tap <b>Scan</b>.<br>Lists are ranked by rating, highest first.</div>'; return; }
@@ -166,6 +201,9 @@ function drawScan() {
   const all = fs.length > 1 ? ratedMulti(sc.rows.filter(r => inUni.has(r.sym)), fs, S.scanMode || 'all') : rated(sc.rows.filter(r => inUni.has(r.sym)), f); let rows = all.slice(0, 150), fresh = 0;
   const fkey = [S.mkt, f, uniLabel(), S.minTurnover[S.mkt] || 0].join('|'); S.frozen = S.frozen || {};
   const fz = S.frozen[fkey];
+  // market open + new list: re-check the candidates with the live price and today's 5-min candles BEFORE ranking, so the
+  // number in the list is the number on the stock page (the list otherwise comes from a scan that can be 30+ min old)
+  if (!fz && marketOpen(S.mkt) && !S.scanning) { const need = verifyNeed(fs, sc, inUni, all); if (need.length) { startVerify(need, fkey); el.innerHTML = verifyHTML(fl); return; } }
   if (fz) {
     const by = new Map(all.map(x => [x.r.sym, x])), rowBy = new Map(sc.rows.map(r => [r.sym, r]));
     const keep = s => { const x = by.get(s); if (x) return x; const r = rowBy.get(s); if (!r) return null;
@@ -177,6 +215,7 @@ function drawScan() {
   const desc = f === 'sell' ? 'Lowest rating first.' : f === 'patterns' ? 'Only patterns with a proven edge. Open a stock to see the lines.' : f === 'leaders' ? 'Positive alpha, rises more than it falls with the market. <a class="help" data-help="leader">What is this?</a>' : f === 'near' ? 'Just under resistance; buy only on a breakout close.' : '';
   el.innerHTML = rows.length ? `<div class="lhd"><div><b>${esc(fl)}</b><span class="lcnt">${rows.length}${rows.length >= 150 ? '+' : ''} stocks</span></div><span class="note">${(() => { const ag = rows.map(x => Date.now() - (x.r.at || sc.at)).sort((p, q) => p - q), m = v => v < 60e3 ? 'just now' : v < 3600e3 ? Math.round(v / 60e3) + ' min' : Math.round(v / 3600e3) + ' h'; return ag.length ? `Ratings ${m(ag[0])}–${m(ag[ag.length - 1])} old${marketOpen() ? ' · refreshing ~25/min' : ''}` : 'Scan ' + new Date(sc.at).toLocaleTimeString(); })()}${fz ? ` · <a href="#" id="rerank">↻ Re-rank${fresh ? ` (+${fresh} new)` : ''}</a>` : ''}</span></div>${desc ? `<p class="note ldesc">${desc}</p>` : ''}<div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
     : `<div class="empty">Nothing in "${esc(fl)}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
+  if (fs.includes('btst')) { const hd = el.querySelector('.lhd'); if (hd) hd.insertAdjacentHTML('afterend', btstNoteHTML()); }
   bindRows(el, fs.find(k => HZ.includes(k)) || 'overall');
   const rr = $('#rerank'); if (rr) rr.onclick = e => { e.preventDefault(); delete S.frozen[fkey]; drawScan(); };
   hydrateRows(el, 12);

@@ -76,6 +76,22 @@ const Live = (() => {
     } finally { reBusy = false; }
   }
   setInterval(() => rerate().catch(() => {}), 60e3);
+  // 🌙 Tomorrow picks: 2:50–3:25 PM, re-check the best candidates on the nearly-final candle and notify once a day
+  async function tomorrowPass() {
+    const mkt = 'IN', sc = S.scan[mkt]; if (!sc || S.scanning || !marketOpen(mkt)) return;
+    const t = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()), day = new Date(Date.now() + 19800e3).toISOString().slice(0, 10);
+    if (t < '14:50' || t > '15:25' || store.get('btstPass', '') === day) return;
+    store.set('btstPass', day);
+    const liquid = r => (r.turnover || 0) >= 5e7, rows = sc.rows.filter(r => !r.err && liquid(r));
+    const byT = rows.filter(r => r.btst).sort((a, b) => b.btst.score - a.btst.score).slice(0, 60), byS = rows.map(r => [r, (hzRate(r, 'swing') || {}).rating || 0]).sort((a, b) => b[1] - a[1]).slice(0, 30).map(x => x[0]);
+    const cand = [...new Set([...byT, ...byS].map(r => r.sym))];
+    const Q = await msQuotes(cand, mkt);
+    await pool(cand, 6, async s => { try { const q = await dailyQuick(s, mkt, Q); if (!q.err) upsertRow(mkt, Object.assign({ sym: s, at: Date.now() }, q)); } catch (e) {} });
+    const top = S.scan[mkt].rows.filter(r => r.btst && r.btst.score >= 70 && liquid(r)).sort((a, b) => b.btst.score - a.btst.score).slice(0, 5);
+    if (window.Alerts && Alerts.add) { Alerts.add({ sym: top[0] ? top[0].sym : 'NIFTY', mkt, kind: 'btst', title: top.length ? `🌙 Tomorrow picks: ${top.map(r => r.sym + ' ' + r.btst.score).join(', ')}` : '🌙 No strong Tomorrow picks today', body: top.length ? `Buy 3:15–3:25 PM; exit next day by 11 AM or at target. ${top[0].sym}: SL ${fmt(top[0].btst.stop)}, T ${fmt(top[0].btst.t1)}.` : 'Nothing closing strong enough with volume. Skipping is a valid call.' }); Alerts.flush && Alerts.flush(); window.updBell && updBell(); }
+    if (S.tab === 'scan' && scanFs().includes('btst')) drawScan();
+  }
+  setInterval(() => tomorrowPass().catch(() => {}), 60e3);
   function stamp() { const el = document.querySelector('#liveStamp'); if (el) el.textContent = 'Live · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
   function staleScan(mkt) {
     const sc = S.scan[mkt]; if (!sc) return false;

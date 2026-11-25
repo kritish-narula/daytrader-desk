@@ -40,6 +40,8 @@ async function pool(items, n, fn) { let i = 0; const out = []; await Promise.all
     const D = y.D, n = D.c.length - 1;
     const q = E.quick(D, { tick: 0.05, canShort: fo.has(sym), price: y.meta.regularMarketPrice || D.c[n] });
     if (q.err) { fail++; return null; }
+    const frac = hm < '09:15' || hm >= '15:30' ? 1 : Math.max(0.05, ((+hm.slice(0, 2)) * 60 + (+hm.slice(3)) - 555) / 375);
+    try { q.btst = E.btst(D, null, { regime, nifChg: iq.chg, frac }); } catch (e) {}
     let risk = null; try { const k = E.risk(D, idx.D, 6); if (k && !k.na) risk = k; } catch (e) {}
     for (const h of ['swing', 'short', 'medium', 'long']) { delete q[h]; const x = q.horizons[h]; if (x) { delete x.fv; delete x.calib; } } // top-level copies rebuilt in the app
     if (q.intraday) { delete q.intraday.fv; delete q.intraday.calib; }
@@ -58,6 +60,8 @@ async function pool(items, n, fn) { let i = 0; const out = []; await Promise.all
   const sells = R.filter(liquid).filter(x => x.R.rating <= 35).sort((a, b) => a.R.rating - b.R.rating).slice(0, 10).map(pick);
   const edge = new Set(Object.entries(E.SETUP_STATS).filter(([, a]) => a[3]).map(([k]) => k));
   const setups = R.filter(liquid).filter(x => (x.r.setups || []).some(s => s.b > 0 && s.q >= 70 && edge.has(s.n))).sort((a, b) => b.R.rating - a.R.rating).slice(0, 12).map(pick);
+  const tomorrow = hm >= '14:30' || hm < '09:15' ? rows.filter(r => r.btst && r.btst.score >= 70 && (r.turnover || 0) >= 5e7).sort((a, b) => b.btst.score - a.btst.score).slice(0, 15)
+    .map(r => ({ sym: r.sym, score: r.btst.score, price: +r.price.toFixed(2), chg: +(r.chg || 0).toFixed(2), stop: r.btst.stop, t1: r.btst.t1, why: r.btst.why.slice(0, 3) })) : null;
   const lastDay = idx.D.day[idx.D.day.length - 1];
   const fresh = rows.filter(r => r.lastDay === lastDay), up = fresh.filter(r => r.chg > 0).length, dn = fresh.filter(r => r.chg < 0).length;
   const breadth = { n: rows.length, adv: up, dec: dn, a50: Math.round(100 * rows.filter(r => r.e50 && r.price > r.e50).length / rows.length), a200: Math.round(100 * rows.filter(r => r.e200 && r.price > r.e200).length / rows.length),
@@ -66,7 +70,7 @@ async function pool(items, n, fn) { let i = 0; const out = []; await Promise.all
   const sectors = Object.entries(secAgg).filter(([, a]) => a.n >= 5).map(([k, a]) => ({ sector: k, avg: Math.round(a.sum / a.n), adv: Math.round(100 * a.up / a.n), n: a.n })).sort((a, b) => b.avg - a.avg);
   const mood = regime >= 62 ? 'Bullish' : regime >= 52 ? 'Mildly bullish' : regime >= 45 ? 'Neutral' : regime >= 38 ? 'Mildly bearish' : 'Bearish';
   const at = new Date().toISOString();
-  const morning = { date: today, time: hm, phase, generatedAt: at, dataDay: lastDay, regime, mood, nifty: { price: +iq.price.toFixed(2), chg: +(iq.chg || 0).toFixed(2) }, breadth, top, swing: hzTop('swing'), short: hzTop('short'), medium: hzTop('medium'), long: hzTop('long'), setups, sells, sectors };
+  const morning = { date: today, time: hm, phase, generatedAt: at, dataDay: lastDay, regime, mood, nifty: { price: +iq.price.toFixed(2), chg: +(iq.chg || 0).toFixed(2) }, breadth, top, tomorrow, swing: hzTop('swing'), short: hzTop('short'), medium: hzTop('medium'), long: hzTop('long'), setups, sells, sectors };
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, 'morning.json'), JSON.stringify(morning));
   // compact: 2-decimal numbers, no empty arrays (keeps the daily download small for phones)

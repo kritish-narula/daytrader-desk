@@ -42,6 +42,7 @@ const Morning = (() => {
         if (isNew && S.tab === 'home' && S.mkt === 'IN') render();
       }
       notifyOnce(); fallback();
+      if (store.get('btstDay', '') !== today()) { try { const bs = await getJSON('btst_stats.json', today()); if (bs && bs.bands) { store.set('btstStats', bs); store.set('btstDay', today()); } } catch (e) {} }
     } catch (e) { fallback(); } finally { busy = false; }
   }
   // GitHub scan missing for today: scan the Nifty 500 on the phone once (after 09:40 IST)

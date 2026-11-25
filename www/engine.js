@@ -830,6 +830,35 @@
     return { rating: r, action: a.a, dir: a.d, noShort: a.noShort, signal: h.score, edge: edge == null ? null : Math.round(edge), regAdj, newsAdj, bt };
   };
   // Scan: same history + same backtests as the stock page, no intraday bars
+  // ---------- Tomorrow (BTST): how well a stock is set up for a gain NEXT session, judged on today's candle near/after the close ----------
+  // D: daily bars with today's (possibly still forming) candle last; intra: today's 5-min bars (optional); ctx: {nifChg, regime, frac}
+  // frac = share of today's session elapsed (volume is projected to a full day). Returns {score 0-100, why[], entry, stop, t1, t2}.
+  E.btst = function (D, intra, ctx = {}) { return D && D.c && D.c.length > 60 ? E.btstAt(D, E.indicators(D), D.c.length - 1, intra, ctx) : null; };
+  E.btstAt = function (D, I, n, intra, ctx = {}) { // I = indicators over D; scores bar n using only bars ≤ n
+    if (n < 60) return null;
+    const c = D.c[n], o = D.o[n], h = D.h[n], l = D.l[n], pc = D.c[n - 1], at = atrAt(I, n, c);
+    const rng = Math.max(h - l, c * 0.002), clv = (c - l) / rng, chg = (c / pc - 1) * 100;
+    const v20 = D.v.slice(n - 20, n).reduce((a, b) => a + b, 0) / 20, frac = Math.max(0.2, Math.min(1, ctx.frac || 1)), vr = v20 ? D.v[n] / frac / v20 : 1;
+    const hi20 = Math.max(...D.h.slice(n - 20, n)), rsiN = I.rsi[n], why = [], add = (p, t) => { sc += p; if (t) why.push((p > 0 ? '+' : '') + p + ' ' + t); };
+    let sc = 40;
+    if (clv >= 0.8) add(20, 'closing near the day\'s high'); else if (clv >= 0.65) add(12, 'closing in the upper part of the range'); else if (clv < 0.4) add(-15, 'closing weak, near the low');
+    if (chg >= 0.5 && chg <= 5) add(12, `up ${chg.toFixed(1)}% today`); else if (chg > 5 && chg <= 8) add(4, `up ${chg.toFixed(1)}% (stretched)`); else if (chg > 8) add(-8, `up ${chg.toFixed(1)}% — exhaustion risk`); else if (chg < -1) add(-12, `down ${chg.toFixed(1)}% today`); else if (chg < 0) add(-4, 'red day');
+    if (vr >= 2) add(15, `volume ${vr.toFixed(1)}× normal`); else if (vr >= 1.4) add(9, `volume ${vr.toFixed(1)}× normal`); else if (vr < 0.8) add(-5, 'light volume');
+    if (c > hi20) add(15, 'closing above the 20-day high (breakout)'); else if (c >= hi20 * 0.985) add(6, 'just under the 20-day high');
+    if (c > I.e20[n] && I.e20[n] > I.e50[n]) add(10, 'above rising 20 & 50 EMAs'); else if (c < I.e50[n]) add(-10, 'below the 50 EMA');
+    if (rsiN >= 55 && rsiN <= 72) add(6, `RSI ${rsiN.toFixed(0)} (strong, not overbought)`); else if (rsiN > 78) add(-8, `RSI ${rsiN.toFixed(0)} overbought`);
+    if (intra && intra.c && intra.c.length > 12) {
+      const k = intra.c.length - 1, back = Math.max(0, k - 12), lh = (intra.c[k] / intra.c[back] - 1) * 100;
+      if (lh > 0.2 && clv >= 0.75) add(10, `last hour +${lh.toFixed(1)}%, buyers into the close`); else if (lh < -0.7) add(-10, `last hour ${lh.toFixed(1)}% (selling into the close)`);
+    }
+    if (ctx.nifChg != null && chg - ctx.nifChg > 1) add(6, `beat Nifty by ${(chg - ctx.nifChg).toFixed(1)}%`);
+    if (ctx.regime != null) { if (ctx.regime >= 55) add(4, 'market trend supportive'); else if (ctx.regime < 45) add(-6, 'weak market'); }
+    if (o > pc * 1.03 && c < o) add(-8, 'gap-up that faded');
+    const score = Math.max(0, Math.min(100, Math.round(40 + 0.6 * (sc - 40)))); // points scaled so only near-perfect closes reach 90+
+    const tick = 0.05, rt = x => +(Math.round(x / tick) * tick).toFixed(2);
+    const stop = rt(Math.max(l - 0.1 * at, c - 1.2 * at)), risk = Math.max(c - stop, c * 0.004);
+    return { score, why, entry: rt(c), stop, t1: rt(c + Math.max(risk, c * 0.015)), t2: rt(c + Math.max(2 * risk, c * 0.03)), clv: +clv.toFixed(2), vr: +vr.toFixed(2), chg: +chg.toFixed(2) };
+  };
   E.quick = function (D, opts = {}) {
     const r = E.analyze(D, Object.assign({}, opts, { backtest: true }));
     if (r.err) return r;
