@@ -189,7 +189,8 @@ function btstNoteHTML() {
     : '🌙 Based on the last session\'s close — for the next trading day. Buy only if it holds up into the close again; otherwise skip.';
   const st = store.get('btstStats', null), b = st && st.bands && st.bands.find(x => x.band === '70–79'), b8 = st && st.bands && st.bands.find(x => x.band === '80+'), base = st && st.bands && st.bands.find(x => x.band === 'below 60');
   const rec = b8 && b8.n ? `History (${st.stocks} stocks, ~5 yrs): score 80+ → next-day open avg ${b8.avgGap > 0 ? '+' : ''}${b8.avgGap}% (other days ${base ? (base.avgGap > 0 ? '+' : '') + base.avgGap + '%' : '–'}), but by the close only ${b8.avgRet > 0 ? '+' : ''}${b8.avgRet}% (up ${b8.upPct}% of days)${b ? ` · 70–79: open ${b.avgGap > 0 ? '+' : ''}${b.avgGap}%` : ''}. Costs ~0.25% a round trip, so this is a small edge — size small.` : 'Track record appears after the first GitHub run.';
-  return `<div class="card btst-note"><div>${when}</div><div class="note" style="margin-top:6px">${esc(rec)}</div></div>`;
+  const ex = window.Engine && Engine.MODEL && Engine.MODEL.btst && Engine.MODEL.btst.exit, warn = ex && ex.edge === false ? `⚠️ Latest 5-year test (Nifty 500, out of sample): the top picks still averaged ${ex.afterCost}% per trade after ~0.25% costs. The ranking finds the best gaps, but the gap is too small to beat costs on average — treat this as a watchlist, not a standalone strategy.` : '';
+  return `<div class="card btst-note"><div>${when}</div><div class="note" style="margin-top:6px">${esc(rec)}</div>${warn ? `<div class="note" style="margin-top:6px;color:var(--warn,#e0a030)">${esc(warn)}</div>` : ''}</div>`;
 }
 function drawScan() {
   const sc = S.scan[S.mkt], el = $('#sl'); if (!el) return;
@@ -215,7 +216,7 @@ function drawScan() {
   const desc = f === 'sell' ? 'Lowest rating first.' : f === 'patterns' ? 'Only patterns with a proven edge. Open a stock to see the lines.' : f === 'leaders' ? 'Positive alpha, rises more than it falls with the market. <a class="help" data-help="leader">What is this?</a>' : f === 'near' ? 'Just under resistance; buy only on a breakout close.' : '';
   el.innerHTML = rows.length ? `<div class="lhd"><div><b>${esc(fl)}</b><span class="lcnt">${rows.length}${rows.length >= 150 ? '+' : ''} stocks</span></div><span class="note">${(() => { const ag = rows.map(x => Date.now() - (x.r.at || sc.at)).sort((p, q) => p - q), m = v => v < 60e3 ? 'just now' : v < 3600e3 ? Math.round(v / 60e3) + ' min' : Math.round(v / 3600e3) + ' h'; return ag.length ? `Ratings ${m(ag[0])}–${m(ag[ag.length - 1])} old${marketOpen() ? ' · refreshing ~25/min' : ''}` : 'Scan ' + new Date(sc.at).toLocaleTimeString(); })()}${fz ? ` · <a href="#" id="rerank">↻ Re-rank${fresh ? ` (+${fresh} new)` : ''}</a>` : ''}</span></div>${desc ? `<p class="note ldesc">${desc}</p>` : ''}<div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
     : `<div class="empty">Nothing in "${esc(fl)}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
-  if (fs.includes('btst')) { const hd = el.querySelector('.lhd'); if (hd) hd.insertAdjacentHTML('afterend', btstNoteHTML()); }
+  if (fs.includes('btst')) { const hd = el.querySelector('.lhd'); if (hd) hd.insertAdjacentHTML('afterend', btstNoteHTML()); else el.insertAdjacentHTML('afterbegin', btstNoteHTML()); }
   bindRows(el, fs.find(k => HZ.includes(k)) || 'overall');
   const rr = $('#rerank'); if (rr) rr.onclick = e => { e.preventDefault(); delete S.frozen[fkey]; drawScan(); };
   hydrateRows(el, 12);
