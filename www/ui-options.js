@@ -258,11 +258,12 @@
       <span class="${ch ? srcCls(ch.src) : 'note wa'} pill">${ch ? (ch.src === 'Model' ? 'Estimated' : esc(ch.src.replace(' LTP', ''))) + ' ' + tm(ch.liveAt || ch.ts || ch.at) : esc(o.dataSrc || '')}</span></div>`;
     const scores = `<div class="cp"><div class="${o.side === 'CE' ? 'on' : ''}"><span>CALL (CE)</span><b class="${o.ce >= 65 ? 'up' : o.ce <= 40 ? 'dn' : 'wa'}">${o.ce}</b></div><div class="${o.side === 'PE' ? 'on' : ''}"><span>PUT (PE)</span><b class="${o.pe >= 65 ? 'up' : o.pe <= 40 ? 'dn' : 'wa'}">${o.pe}</b></div></div>`;
     const links = `<div class="oc-btns"><button class="btn g sm" data-oc="${esc(o.sym)}"${ch ? ` data-exp="${ch.exp}"` : ''}>⛓ Option chain</button><button class="btn g sm optOpen" data-sym="${esc(o.sym)}">Full analysis</button></div>`;
+    const tn = o.tuned && window.OC && OC.tuneText ? `<div class="note tune" style="margin-top:6px">🧪 ${esc(OC.tuneText(o.tuned))}</div>` : ''; // measured backtest stats behind the call (tools/fno_research.js → data/fno_params.json)
     if (!c || c.notrade) {
       return `<div class="card opt pc" id="opt_${o.sym}">${head}
         <div class="buyline b0"><b>NO TRADE</b><span>${esc(c ? c.notrade : o.callErr ? 'Option data error: ' + o.callErr : 'Analysing…')}</span></div>${scores}
         ${o.why && o.why.length ? `<ul class="why">${o.why.slice(0, 3).map(w => `<li>${w.w > 0 ? '<span class="up">▲</span>' : '<span class="dn">▼</span>'} ${esc(w.t)}</li>`).join('')}</ul>` : ''}
-        ${!o.open ? '<div class="note">Market closed: plan for the next session. Re-check after 9:45 AM.</div>' : ''}${links}</div>`;
+        ${!o.open ? '<div class="note">Market closed: plan for the next session. Re-check after 9:45 AM.</div>' : ''}${tn}${links}</div>`;
     }
     const sp = c.spread, lot = c.lot || 0, title = sp ? `BUY ${contractName(o.sym, c.exp, c.k, c.cp)} / SELL ${k0(sp.sellK)} ${c.cp}` : `BUY ${contractName(o.sym, c.exp, c.k, c.cp)}`;
     const pre = prefill({ und: o.sym, exp: c.exp, k: c.k, cp: c.cp, key: c.key, lot, entry: sp ? sp.buyPx : (c.entryLo + c.entryHi) / 2, sl: c.sl, t1: c.t1, t2: c.t2, slU: c.slU, t1U: c.t1U, t2U: c.t2U,
@@ -280,17 +281,22 @@
       <div class="pc-conf"><span>Confidence</span><i><b style="width:${c.conf}%" class="${c.conf >= 70 ? 'up' : 'wa'}"></b></i><b>${c.conf}</b></div>
       <ul class="why">${c.why.slice(0, 7).map(w => `<li>${w.w > 0 ? '<span class="up">▲</span>' : w.w < 0 ? '<span class="dn">▼</span>' : '<span class="mu">•</span>'} ${esc(w.t)}</li>`).join('')}
        <li><span class="mu">•</span> Strike: ${esc(c.strikeWhy)}</li>${c.warn.map(w => `<li><span class="wa">!</span> ${esc(w)}</li>`).join('')}</ul>
+      ${tn}
       <div class="oc-btns">${trackBtn(pre)}<button class="btn g sm" data-oc="${esc(o.sym)}" data-exp="${c.exp}">⛓ Option chain</button><button class="btn g sm optOpen" data-sym="${esc(o.sym)}">Analysis</button></div></div>`;
   };
 
   // top F&O stocks from the latest scan (strongest intraday/swing ratings either way)
+  window.fnoStockNote = function () { // one line for the stock-calls list when the research gates a side / switches stock calls off (null = no gate)
+    const P = window.FNO_PARAMS && FNO_PARAMS.stocks; if (!P) return null; const g = OC.stockGate('long'), h = OC.stockGate('short'); if (g.ok && h.ok) return null;
+    const t = P.stats && P.stats.test; return (g.why || h.why) + (t ? ` (simulated backtest: ${t.avgR >= 0 ? '+' : ''}${t.avgR.toFixed(2)}R/trade, n=${t.n})` : '');
+  };
   window.topFoCalls = function (n = 10) {
     const sc = S.scan.IN; if (!sc || !sc.rows) return [];
     const out = [];
     for (const r of sc.rows) {
       if (r.err || !isFno(r.sym) || OC.isIndex(r.sym) || ((S.fo || {})[r.sym] || {}).bseOnly) continue;
-      let best = 0; for (const hz of ['swing', 'intraday']) { try { const x = hzRate(r, hz, 'IN'); if (x && isFinite(x.rating)) best = Math.max(best, Math.abs(x.rating - 50)); } catch (e) {} }
-      if (best >= 15) out.push([r.sym, best]);
+      let best = 0, bs = 0; for (const hz of ['swing', 'intraday']) { try { const x = hzRate(r, hz, 'IN'); if (x && isFinite(x.rating) && Math.abs(x.rating - 50) > best) { best = Math.abs(x.rating - 50); bs = x.rating - 50; } } catch (e) {} }
+      if (best >= 15 && (!OC.stockGate || OC.stockGate(bs > 0 ? 'long' : 'short').ok)) out.push([r.sym, best]); // tuned: only the side the 5y walk-forward found an edge on
     }
     return out.sort((a, b) => b[1] - a[1]).slice(0, n).map(x => x[0]);
   };

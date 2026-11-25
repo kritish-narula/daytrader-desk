@@ -1,0 +1,49 @@
+name: F&O research (weekly walk-forward tuning)
+# Sundays 06:30 UTC (12:00 IST): re-tunes every F&O parameter on 5 years of Yahoo daily bars (indices + India VIX + F&O stocks),
+# adopts only what also beats today's defaults out-of-sample after costs, and commits data/fno_params.json + data/fno_report.txt.
+# The app reads fno_params.json (OC.loadParams); with no file it uses its built-in constants. Option premiums are SIMULATED. No broker credentials.
+on:
+  schedule:
+    - cron: '30 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      quick:
+        description: 'Quick smoke run (fewer stocks, one search pass). Leave empty for the full run.'
+        required: false
+        default: ''
+permissions:
+  contents: write
+concurrency:
+  group: fno-research
+  cancel-in-progress: false
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Unit tests
+        run: node tools/fno_research.test.js
+      - name: F&O universe and lot sizes (NSE public files)
+        run: python3 tools/nse_symbols.py || true
+      - name: Walk-forward research
+        env:
+          QUICK: ${{ github.event.inputs.quick }}
+        run: |
+          if [ -n "$QUICK" ]; then node tools/fno_research.js --quick; else node tools/fno_research.js; fi
+      - name: Publish results
+        run: |
+          [ -f data/fno_params.json ] || exit 0
+          git config user.name "fno-research-bot"; git config user.email "actions@users.noreply.github.com"
+          git add data/fno_params.json data/fno_report.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "F&O research $(date -u +%F) [skip ci]"
+          for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && exit 0; sleep $((i*5)); done; exit 1
+      - name: Report in the job summary
+        if: always()
+        run: |
+          [ -f data/fno_report.txt ] && { echo '```'; sed -n '/^SUMMARY/,$p' data/fno_report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true

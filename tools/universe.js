@@ -4,7 +4,7 @@ const TRAIN = ['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','BHARTIARTL','SBIN
 const TEST = ['TATAPOWER','IOC','BPCL','GAIL','PNB','BANKBARODA','CANBK','BHEL','SAIL','NMDC','PFC','RECLTD','SIEMENS','ABB','PIDILITIND','DABUR','GODREJCP','HAVELLS','DMART','NAUKRI','POLYCAB','DIVISLAB','LUPIN','AUROPHARMA','TVSMOTOR','ASHOKLEY','CHOLAFIN','MUTHOOTFIN','FEDERALBNK','IDFCFIRSTB','PERSISTENT','COFORGE','MPHASIS','DIXON','IRCTC','HINDZINC','VOLTAS','TATACOMM','PAGEIND','BALKRISIND'];
 const CACHE = process.env.YF_CACHE || '/tmp/yfcache';
 async function fetchDaily(s) {
-  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s)}.NS?range=5y&interval=1d`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s.startsWith('^') ? s : s + '.NS')}?range=5y&interval=1d`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   const R = (await r.json()).chart.result[0], q = R.indicators.quote[0], D = { t: [], o: [], h: [], l: [], c: [], v: [] };
   R.timestamp.forEach((t, i) => { if ([q.open[i], q.high[i], q.low[i], q.close[i]].some(x => x == null)) return; D.t.push(t); D.o.push(q.open[i]); D.h.push(q.high[i]); D.l.push(q.low[i]); D.c.push(q.close[i]); D.v.push(q.volume[i] || 0); });
   return D;

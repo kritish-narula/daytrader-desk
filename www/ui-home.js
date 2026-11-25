@@ -185,10 +185,10 @@ async function startVerify(need, fkey) {
 // Tomorrow filter: when to act + the measured track record (data/btst_stats.json from GitHub)
 function btstNoteHTML() {
   const t = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()), open = marketOpen('IN');
-  const when = open ? (t < '14:45' ? '⏳ Provisional — today\'s candle is still forming. The list firms up after 3:00 PM.' : '🌙 Near the close: buy 3:15–3:25 PM near the price shown. Next day: sell into strength in the first hour, at the target, or by 11:00 AM; exit at the open if it gaps below the stop.')
+  const when = open ? (t < '14:45' ? '⏳ Provisional — today\'s candle is still forming. The list firms up after 3:00 PM.' : '🌙 Near the close: buy 3:15–3:25 PM near the price shown. Next day: sell in the first 15 minutes after the open — on 5 years of data the edge is the opening gap and it fades by the close.')
     : '🌙 Based on the last session\'s close — for the next trading day. Buy only if it holds up into the close again; otherwise skip.';
   const st = store.get('btstStats', null), b = st && st.bands && st.bands.find(x => x.band === '70–79'), b8 = st && st.bands && st.bands.find(x => x.band === '80+'), base = st && st.bands && st.bands.find(x => x.band === 'below 60');
-  const rec = b8 && b8.n ? `History (${st.stocks} stocks, ~5 yrs): score 80+ → next day up ${b8.upPct}% of the time, avg ${b8.avgRet > 0 ? '+' : ''}${b8.avgRet}%, target before stop ${b8.t1Pct}%${b ? ` · 70–79 → up ${b.upPct}%, avg ${b.avgRet > 0 ? '+' : ''}${b.avgRet}%` : ''}${base ? ` · other days: avg ${base.avgRet > 0 ? '+' : ''}${base.avgRet}%` : ''}. Before ~0.25% costs.` : 'Track record appears after the first GitHub run.';
+  const rec = b8 && b8.n ? `History (${st.stocks} stocks, ~5 yrs): score 80+ → next-day open avg ${b8.avgGap > 0 ? '+' : ''}${b8.avgGap}% (other days ${base ? (base.avgGap > 0 ? '+' : '') + base.avgGap + '%' : '–'}), but by the close only ${b8.avgRet > 0 ? '+' : ''}${b8.avgRet}% (up ${b8.upPct}% of days)${b ? ` · 70–79: open ${b.avgGap > 0 ? '+' : ''}${b.avgGap}%` : ''}. Costs ~0.25% a round trip, so this is a small edge — size small.` : 'Track record appears after the first GitHub run.';
   return `<div class="card btst-note"><div>${when}</div><div class="note" style="margin-top:6px">${esc(rec)}</div></div>`;
 }
 function drawScan() {

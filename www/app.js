@@ -471,15 +471,33 @@ async function indexOption(sym, mkt = 'IN') {
   if (live && !live.err && live.prev) A.chg = (live.price / live.prev - 1) * 100;
   const row = Object.assign({ sym }, rowFromA(A)), ctx = { regime: 50, news: 0, canShort: true };
   const ri = Engine.hzRating(row.intraday, 'intraday', ctx), rs = Engine.hzRating(row.swing, 'swing', ctx);
-  const wI = open ? 0.6 : 0.3, bull = Math.round(wI * ri.rating + (1 - wI) * rs.rating);
+  // Tuned F&O parameters (data/fno_params.json via OC.loadParams; weekly walk-forward research, tools/fno_research.js). No file / US market → today's constants.
+  if (!US && window.OC && !window.FNO_PARAMS && OC.paramsReady) await Promise.race([OC.paramsReady, new Promise(r => setTimeout(r, 1200))]);
+  const TP = !US && window.OC && OC.tunedFor ? OC.tunedFor(sym) : null, thr = TP && TP.thr != null ? TP.thr : 65;
+  const wI = open ? 0.6 : 0.3; let bull = Math.round(wI * ri.rating + (1 - wI) * rs.rating);
+  if (TP && TP.mix && !open) { // tuned horizon mix (validated on the closed-market plan only: the daily-bar version of the intraday rating)
+    const rsh = row.short && !row.short.na ? Engine.hzRating(row.short, 'short', ctx) : null, m = TP.mix, sw = m.wI + m.wS + m.wH;
+    if (sw > 0 && (m.wH === 0 || rsh)) bull = Math.round((m.wI * ri.rating + m.wS * rs.rating + m.wH * (rsh ? rsh.rating : 0)) / sw);
+  }
   const late = open && mins >= T.late; // last hour: time decay hurts fresh option buys
   let ce = bull, pe = 100 - bull; if (late) { ce = Math.max(0, ce - 10); pe = Math.max(0, pe - 10); }
-  const side = ce >= 65 ? 'CE' : pe >= 65 ? 'PE' : null, step = Engine.strikeStep(sym, A.price), atm = Math.round(A.price / step) * step;
+  let side = ce >= thr ? 'CE' : pe >= thr ? 'PE' : null, blockWhy = null, vixI = null;
+  if (side && TP && TP.enabled === false) { const ti = OC.tuneInfo(TP); blockWhy = `Tuned off: the 5-year walk-forward backtest (simulated premiums) found no after-cost edge for ${sym} option calls out-of-sample${ti ? ` (${ti.n} trades, avg ${ti.avgR.toFixed(2)}R)` : ''}. Wait for the next weekly re-test.`; side = null; }
+  if (side && TP && OC.needsVix(TP)) vixI = await OC.vixInfo();
+  if (side && TP && !blockWhy) { // tuned entry filters (trend / VIX / gap / weekday / exhaustion), measured on the signal bar = last completed session
+    const D = d.D, n = D.c.length, bi = open ? n - 2 : n - 1, I = A.I, nowI = new Date(Date.now() + 5.5 * 3600e3); let dow = nowI.getUTCDay();
+    if (!open || mins >= 930) { do { dow = (dow + 1) % 7; } while (dow === 0 || dow === 6); } // next session's weekday when the market is closed
+    const r20 = []; for (let k = bi - 19; k <= bi; k++) if (k > 0 && D.c[k] > 0 && D.c[k - 1] > 0) r20.push(Math.log(D.c[k] / D.c[k - 1]));
+    const mu = r20.reduce((a, b) => a + b, 0) / (r20.length || 1), sg = Math.sqrt(r20.reduce((a, b) => a + (b - mu) * (b - mu), 0) / Math.max(1, r20.length - 1));
+    blockWhy = OC.filterSignal(side, TP, { price: D.c[bi], e20: I.e20[bi], e50: I.e50[bi], e200: I.e200[bi], adx: I.adx[bi], vix: vixI ? vixI.now : NaN, vixPct: vixI ? vixI.pct : NaN, gapPct: open && D.o[n - 1] > 0 && D.c[n - 2] > 0 ? (D.o[n - 1] / D.c[n - 2] - 1) * 100 : null, dow, ret1: bi > 0 ? Math.log(D.c[bi] / D.c[bi - 1]) : 0, sig20: sg });
+    if (blockWhy) side = null;
+  }
+  const step = Engine.strikeStep(sym, A.price), atm = Math.round(A.price / step) * step;
   const H = A.horizons, dirN = side === 'CE' ? 1 : -1, src = open && H.intraday.levels && H.intraday.dir === dirN ? H.intraday : H.swing;
   const L = side && src.levels && src.dir === dirN ? src.levels : null;
   // three strikes: safer (1 ITM), balanced (ATM), aggressive (1 OTM)
   const strikes = side ? [['ITM', 'Safer', atm - dirN * step, 0.62], ['ATM', 'Balanced', atm, 0.5], ['OTM', 'Aggressive', atm + dirN * step, 0.4]] : [];
-  const o = { sym, mkt, A, ce, pe, side, atm, step, L, late, open, why: (open ? H.intraday : H.swing).why, hzUsed: src.label, hzKey: src === H.intraday ? 'intraday' : 'swing', hzLabel: src.label, strikes, dataSrc: srcLbl, prev: live && !live.err ? live.prev : null, idxKey: live && !live.err ? live.key.k : null, liveErr: live && live.err };
+  const o = { sym, mkt, A, ce, pe, side, atm, step, L, late, open, thr, blockWhy, tp: TP, atr: A.I && A.I.atr ? A.I.atr[A.I.n - 1] : null, vixPct: vixI ? vixI.pct : null, tuned: TP ? OC.tuneInfo(TP) : null, why: (open ? H.intraday : H.swing).why, hzUsed: src.label, hzKey: src === H.intraday ? 'intraday' : 'swing', hzLabel: src.label, strikes, dataSrc: srcLbl, prev: live && !live.err ? live.prev : null, idxKey: live && !live.err ? live.key.k : null, liveErr: live && live.err };
   if (!US && window.OC) { // India: professional call from the real option chain (optchain.js); old guessed-delta premiums removed
     try { const r = await OC.callFor(o); o.call = r.call; o.ch = r.ch; } catch (e) { o.callErr = e.message; }
   } else if (useMS && side) { // exact contracts + live premiums from mStock

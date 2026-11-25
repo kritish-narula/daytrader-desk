@@ -88,7 +88,7 @@ const Live = (() => {
     const Q = await msQuotes(cand, mkt);
     await pool(cand, 6, async s => { try { const q = await dailyQuick(s, mkt, Q); if (!q.err) upsertRow(mkt, Object.assign({ sym: s, at: Date.now() }, q)); } catch (e) {} });
     const top = S.scan[mkt].rows.filter(r => r.btst && r.btst.score >= 70 && liquid(r)).sort((a, b) => b.btst.score - a.btst.score).slice(0, 5);
-    if (window.Alerts && Alerts.add) { Alerts.add({ sym: top[0] ? top[0].sym : 'NIFTY', mkt, kind: 'btst', title: top.length ? `🌙 Tomorrow picks: ${top.map(r => r.sym + ' ' + r.btst.score).join(', ')}` : '🌙 No strong Tomorrow picks today', body: top.length ? `Buy 3:15–3:25 PM; exit next day by 11 AM or at target. ${top[0].sym}: SL ${fmt(top[0].btst.stop)}, T ${fmt(top[0].btst.t1)}.` : 'Nothing closing strong enough with volume. Skipping is a valid call.' }); Alerts.flush && Alerts.flush(); window.updBell && updBell(); }
+    if (window.Alerts && Alerts.add) { Alerts.add({ sym: top[0] ? top[0].sym : 'NIFTY', mkt, kind: 'btst', title: top.length ? `🌙 Tomorrow picks: ${top.map(r => r.sym + ' ' + r.btst.score).join(', ')}` : '🌙 No strong Tomorrow picks today', body: top.length ? `Buy 3:15–3:25 PM; sell in the first 15 min after tomorrow's open (that's where the edge has been). ${top[0].sym}: SL ${fmt(top[0].btst.stop)}.` : 'Nothing closing strong enough with volume. Skipping is a valid call.' }); Alerts.flush && Alerts.flush(); window.updBell && updBell(); }
     if (S.tab === 'scan' && scanFs().includes('btst')) drawScan();
   }
   setInterval(() => tomorrowPass().catch(() => {}), 60e3);

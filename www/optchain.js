@@ -194,17 +194,17 @@
     return Math.max(intr, 0.05, p);
   };
   // which expiry to trade: nearest with enough sessions left
-  OC.pickExpiry = function (expiries, hz, now = Date.now()) {
-    const need = OC.CFG.minDaysLeft[hz] || 2;
+  OC.pickExpiry = function (expiries, hz, now = Date.now(), cfg) {
+    const need = ((cfg || OC.CFG).minDaysLeft[hz]) || 2;
     return expiries.find(e => OC.tradingDaysLeft(e, now) >= need) || expiries[expiries.length - 1] || null;
   };
   // o: analysis from indexOption() {sym, side, ce, pe, L:{entry,stop,t1,t2}, hzKey:'intraday'|'swing', open, late}
   // ch: enriched chain with analytics; ctx: {hv (annual), vix (pts), now}
   OC.buildCall = function (o, ch, ctx = {}) {
-    const C = OC.CFG, now = ctx.now || Date.now(), hz = o.hzKey === 'intraday' ? 'intraday' : 'swing';
+    const C = ctx.cfg || OC.CFG, tune = ctx.tune || null, now = ctx.now || Date.now(), hz = o.hzKey === 'intraday' ? 'intraday' : 'swing'; // ctx.cfg / ctx.tune: tuned parameters (data/fno_params.json); absent → today's constants
     const res = { sym: o.sym, side: o.side, hz, conv: Math.max(o.ce || 0, o.pe || 0), why: [], warn: [], at: now };
     const no = t => Object.assign(res, { notrade: t });
-    if (!o.side) return no(`Neither side is rated 65+ (CALL ${o.ce} · PUT ${o.pe}). Without an edge, time decay beats option buyers. Wait.`);
+    if (!o.side) return no(o.blockWhy || `Neither side is rated ${o.thr || 65}+ (CALL ${o.ce} · PUT ${o.pe}). Without an edge, time decay beats option buyers. Wait.`);
     if (o.late) return no('Last hour of the session: theta decay is fastest and there is no time for the move. No fresh option buys today.');
     if (!o.L) return no(`The ${o.side === 'CE' ? 'bullish' : 'bearish'} rating has no valid entry/stop/target on the ${hz} chart yet.`);
     if (!ch || !ch.rows || !ch.rows.length) return no('No option prices available for this underlying right now.');
@@ -227,10 +227,10 @@
       pick = scored.filter(x => !x.lw.length && x.d >= 0.35 && x.d <= 0.75).sort((a, b) => b.score - a.score)[0];
       if (pick) res.warn.push(`No liquid strike inside delta ${C.deltaLo}–${C.deltaHi}; nearest liquid one has delta ${pick.d.toFixed(2)}.`);
     }
-    if (!pick) return no(`No liquid ${cp} strike near delta 0.45–0.65 (low OI / wide spreads). Illiquid options cost you on entry and exit.`);
+    if (!pick) return no(`No liquid ${cp} strike near delta ${C.deltaLo}–${C.deltaHi} (low OI / wide spreads). Illiquid options cost you on entry and exit.`);
     const r = pick.r, x = r[sd], g = x.g, K = r.k, P0 = x.ltp;
     res.k = K; res.cp = cp; res.key = x.key || null; res.ltp = P0; res.g = g; res.iv = x.iv; res.oi = x.oi; res.doi = x.doi; res.vol = x.vol; res.bid = x.bid; res.ask = x.ask;
-    res.strikeWhy = `Delta ${Math.abs(g.delta).toFixed(2)} (aim 0.45–0.65: moves ~${Math.round(Math.abs(g.delta) * 100)} paise per ₹1 of ${o.sym}, cheaper than ITM, decays slower than OTM)` +
+    res.strikeWhy = `Delta ${Math.abs(g.delta).toFixed(2)} (aim ${C.deltaLo}–${C.deltaHi}: moves ~${Math.round(Math.abs(g.delta) * 100)} paise per ₹1 of ${o.sym}, cheaper than ITM, decays slower than OTM)` +
       (x.oi ? ` · OI ${OC.cmp(x.oi)}${maxOI ? ` (${Math.round(x.oi / maxOI * 100)}% of the side's max)` : ''}` : '') +
       (x.bid > 0 && x.ask > 0 ? ` · spread ₹${r2(x.ask - x.bid)}` : '') + (res.daysLeft != null ? ` · ${res.daysLeft} trading day${res.daysLeft === 1 ? '' : 's'} to expiry` : '');
     // ---- entry range from live LTP ± half spread / slippage
@@ -244,6 +244,14 @@
     if (sl < P0 * (1 - C.maxSlPct)) { sl = P0 * (1 - C.maxSlPct); res.slCapped = true; }
     res.sl = r05(sl); res.t1 = r05(OC.project(P0, g, L.t1 - S, hd / 2, K, L.t1, cp, M)); res.t2 = r05(OC.project(P0, g, L.t2 - S, hd, K, L.t2, cp, M));
     res.slU = L.stop; res.t1U = L.t1; res.t2U = L.t2; res.entryU = L.entry; res.spot = S;
+    if (tune) { // tuned exits (backtested by tools/fno_research.js): underlying stop in ATR, target as premium multiple / ATR, fixed premium stop already applied via C
+      const atr = ctx.atr > 0 ? ctx.atr : null, mid = hd / 2;
+      if (tune.stopU != null && tune.stopU !== 'lvl' && atr) { res.slU = r2(S - dir * tune.stopU * atr); const s2 = OC.project(P0, g, res.slU - S, mid, K, res.slU, cp, M); res.sl = r05(Math.min(s2, P0 * (1 - C.minSlPct))); if (res.sl < P0 * (1 - C.maxSlPct)) { res.sl = r05(P0 * (1 - C.maxSlPct)); res.slCapped = true; } }
+      else if (tune.stopU === null) res.warn.push('Tuned exit: no underlying stop, only the premium stop (' + Math.round(C.maxSlPct * 100) + '%).');
+      if (tune.tgt && tune.tgt.kind === 'prem') { res.t1 = r05(P0 * (1 + tune.tgt.v)); res.t2 = r05(P0 * (1 + 1.5 * tune.tgt.v)); res.warn.push(`Tuned exit: book everything at +${Math.round(tune.tgt.v * 100)}% premium (Target 1).`); }
+      else if (tune.tgt && tune.tgt.kind === 'und' && atr) { res.t1U = r2(S + dir * tune.tgt.v * atr); res.t2U = r2(S + dir * tune.tgt.v * 1.6 * atr); res.t1 = r05(OC.project(P0, g, res.t1U - S, mid, K, res.t1U, cp, M)); res.t2 = r05(OC.project(P0, g, res.t2U - S, hd, K, res.t2U, cp, M)); res.warn.push(`Tuned exit: book everything at ${tune.tgt.v}×ATR move in ${o.sym} (Target 1).`); }
+      else if (tune.tgt && tune.tgt.kind === 'none') res.warn.push('Tuned exit: no profit target, exit on the premium stop or the time limit.');
+    }
     res.rr = E > res.sl ? (res.t1 - E) / (E - res.sl) : 0; res.rr2 = E > res.sl ? (res.t2 - E) / (E - res.sl) : 0;
     const lot = ch.lot || 0; res.perLot = P0 * lot; res.capLot = E * lot; res.maxLossLot = (E - res.sl) * lot; res.t1Lot = (res.t1 - E) * lot; res.t2Lot = (res.t2 - E) * lot;
     res.be = K + dir * P0; // at expiry
@@ -269,6 +277,7 @@
     let rich = false, richWhy = '';
     if (iv && an.atmIV && iv > an.atmIV * 1.2) { rich = true; richWhy = `strike IV ${(iv * 100).toFixed(1)}% is ${Math.round((iv / an.atmIV - 1) * 100)}% above ATM IV`; }
     if (iv && hv && iv / hv >= 1.35) { rich = true; richWhy = `IV ${(iv * 100).toFixed(1)}% vs ${(hv * 100).toFixed(1)}% realised (20-day)`; }
+    if (tune && tune.ivSpread != null && ctx.vixPct != null && ctx.vixPct > tune.ivSpread) { rich = true; richWhy = `India VIX is at its ${Math.round(ctx.vixPct)}th 1-year percentile (tuned limit ${tune.ivSpread})`; }
     if (an.atmIV && vix && o.sym === 'NIFTY' && an.atmIV * 100 > vix * 1.25) { rich = true; richWhy = `ATM IV ${(an.atmIV * 100).toFixed(1)}% vs India VIX ${vix.toFixed(1)}`; }
     if (rich) add(-5, `IV is rich: ${richWhy}`);
     else if (iv) add(0, `IV ${(iv * 100).toFixed(1)}%${an.atmIV ? ` (ATM ${(an.atmIV * 100).toFixed(1)}%)` : ''}${hv ? ` · realised ${(hv * 100).toFixed(1)}%` : ''}: fair`, 0);
@@ -290,7 +299,7 @@
       res.valid = `Valid until ${m < 690 || !o.open ? '11:30 AM' : '1:30 PM'} and only while ${o.sym} stays ${dir > 0 ? 'above' : 'below'} ${f2(r2(L.entry - dir * 0.5 * Math.abs(L.entry - L.stop)))}`;
     } else {
       res.window = !o.open ? 'Next session 9:45–11:30 AM (or 2:45–3:15 PM if the trend holds into the close)' : m < 585 ? '9:45–11:30 AM after the first 15-min candle' : m < 870 ? 'Now, or near the close 2:45–3:15 PM' : 'Near the close 2:45–3:15 PM, or next session';
-      res.exitBy = `Swing: hold up to 3 sessions; exit by 3:15 PM the session before expiry (${res.exp}).`;
+      res.exitBy = `Swing: hold up to ${(tune && tune.hold) || 3} sessions; exit by 3:15 PM the session before expiry (${res.exp}).` + (tune && tune.trail ? ` Trail: after +${Math.round(tune.trail.act * 100)}% keep the stop ${Math.round(tune.trail.off * 100)}% below the peak premium.` : '');
       res.valid = `Valid next 2 sessions while ${o.sym} closes ${dir > 0 ? 'above' : 'below'} ${f2(r2(L.stop))}`;
     }
     // ---- verdict
@@ -298,7 +307,64 @@
     if (!res.spread && res.rr < C.minRR) return no(`Reward:risk on the premium is only 1:${res.rr.toFixed(2)} (needs ≥ 1:${C.minRR}) after decay to Target 1. Skip.`);
     if (res.conf < C.minConf) return no(`Engine says ${cp === 'CE' ? 'CALL' : 'PUT'} ${res.conv}, but the chain cuts confidence to ${res.conf} (< ${C.minConf}). Skip.`);
     if (rich && !res.spread) res.warn.push('IV is rich and no sensible spread leg found: size down.');
+    if (tune && ctx.tuned) res.tuned = ctx.tuned;
     return res;
+  };
+
+  // ======================================================================================================
+  // 3b. Tuned parameters (data/fno_params.json, weekly walk-forward research by tools/fno_research.js)
+  //     Missing file / missing keys → today's constants. Premiums in that research are SIMULATED, so everything here is labelled "backtest".
+  // ======================================================================================================
+  const TUNE_META = ['enabled', 'sim', 'stats'];
+  OC.tunedFor = function (und, P) { P = P || root.FNO_PARAMS; const t = P && P.index && P.index[und]; return t && typeof t === 'object' ? t : null; };
+  OC.hasTuned = t => !!t && Object.keys(t).some(k => !TUNE_META.includes(k));
+  OC.needsVix = t => !!t && (t.vixMax != null || t.vixMin != null || t.vixPctMax != null || t.ivSpread != null);
+  // OC.CFG with the tuned strike band / expiry / stop / hold applied (a copy; OC.CFG itself is never modified)
+  OC.cfgFor = function (t) {
+    const C = JSON.parse(JSON.stringify(OC.CFG)); if (!t) return C;
+    if (t.strike) { const a = t.strike.mode === 'delta' ? t.strike.aim : ({ 1: 0.62, 0: 0.5, '-1': 0.4 })[t.strike.n]; if (a > 0) { C.deltaAim = a; C.deltaLo = r2(clamp(a - 0.1, 0.2, 0.9)); C.deltaHi = r2(clamp(a + 0.1, 0.3, 0.9)); } }
+    if (t.minDays != null) { C.minDaysLeft.swing = t.minDays; C.minDaysLeft.intraday = Math.min(C.minDaysLeft.intraday, t.minDays); }
+    if (t.hold != null) C.holdDays.swing = Math.max(1, Math.round(t.hold * 1.4 * 10) / 10);
+    if (t.sl != null) { C.minSlPct = t.sl; C.maxSlPct = t.sl; }
+    return C;
+  };
+  // reason string when a tuned entry filter blocks the signal, else null.
+  // f: {price, e20, e50, e200, adx, vix, vixPct, gapPct (open vs previous close, % signed in price terms; null if unknown), dow (1=Mon … 5=Fri, entry day), ret1 (ln), sig20}
+  OC.filterSignal = function (side, t, f) {
+    if (!t || !side) return null; const dir = side === 'CE' ? 1 : -1, c = f.price, nm = side === 'CE' ? 'bullish' : 'bearish';
+    switch (t.trend) {
+      case 'e20': if (dir * (c - f.e20) <= 0) return `Tuned filter: price is ${dir > 0 ? 'below' : 'above'} the 20 EMA, against a ${nm} trade.`; break;
+      case 'e50': if (dir * (c - f.e50) <= 0) return `Tuned filter: price is ${dir > 0 ? 'below' : 'above'} the 50 EMA, against a ${nm} trade.`; break;
+      case 'e2050': if (dir * (f.e20 - f.e50) <= 0 || dir * (c - f.e20) <= 0) return 'Tuned filter: 20/50 EMA trend does not support this trade.'; break;
+      case 'e200': if (dir * (c - f.e200) <= 0) return `Tuned filter: price is ${dir > 0 ? 'below' : 'above'} the 200 EMA.`; break;
+      case 'adx20': if (!(f.adx > 20)) return `Tuned filter: ADX ${Math.round(f.adx || 0)} < 20 (no trend).`; break;
+      case 'adx25': if (!(f.adx > 25)) return `Tuned filter: ADX ${Math.round(f.adx || 0)} < 25 (weak trend).`; break;
+      case 'e50adx': if (dir * (c - f.e50) <= 0 || !(f.adx > 20)) return 'Tuned filter: needs price on the trade side of the 50 EMA and ADX > 20.'; break;
+      default:
+    }
+    if (t.vixMax != null && f.vix > t.vixMax) return `Tuned filter: India VIX ${f.vix.toFixed(1)} is above ${t.vixMax} (options too expensive).`;
+    if (t.vixMin != null && f.vix < t.vixMin) return `Tuned filter: India VIX ${f.vix.toFixed(1)} is below ${t.vixMin} (too little movement).`;
+    if (t.vixPctMax != null && f.vixPct > t.vixPctMax) return `Tuned filter: VIX at its ${Math.round(f.vixPct)}th 1-year percentile (limit ${t.vixPctMax}).`;
+    if (f.gapPct != null) { const g = dir * f.gapPct; if (t.gapAgainst != null && g < -t.gapAgainst) return `Tuned filter: the open gapped ${Math.abs(f.gapPct).toFixed(2)}% against the trade.`; if (t.gapWith != null && g > t.gapWith) return `Tuned filter: the open already gapped ${Math.abs(f.gapPct).toFixed(2)}% with the trade (chasing).`; }
+    if (t.dowSkip && t.dowSkip.length && t.dowSkip.includes(f.dow)) return `Tuned filter: backtest skips entries on ${['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'][f.dow]}s.`;
+    if (t.bigSkip != null && f.sig20 > 0 && dir * f.ret1 >= t.bigSkip * f.sig20) return `Tuned filter: last session already moved ${Math.abs(f.ret1 / f.sig20).toFixed(1)}σ in the trade direction (exhaustion risk).`;
+    return null;
+  };
+  // one line of measured backtest stats for the card; label makes clear it is simulated
+  OC.tuneInfo = function (t) {
+    const st = t && t.stats && t.stats.test; if (!st || !(st.n > 0)) return null;
+    return { tuned: OC.hasTuned(t), n: st.n, hit: st.hit, avgR: st.avgR, expPct: st.expPct, from: t.stats.from, to: t.stats.to, ci: st.ci95R || null, enabled: t.enabled !== false };
+  };
+  OC.tuneText = function (i) {
+    if (!i) return ''; const f = (x, d = 1) => (x >= 0 ? '+' : '') + x.toFixed(d);
+    return `${i.tuned ? 'Tuned on 5y data' : 'Defaults checked on 5y data (nothing beat them)'} · backtest out-of-sample (simulated premiums, after costs): ${f(i.expPct)}% per trade, avg ${f(i.avgR, 2)}R, hit ${Math.round(i.hit)}% over ${i.n} trades. Not a live track record.`;
+  };
+  // stock F&O gate from the same file: which side the research found an edge on
+  OC.stockGate = function (side, P) { // side: 'long' | 'short'
+    P = P || root.FNO_PARAMS; const s = P && P.stocks; if (!s) return { ok: true, tuned: false };
+    if (s.enabled === false) return { ok: false, tuned: true, why: `Backtest (5y, out-of-sample ${s.stats && s.stats.test ? s.stats.test.n : '?'} trades) found no after-cost edge in stock futures signals.` };
+    const sd = s.signal && s.signal.sides; if (sd && sd !== 'both' && sd !== side) return { ok: false, tuned: true, why: `Backtest found an edge only on the ${sd} side for stock futures.` };
+    return { ok: true, tuned: true };
   };
 
   // HV20 (annualised, close-to-close) from a daily close series
@@ -474,6 +540,10 @@
     try { if (typeof chart !== 'function') return null; return await cached('VIX', 300e3, async () => { const d = await chart('^INDIAVIX', '1mo', '1d'); return d.meta.regularMarketPrice || d.D.c[d.D.c.length - 1]; }); } catch (e) { return null; } // eslint-disable-line no-undef
   }
   OC.vix = vixNow;
+  // India VIX now / previous close / 1-year percentile (for the tuned VIX filters and the IV-rich → spread rule)
+  OC.vixInfo = async function () {
+    try { if (typeof chart !== 'function') return null; return await cached('VIXI', 300e3, async () => { const d = await chart('^INDIAVIX', '1y', '1d'), c = d.D.c.filter(x => x > 0), now = d.meta.regularMarketPrice || c[c.length - 1]; const w = c.slice(-252); return { now, prev: c.length > 1 ? c[c.length - 2] : null, pct: w.length ? w.filter(x => x <= now).length / w.length * 100 : 50 }; }); } catch (e) { return null; } // eslint-disable-line no-undef
+  };
   OC.hvOf = async function (und) { try { if (typeof chart !== 'function') return null; return await cached('HV|' + und, 3600e3, async () => OC.hv((await chart(ySym(und, 'IN'), '3mo', '1d')).D.c)); } catch (e) { return null; } }; // eslint-disable-line no-undef
 
   // model chain (no NSE, no mStock): BS premiums from VIX (indices) or HV20 (stocks) with a mild put skew
@@ -542,14 +612,29 @@
     if (!o.side) return { call: OC.buildCall(o, null), ch: null };
     const hz = o.hzKey === 'intraday' ? 'intraday' : 'swing';
     let ch = await OC.get(o.sym);
-    const want = OC.pickExpiry(ch.expiries, hz);
+    const want = OC.pickExpiry(ch.expiries, hz, Date.now(), o.tp ? OC.cfgFor(o.tp) : null);
     if (want && want !== ch.exp) ch = await OC.get(o.sym, want);
     const [hv, vix] = await Promise.all([OC.hvOf(o.sym), o.sym === 'NIFTY' ? vixNow() : null]);
-    const call = OC.buildCall(o, ch, { hv, vix });
-    if (ch.exp !== ch.expiries[0]) call.expWhy = `Nearest expiry ${ch.expiries[0]} has fewer than ${OC.CFG.minDaysLeft[hz]} trading days left: using the next one.`;
+    const tp = o.tp || null, ctx = { hv, vix };
+    if (tp) { ctx.cfg = OC.cfgFor(tp); ctx.tune = tp; ctx.atr = o.atr || null; ctx.vixPct = o.vixPct != null ? o.vixPct : null; ctx.tuned = OC.tuneInfo(tp); }
+    const call = OC.buildCall(o, ch, ctx);
+    if (ch.exp !== ch.expiries[0]) call.expWhy = `Nearest expiry ${ch.expiries[0]} has fewer than ${(ctx.cfg || OC.CFG).minDaysLeft[hz]} trading days left: using the next one.`;
     call.ctx = { hv, vix };
     return { call, ch };
   };
+
+  // tuned parameters: cached copy first (instant), then refreshed from GitHub (same pattern as morning.js; CSP already allows raw.githubusercontent.com)
+  root.FNO_PARAMS = store_.get('fnoParams', null);
+  OC.loadParams = async function () {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return root.FNO_PARAMS;
+      const r = await fetch('https://raw.githubusercontent.com/kritish-narula/daytrader-desk/main/data/fno_params.json?v=' + Math.floor(Date.now() / 3600e3), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status); const j = await r.json();
+      if (j && j.index) { root.FNO_PARAMS = j; store_.set('fnoParams', j); }
+    } catch (e) {}
+    return root.FNO_PARAMS;
+  };
+  OC.paramsReady = OC.loadParams();
 
   root.OC = OC;
 })(typeof window !== 'undefined' ? window : globalThis);
