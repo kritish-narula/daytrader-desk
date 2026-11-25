@@ -4,6 +4,8 @@
 // (≈09:50 IST, including today's first half hour). No broker credentials here: Yahoo daily data.
 const fs = require('fs'), path = require('path');
 const E = require('../www/engine.js'), P = require('../www/paper.js');
+// same learned model as the app (factor weights + re-measured setup stats), so list ratings match the stock page
+try { E.setModel(JSON.parse(fs.readFileSync(path.join(__dirname, '../www/model.json'), 'utf8'))); } catch (e) { console.log('no model.json — base weights'); }
 const OUT = path.join(__dirname, '../data'), CONC = +process.env.CONC || 12;
 const ist = () => new Date(Date.now() + 5.5 * 3600e3), today = ist().toISOString().slice(0, 10), hm = ist().toISOString().slice(11, 16);
 

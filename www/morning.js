@@ -81,7 +81,7 @@ const Morning = (() => {
   }
   function bindCard() {
     document.querySelectorAll('#mrCard .mr-p').forEach(b => b.onclick = e => { e.stopPropagation(); openDetail(b.dataset.s); });
-    const a = $('#mrAll'); if (a) a.onclick = () => { S.scanFilter = 'top'; go('scan'); };
+    const a = $('#mrAll'); if (a) a.onclick = () => { S.scanFilter = 'top'; S.scanFilters = ['top']; go('scan'); };
   }
   return { sync, init, report: () => rep, cardHTML, bindCard, apply };
 })();

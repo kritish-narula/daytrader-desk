@@ -49,21 +49,33 @@ const Live = (() => {
       for (const r of rows) { const o = Q[r.dataset.sym]; if (!o || !r.isConnected) continue; paint(r, o);
         const sr = sc && sc.rows.find(x => x.sym === r.dataset.sym); if (sr) { sr.price = o.p; if (o.chg != null) sr.chg = o.chg; if (o.pc) sr.prev = o.pc; sr.src = o.ms ? 'ms' : 'yf'; sr.srcAt = Date.now(); } }
       stamp();
-      if (Date.now() - lastRerate > RERATE) rerate();
     } finally { busy = false; }
   }
   // re-run the full analysis on the rows on screen with the latest daily bars (today's candle included)
+  // Rolling refresh: while the market is open, keep re-analysing stocks with fresh daily bars + live price, ~25 a minute,
+  // most important first: rows on screen → your holdings/watchlist/open trades → the current list → the rest (oldest first).
+  // Ratings therefore keep updating even if the GitHub auto scan is late. List order stays frozen (see drawScan).
+  const ageOf = (r, sc) => Date.now() - (r.at || sc.at || 0);
   async function rerate() {
-    if (reBusy || S.scanning || S.tab !== 'scan') return; const mkt = S.mkt, sc = S.scan[mkt]; if (!sc) return;
+    const mkt = S.mkt, sc = S.scan[mkt];
+    if (reBusy || S.scanning || !sc || document.hidden || !marketOpen(mkt)) return;
     reBusy = true; lastRerate = Date.now();
     try {
-      const syms = visible().map(r => r.dataset.sym).filter(s => { const r = sc.rows.find(x => x.sym === s); return r && Date.now() - (r.at || sc.at) > RERATE_AGE; }).slice(0, 15);
-      if (!syms.length) return;
-      const Q = await msQuotes(syms, mkt); let n = 0;
-      await pool(syms, 4, async s => { try { const q = await dailyQuick(s, mkt, Q); if (!q.err) { upsertRow(mkt, Object.assign({ sym: s, at: Date.now() }, q)); n++; } } catch (e) {} });
-      if (n && S.tab === 'scan' && S.mkt === mkt) { const y = scrollY; drawScan(); scrollTo(0, y); store.set('scan', S.scan); }
+      const by = new Map(sc.rows.map(r => [r.sym, r])), pick = [], seen = new Set();
+      const add = (s, minAge) => { if (seen.has(s) || pick.length >= 25) return; const r = by.get(s); if (r && ageOf(r, sc) < minAge) return; seen.add(s); pick.push(s); };
+      visible().forEach(r => add(r.dataset.sym, 3 * 60e3));
+      const mine = [...(window.Portfolio ? Portfolio.list(mkt).map(h => h.sym) : []), ...(S.saved[mkt] || []), ...((window.Trades && Trades.openSyms) ? Trades.openSyms(mkt) : [])];
+      mine.forEach(s => add(s, 5 * 60e3));
+      if (S.tab === 'scan') [...document.querySelectorAll('#sl .row.gf[data-sym]')].forEach(r => add(r.dataset.sym, 10 * 60e3));
+      const uni = new Set(uniSyms()); sc.rows.filter(r => uni.has(r.sym)).sort((a, b) => (a.at || sc.at || 0) - (b.at || sc.at || 0)).forEach(r => add(r.sym, 30 * 60e3));
+      if (!pick.length) return;
+      const Q = await msQuotes(pick, mkt); let n = 0;
+      await pool(pick, 4, async s => { try { const q = await dailyQuick(s, mkt, Q); if (!q.err) { if (by.has(s)) upsertRow(mkt, Object.assign({ sym: s, at: Date.now() }, q)); n++; } } catch (e) {} });
+      sc.refreshedAt = Date.now();
+      if (n && S.mkt === mkt && !S.sheetOpen) { if (S.tab === 'scan') { const y = scrollY; drawScan(); scrollTo(0, y); } else if (S.tab === 'fno' && window.drawFoList) drawFoList(); }
     } finally { reBusy = false; }
   }
+  setInterval(() => rerate().catch(() => {}), 60e3);
   function stamp() { const el = document.querySelector('#liveStamp'); if (el) el.textContent = 'Live · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
   function staleScan(mkt) {
     const sc = S.scan[mkt]; if (!sc) return false;
