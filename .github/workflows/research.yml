@@ -1,0 +1,61 @@
+name: Stock research (feature lab + walk-forward model)
+# Saturdays 01:40 UTC (07:10 IST): Nifty 500 × 5 years of Yahoo daily bars → feature rank-ICs, walk-forward ridge models per horizon
+# and for Tomorrow (BTST), gated against the CURRENT app score out of sample in both time folds. Writes the passing sections into
+# www/model.json (lin / thresholds / btst; every other key kept) and the full report to data/research_report.txt.
+# The app picks the new model up from raw.githubusercontent (www/learn.js, newer `v`) — no APK rebuild needed. No broker credentials.
+on:
+  schedule:
+    - cron: '40 1 * * 6'
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Feature scopes the model may adopt: 'stock' (phone-computable, default) | 'stock,mkt' | 'stock,mkt,xs' (needs app wiring — see report)"
+        required: false
+        default: 'stock'
+      max:
+        description: 'Cap the universe (e.g. 100 for a quick run). Empty = full Nifty 500.'
+        required: false
+        default: ''
+permissions:
+  contents: write
+concurrency:
+  group: stock-research
+  cancel-in-progress: false
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Unit checks (ridge solver, model plumbing)
+        run: node tools/research.test.js
+      - name: NSE lists (equity list, F&O, Nifty 500 size buckets + industries)
+        run: python3 tools/nse_symbols.py || true
+      - name: Refresh factor weights first (champion/challenger), so research measures what the app will run
+        continue-on-error: true
+        timeout-minutes: 20
+        run: node tools/learn.js
+      - name: Feature lab + walk-forward models
+        timeout-minutes: 35
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          RESEARCH_SCOPE: ${{ github.event.inputs.scope || 'stock' }}
+          UNIVERSE_MAX: ${{ github.event.inputs.max }}
+          BUDGET_MIN: '20'
+        run: node tools/research.js
+      - name: Publish results
+        if: always()
+        run: |
+          git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
+          git add www/model.json; [ -f data/research_report.txt ] && git add data/research_report.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "Stock research: model v$(node -e "console.log(require('./www/model.json').v)") $(date -u +%F) [skip ci]"
+          for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && exit 0; sleep $((i*5)); done; exit 1
+      - name: Decision in the job summary
+        if: always()
+        run: |
+          [ -f data/research_report.txt ] && { echo '```'; sed -n '/^==================== DECISION/,$p' data/research_report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true

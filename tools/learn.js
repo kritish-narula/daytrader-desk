@@ -96,6 +96,7 @@ function obj(smps, m) { if (smps.length < 50) return 0; const c = smps.map(x => 
   const hist = [...(champ.history || []), { v, date, samples: S.length, metrics }].slice(-26);
   const labels = {}; for (const k of Object.keys(w)) if (E.LBL[k]) labels[k] = E.LBL[k];
   const model = { v, date, labels, trainedOn: { stocks: nTr + nTe, samples: S.length }, w, calib, setups, metrics, history: hist };
-  fs.writeFileSync(OUT, JSON.stringify(model, null, 1));
+  // merge: keep keys other tools own (tools/research.js writes lin / thresholds / btst / research into the same file)
+  fs.writeFileSync(OUT, JSON.stringify(Object.assign({}, champ, model), null, 1));
   console.log(`\nWrote model v${v} (${Object.keys(w).length} tuned weights) → www/model.json`);
 })();

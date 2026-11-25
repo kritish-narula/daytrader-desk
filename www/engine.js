@@ -21,14 +21,19 @@
     const calib = {};
     for (const [hz, bins] of Object.entries(m.calib || {})) if (Array.isArray(bins)) calib[hz] = bins.filter(b => b && ok(b.lo) && ok(b.hi) && ok(b.p) && ok(b.n)).map(b => ({ lo: b.lo, hi: b.hi, n: b.n, p: clamp(b.p, 0, 1), ret: ok(b.ret) ? b.ret : 0, up: ok(b.up) ? b.up : null }));
     if (m.setups && typeof m.setups === 'object') for (const [k, a] of Object.entries(m.setups)) if (Array.isArray(a) && a.length === 4 && a.every(ok)) E.SETUP_STATS[k] = a;
-    E.MODEL = Object.assign({}, m, { w, calib });
+    // research model sections (tools/research.js) — each only if well-formed; absent = today's behaviour
+    const lin = {}, thresholds = {};
+    for (const [hz, L] of Object.entries(m.lin || {})) if (E.linOk(L)) lin[hz] = L;
+    for (const [hz, T] of Object.entries(m.thresholds || {})) if (lin[hz] && T && ok(T.buy) && ok(T.sell) && T.buy > T.sell + 4 && T.buy <= 100 && T.sell >= 0) thresholds[hz] = T;
+    const btst = E.linOk(m.btst) ? m.btst : undefined;
+    E.MODEL = Object.assign({}, m, { w, calib, lin, thresholds, btst });
     return true;
   };
   E.calibBins = [0, 30, 42, 50, 58, 64, 70, 80, 101];
   E.binOf = s => { const B = E.calibBins; for (let k = 0; k < B.length - 1; k++) if (s >= B[k] && s < B[k + 1]) return k; return B.length - 2; };
   // Track record of a score (raw horizon signal) on a horizon: training prior + this phone's live results (Beta-Binomial).
   E.calib = function (hz, score) {
-    const bins = E.MODEL.calib[hz]; if (!bins || !ok(score)) return null;
+    const Lm = (E.MODEL.lin || {})[hz], bins = Lm && Array.isArray(Lm.calib) && Lm.calib.length ? Lm.calib : E.MODEL.calib[hz]; if (!bins || !ok(score)) return null; // learned model → its own score bands
     const b = bins.find(x => score >= x.lo && score < x.hi); if (!b) return null;
     const L = ((E.LOCAL.calib[hz] || [])[E.binOf(score)]) || { w: 0, l: 0, r: 0, n: 0 };
     const n0 = Math.min(b.n, 150), live = L.w + L.l;
@@ -326,7 +331,11 @@
     const p = s[1] / 100, ev = p * Math.min(s[2], 3) - (1 - p); // cap RR so rare huge targets don't dominate
     return { n: s[0], hit: s[1], rr: s[2], ev: Math.round(ev * 100) / 100, edge: !!s[3] && ev > 0.05, be: Math.round(100 / (1 + s[2])) };
   };
-  function setupScore(I, i) {
+  function setupScore(I, i) { // memo per indicator set + bar: swing, short and medium all ask for the same bar (identical result)
+    if (I._ssi === i) return I._ssv;
+    const v = setupScore0(I, i); I._ssi = i; I._ssv = v; return v;
+  }
+  function setupScore0(I, i) {
     const s = E.setups(I, i, 1e-9); if (!s.length) return NaN;
     const w = x => { const e = E.setupEdge(x.n); return e ? (e.edge ? Math.min(1, 0.5 + e.ev / 2) : 0) : 0.5; }; // untested setups count half, no-edge ones count zero
     const bull = Math.max(0, ...s.filter(x => x.b > 0).map(x => x.q * w(x))), bear = Math.max(0, ...s.filter(x => x.b < 0).map(x => x.q * w(x)));
@@ -447,12 +456,122 @@
     };
   }
 
+  // ---------- research features + learned linear model (single source of truth for tools/research.js and the app) ----------
+  // Registry: {k, scope, lbl, f(X)}. scope 'stock' = from the stock's own daily bars (works on the phone for any stock);
+  // 'mkt' = needs Nifty bars aligned to the stock (opts.idx / E.CTX.idx); 'xs' = cross-sectional value attached by a scan
+  // (opts.xs / ctx.xs, e.g. a rank across the universe that day). X = {D, I, i, c, A (ATR), m: {c, e200} | null, xs}.
+  // Engine factor values enter as 'f.<factor key>' (0 when the factor did not fire, exactly like combine() sees it).
+  // To add a feature: one feat(...) line here; research.js picks it up automatically (and the app can use it once adopted).
+  E.CTX = {};
+  E.FEATS = [];
+  const feat = (k, scope, lbl, f) => E.FEATS.push({ k, scope, lbl, f });
+  const cAgo = (X, n) => X.i >= n ? X.D.c[X.i - n] : NaN;
+  const avgOf = (X, n, fn) => { if (X.i < n) return NaN; let s = 0; for (let j = X.i - n + 1; j <= X.i; j++) s += fn(j); return s / n; };
+  const mAgo = (X, n) => X.m && X.i >= n ? X.m.c[X.i - n] : NaN;
+  feat('mom1', 'stock', '1-month return', X => X.c / cAgo(X, 21) - 1);
+  feat('mom3', 'stock', '3-month momentum (skip last month)', X => cAgo(X, 21) / cAgo(X, 84) - 1);
+  feat('mom6', 'stock', '6-month momentum (skip last month)', X => cAgo(X, 21) / cAgo(X, 147) - 1);
+  feat('mom12', 'stock', '12-month momentum (skip last month)', X => cAgo(X, 21) / cAgo(X, 252) - 1);
+  feat('hi52', 'stock', 'Distance from 52-week high', X => X.i >= 120 ? X.c / maxIn(X.D.h, X.i - 251, X.i) - 1 : NaN);
+  feat('dd52', 'stock', 'Drawdown from 52-week closing high', X => X.i >= 120 ? X.c / maxIn(X.D.c, X.i - 251, X.i) - 1 : NaN);
+  feat('lo52', 'stock', 'Distance above 52-week low', X => X.i >= 120 ? X.c / minIn(X.D.l, X.i - 251, X.i) - 1 : NaN);
+  feat('atrp', 'stock', 'Volatility (ATR % of price)', X => X.A / X.c * 100);
+  feat('vcr', 'stock', 'Volatility contraction (10d / 60d range)', X => { const r = j => (X.D.h[j] - X.D.l[j]) / X.D.c[j]; const a = avgOf(X, 10, r), b = avgOf(X, 60, r); return b > 0 ? a / b : NaN; });
+  feat('volTr', 'stock', 'Volume trend (20d / 60d)', X => { const v = j => X.D.v[j] || 0; const a = avgOf(X, 20, v), b = avgOf(X, 60, v); return b > 0 ? Math.log(a / b) : NaN; });
+  feat('volx', 'stock', "Today's volume vs 20d average", X => X.I.v20[X.i - 1] > 0 ? Math.log(Math.max(0.05, X.D.v[X.i] / X.I.v20[X.i - 1])) : NaN);
+  feat('d20', 'stock', 'Distance from 20 EMA (ATRs)', X => (X.c - X.I.e20[X.i]) / X.A);
+  feat('d50', 'stock', 'Distance from 50 EMA (ATRs)', X => (X.c - X.I.e50[X.i]) / X.A);
+  feat('d200', 'stock', 'Distance from 200 EMA (ATRs)', X => (X.c - X.I.e200[X.i]) / X.A);
+  feat('e50slope', 'stock', '50 EMA slope over 20d (ATRs)', X => X.i >= 20 ? (X.I.e50[X.i] - X.I.e50[X.i - 20]) / X.A : NaN);
+  feat('clv', 'stock', 'Close location in the day range', X => { const r = X.D.h[X.i] - X.D.l[X.i]; return r > 0 ? (X.c - X.D.l[X.i]) / r : 0.5; });
+  feat('clv5', 'stock', 'Close location, 5-day average', X => avgOf(X, 5, j => { const r = X.D.h[j] - X.D.l[j]; return r > 0 ? (X.D.c[j] - X.D.l[j]) / r : 0.5; }));
+  feat('gap1', 'stock', "Today's opening gap", X => X.i >= 1 ? (X.D.o[X.i] / X.D.c[X.i - 1] - 1) * 100 : NaN);
+  feat('gapAvg20', 'stock', 'Average opening gap, 20d', X => X.i >= 21 ? avgOf(X, 20, j => (X.D.o[j] / X.D.c[j - 1] - 1) * 100) : NaN);
+  feat('gapAbs20', 'stock', 'Average absolute gap, 20d', X => X.i >= 21 ? avgOf(X, 20, j => Math.abs(X.D.o[j] / X.D.c[j - 1] - 1) * 100) : NaN);
+  feat('ret1', 'stock', "Today's return", X => (X.c / cAgo(X, 1) - 1) * 100);
+  feat('ret5', 'stock', '5-day return', X => (X.c / cAgo(X, 5) - 1) * 100);
+  feat('turn', 'stock', 'Liquidity (log10 ₹ turnover, 20d)', X => { const t = avgOf(X, 20, j => X.D.c[j] * (X.D.v[j] || 0)); return t > 0 ? Math.log10(t) : NaN; });
+  feat('rsi', 'stock', 'RSI 14', X => X.I.rsi[X.i]);
+  feat('adx', 'stock', 'ADX 14', X => X.I.adx[X.i]);
+  feat('bbw', 'stock', 'Bollinger band width', X => X.I.bbw[X.i]);
+  feat('max20', 'stock', 'Largest daily gain in 20d (lottery)', X => { if (X.i < 21) return NaN; let m = -Infinity; for (let j = X.i - 19; j <= X.i; j++) m = Math.max(m, X.D.c[j] / X.D.c[j - 1] - 1); return m * 100; });
+  feat('upr20', 'stock', 'Share of up days, 20d', X => X.i >= 21 ? avgOf(X, 20, j => X.D.c[j] > X.D.c[j - 1] ? 1 : 0) : NaN);
+  feat('pos20', 'stock', 'Position in the 20-day range', X => { const a = maxIn(X.D.h, X.i - 19, X.i), b = minIn(X.D.l, X.i - 19, X.i); return a > b ? (X.c - b) / (a - b) : 0.5; });
+  feat('rs1', 'mkt', 'Relative strength vs Nifty, 1m', X => (X.c / cAgo(X, 21)) / (X.m ? X.m.c[X.i] / mAgo(X, 21) : NaN) - 1);
+  feat('rs3', 'mkt', 'Relative strength vs Nifty, 3m', X => (X.c / cAgo(X, 63)) / (X.m ? X.m.c[X.i] / mAgo(X, 63) : NaN) - 1);
+  feat('rs6', 'mkt', 'Relative strength vs Nifty, 6m', X => (X.c / cAgo(X, 126)) / (X.m ? X.m.c[X.i] / mAgo(X, 126) : NaN) - 1);
+  feat('mkt200', 'mkt', 'Nifty above its 200 EMA (regime)', X => X.m && ok(X.m.c[X.i]) && ok(X.m.e200[X.i]) ? (X.m.c[X.i] > X.m.e200[X.i] ? 1 : 0) : NaN);
+  feat('mktRet20', 'mkt', 'Nifty 1-month return (regime)', X => X.m ? (X.m.c[X.i] / mAgo(X, 20) - 1) * 100 : NaN);
+  for (const [k, lbl] of [['xs.mom3R', '3m momentum rank in the universe'], ['xs.mom6R', '6m momentum rank in the universe'], ['xs.rs3R', 'RS vs Nifty 3m rank in the universe'],
+    ['xs.secMom3', 'Sector 3m momentum (average)'], ['xs.secMom3R', 'Sector 3m momentum rank'], ['xs.breadth50', 'Breadth: % of universe above 50 EMA']])
+    feat(k, 'xs', lbl, X => X.xs && ok(X.xs[k]) ? X.xs[k] : NaN);
+  // Nifty (or any index) daily bars aligned to D's bars by IST date; e200 for the regime feature
+  const dayKey = (D, j) => D.day && D.day[j] ? D.day[j] : Math.floor((D.t[j] + 19800) / 86400);
+  E.alignMarket = function (D, M) {
+    if (!M || !M.c || !M.t) return null;
+    const mp = new Map(); for (let j = 0; j < M.c.length; j++) mp.set(String(dayKey(M, j)), M.c[j]);
+    const c = D.t.map((_, j) => { const x = mp.get(String(dayKey(D, j))); return ok(x) ? x : NaN; });
+    for (let j = 1; j < c.length; j++) if (!ok(c[j])) c[j] = c[j - 1]; // holiday mismatch: carry the last index close
+    return { c, e200: ema(c, 200) };
+  };
+  // feature vector at bar i. ctx: {fv: {factorKey: value}, m: alignMarket(...) | null, xs: {...} | null}
+  E.features = function (I, i, ctx = {}) {
+    const c = I.D.c[i], X = { D: I.D, I, i, c, A: atrAt(I, i, c), m: ctx.m || null, xs: ctx.xs || null }, F = {};
+    for (const q of E.FEATS) { let x; try { x = q.f(X); } catch (e) { x = NaN; } F[q.k] = ok(x) ? x : NaN; }
+    for (const [k, x] of Object.entries(ctx.fv || {})) F['f.' + k] = ok(x) ? x : 0;
+    return F;
+  };
+  E.featScope = k => k.startsWith('f.') ? 'stock' : ((E.FEATS.find(q => q.k === k) || {}).scope || 'stock');
+  // standardisation shared with research.js: winsorise to [lo, hi], z-score, cap ±5; missing → 0 for engine factors (didn't fire),
+  // neutral (z = 0) for everything else
+  E.zFeat = function (k, x, lo, hi, mu, sd) {
+    if (!ok(x)) { if (k.startsWith('f.')) x = 0; else return 0; }
+    return clamp((clamp(x, lo, hi) - mu) / (sd > 1e-12 ? sd : 1), -5, 5);
+  };
+  // piecewise-linear map of a raw model value onto 0–100 (research stores quantiles of the raw value → the same quantiles of the
+  // current rule score, so BUY/SELL lists keep roughly their size; only the ordering changes)
+  E.calMap = function (cal, x) {
+    const xs = cal.x, ys = cal.y, n = xs.length; if (x <= xs[0]) return ys[0]; if (x >= xs[n - 1]) return ys[n - 1];
+    let a = 0, b = n - 1; while (b - a > 1) { const m = (a + b) >> 1; if (xs[m] <= x) a = m; else b = m; }
+    return xs[b] > xs[a] ? ys[a] + (ys[b] - ys[a]) * (x - xs[a]) / (xs[b] - xs[a]) : ys[a];
+  };
+  E.linOk = function (L) {
+    if (!L || typeof L !== 'object' || !Array.isArray(L.features) || !L.features.length) return false;
+    const n = L.features.length, arr = k => Array.isArray(L[k]) && L[k].length === n && L[k].every(ok);
+    if (!['weights', 'mu', 'sd', 'lo', 'hi'].every(arr) || !L.cal || !Array.isArray(L.cal.x) || !Array.isArray(L.cal.y) || L.cal.x.length < 2 || L.cal.x.length !== L.cal.y.length) return false;
+    if (!L.cal.x.every(ok) || !L.cal.y.every(ok) || L.cal.x.some((x, j) => j && x < L.cal.x[j - 1])) return false;
+    return [L.intercept || 0, L.mmu, L.msd, L.rmu, L.rsd, L.blend].every(ok) && L.msd > 0 && L.rsd > 0 && L.blend >= 0 && L.blend <= 1;
+  };
+  // raw linear model output (before blending) for a feature object F
+  E.linRaw = function (L, F) {
+    let s = L.intercept || 0;
+    for (let j = 0; j < L.features.length; j++) s += L.weights[j] * E.zFeat(L.features[j], F[L.features[j]], L.lo[j], L.hi[j], L.mu[j], L.sd[j]);
+    return s;
+  };
+  // blended + calibrated 0–100 score: blend × model (z) + (1 − blend) × rule score (z), mapped by L.cal
+  E.linScore = function (L, F, rule) {
+    const m = (E.linRaw(L, F) - L.mmu) / L.msd, r = (rule - L.rmu) / L.rsd, raw = L.blend * m + (1 - L.blend) * r;
+    return Math.round(clamp(E.calMap(L.cal, raw), 0, 100));
+  };
+  // top contributions of a learned model, for the "why" list: [{k, lbl, c}] (c = weight × z)
+  E.linWhy = function (L, F, n = 3, names) {
+    return L.features.map((k, j) => ({ k, lbl: (names && names[k]) || (E.FEATS.find(q => q.k === k) || {}).lbl || (k.startsWith('f.') ? E.label(k.slice(2)) : k), c: L.weights[j] * E.zFeat(k, F[k], L.lo[j], L.hi[j], L.mu[j], L.sd[j]) }))
+      .filter(x => Math.abs(x.c) > 1e-6).sort((a, b) => Math.abs(b.c) - Math.abs(a.c)).slice(0, n);
+  };
+
   // ---------- verdicts ----------
+  // BUY / SELL cut-offs: research-calibrated per horizon (model.json `thresholds`, only with an adopted `lin` model) else 58/42
+  E.cuts = function (hz) {
+    const T = ((E.MODEL && E.MODEL.thresholds) || {})[hz];
+    if (!T) return { buy: 58, sell: 42, sbuy: 68, ssell: 32 };
+    return { buy: T.buy, sell: T.sell, sbuy: ok(T.sbuy) && T.sbuy > T.buy ? T.sbuy : T.buy + 10, ssell: ok(T.ssell) && T.ssell < T.sell ? T.ssell : T.sell - 10 };
+  };
   function action(score, hz, canShort) {
-    if (score >= 68) return { a: 'STRONG BUY', d: 1 };
-    if (score >= 58) return { a: 'BUY', d: 1 };
-    if (score > 42) return { a: 'HOLD / WAIT', d: 0 };
-    const strong = score <= 32;
+    const K = E.cuts(hz);
+    if (score >= K.sbuy) return { a: 'STRONG BUY', d: 1 };
+    if (score >= K.buy) return { a: 'BUY', d: 1 };
+    if (score > K.sell) return { a: 'HOLD / WAIT', d: 0 };
+    const strong = score <= K.ssell;
     if (hz === 'intraday' || canShort) return { a: strong ? 'STRONG SELL' : 'SELL', d: -1 };
     return { a: hz === 'long' || hz === 'medium' ? 'AVOID' : 'SELL / EXIT', d: -1, noShort: true };
   }
@@ -735,12 +854,23 @@
     if (!D || D.c.length < 60) return { err: 'Not enough price history (need 60+ days).' };
     const tick = opts.tick || 0.05, I = E.indicators(D), i = I.n - 1;
     const price = opts.price || D.c[i];
-    const hz = {};
+    const hz = {}, FS = {};
     for (const k of Object.keys(H)) {
-      if ((k === 'medium' && I.n < 160) || (k === 'long' && I.n < 210)) { hz[k] = { na: true, label: H[k].label, dur: H[k].dur }; continue; }
+      if ((k === 'medium' && I.n < 160) || (k === 'long' && I.n < 210)) continue;
       const ex = { news: opts.news };
-      const f = k === 'intraday' ? intradayFactors(I, i, opts.intra, ex) : factors(I, i, k, ex);
-      const score = toScore(combine(f)), act = action(score, k, opts.canShort);
+      FS[k] = k === 'intraday' ? intradayFactors(I, i, opts.intra, ex) : factors(I, i, k, ex);
+    }
+    // learned linear models (model.json `lin`, tools/research.js): only for horizons that passed the out-of-sample gate
+    const LIN = E.MODEL.lin || {}; let FV = null;
+    if (Object.keys(LIN).some(k => FS[k] && k !== 'intraday')) {
+      const fv = {}; for (const k in FS) if (k !== 'intraday') for (const x of FS[k]) if (x[4]) fv[x[4]] = x[1];
+      const M = opts.idx || E.CTX.idx;
+      FV = E.features(I, i, { fv, m: M ? E.alignMarket(D, M) : null, xs: opts.xs || null });
+    }
+    for (const k of Object.keys(H)) {
+      if (!FS[k]) { hz[k] = { na: true, label: H[k].label, dur: H[k].dur }; continue; }
+      const f = FS[k], rule = toScore(combine(f)), L = FV && k !== 'intraday' ? LIN[k] : null;
+      const score = L ? E.linScore(L, FV, rule) : rule, act = action(score, k, opts.canShort);
       const why = f.map(x => ({ w: x[0] * x[1], t: x[1] >= 0 ? x[2] : x[3] })).filter(x => Math.abs(x.w) > 0.2).sort((a, b) => Math.abs(b.w) - Math.abs(a.w)).slice(0, 4);
       const lv = act.d ? levels(I, i, k, act.d, tick, price) : null;
       if (lv && k === 'intraday' && ok(f.vwap)) lv.vwap = roundTick(f.vwap, tick);
@@ -748,6 +878,7 @@
       const fv = k === 'intraday' ? null : Object.fromEntries(f.filter(x => x[4]).map(x => [x[4], Math.round(x[1] * 1000) / 1000]));
       const lvL = fv ? levels(I, i, k, 1, tick, price) : null; // long-side levels: what the learner scores the call against
       hz[k] = { label: H[k].label, dur: H[k].dur, score, action: act.a, dir: act.d, noShort: act.noShort, levels: lv, why, bt, fv, calib: E.calib(k, score), lvL: lvL && { sl: lvL.stop, t1: lvL.t1, t2: lvL.t2 } };
+      if (L) { hz[k].rule = rule; hz[k].ml = E.linWhy(L, FV).map(x => ({ t: x.lbl, w: +(x.c / L.msd).toFixed(2) })); } // ml = top model drivers, in model sd
     }
     const wts = { intraday: 0.15, swing: 0.3, short: 0.25, medium: 0.2, long: 0.1 };
     let s = 0, w = 0; for (const k in wts) if (!hz[k].na) { s += wts[k] * hz[k].score; w += wts[k]; }
@@ -755,7 +886,7 @@
     const pats = E.patterns(I, tick), cross = E.emaCross(I), sets = E.setups(I, i, tick);
     const hi52 = maxIn(D.h, i - 251, i), lo52 = minIn(D.l, i - 251, i);
     const res = {
-      price, prev: D.c[i - 1], chg: (price / D.c[i - 1] - 1) * 100, overall, overallAction: action(overall, 'swing', opts.canShort).a,
+      price, prev: D.c[i - 1], chg: (price / D.c[i - 1] - 1) * 100, overall, overallAction: action(overall, 'overall', opts.canShort).a,
       horizons: hz, patterns: pats, cross, setups: sets, chartPats: E.chartPatterns(I, tick), srLevels: E.levels(I),
       stats: { ret63: I.n > 63 ? (D.c[i] / D.c[i - 63] - 1) * 100 : NaN, ret126: I.n > 126 ? (D.c[i] / D.c[i - 126] - 1) * 100 : NaN, turnover: (() => { let s = 0, m = 0; for (let j = Math.max(0, i - 19); j <= i; j++) { s += D.c[j] * (D.v[j] || 0); m++; } return s / m; })(), rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
       I,
@@ -822,7 +953,10 @@
     if (!h || h.na) return null;
     const P = H[hz], bt = h.bt; let edge = null, ew = 0;
     if (bt && bt.n >= 6) { const p = (bt.wins + 1) / (bt.n + 2), ev = p * P.t1 - (1 - p); edge = clamp(50 + 40 * ev, 0, 100); ew = Math.min(0.45, bt.n / 60); }
-    let r = edge == null ? 50 + (h.score - 50) * (hz === 'intraday' ? 1 : 0.85) : (1 - ew) * h.score + ew * edge;
+    // learned model adopted for this horizon: its score is already calibrated out of sample → no shrink, no per-stock backtest blend
+    const lin = hz !== 'intraday' && (E.MODEL.lin || {})[hz];
+    if (lin) { edge = null; ew = 0; }
+    let r = lin ? h.score : edge == null ? 50 + (h.score - 50) * (hz === 'intraday' ? 1 : 0.85) : (1 - ew) * h.score + ew * edge;
     const regAdj = hz === 'long' ? 0 : Math.round(clamp(((ok(ctx.regime) ? ctx.regime : 50) - 50) / 10 * (ok(ctx.beta) ? clamp(ctx.beta, 0.3, 2) : 1), -7, 7));
     const newsAdj = hz === 'long' ? 0 : Math.round((hz === 'intraday' ? 10 : 8) * clamp(ok(ctx.news) ? ctx.news : 0));
     r = Math.round(clamp(r + regAdj + newsAdj, 0, 100));
@@ -854,16 +988,46 @@
     if (ctx.nifChg != null && chg - ctx.nifChg > 1) add(6, `beat Nifty by ${(chg - ctx.nifChg).toFixed(1)}%`);
     if (ctx.regime != null) { if (ctx.regime >= 55) add(4, 'market trend supportive'); else if (ctx.regime < 45) add(-6, 'weak market'); }
     if (o > pc * 1.03 && c < o) add(-8, 'gap-up that faded');
-    const score = Math.max(0, Math.min(100, Math.round(40 + 0.6 * (sc - 40)))); // points scaled so only near-perfect closes reach 90+
+    let score = Math.max(0, Math.min(100, Math.round(40 + 0.6 * (sc - 40)))); // points scaled so only near-perfect closes reach 90+
     const tick = 0.05, rt = x => +(Math.round(x / tick) * tick).toFixed(2);
     const stop = rt(Math.max(l - 0.1 * at, c - 1.2 * at)), risk = Math.max(c - stop, c * 0.004);
-    return { score, why, entry: rt(c), stop, t1: rt(c + Math.max(risk, c * 0.015)), t2: rt(c + Math.max(2 * risk, c * 0.03)), clv: +clv.toFixed(2), vr: +vr.toFixed(2), chg: +chg.toFixed(2) };
+    const out = { score, why, entry: rt(c), stop, t1: rt(c + Math.max(risk, c * 0.015)), t2: rt(c + Math.max(2 * risk, c * 0.03)), clv: +clv.toFixed(2), vr: +vr.toFixed(2), chg: +chg.toFixed(2) };
+    const L = E.MODEL.btst; // learned next-day model (tools/research.js), only when it beat the rule score out of sample
+    if (L) {
+      const F = E.btstFeatures(D, I, n, intra, ctx), rule = score;
+      out.score = E.linScore(L, F, rule); out.rule = rule;
+      const top = E.linWhy(L, F, 2, E.BTST_LBL).filter(x => x.c > 0).map(x => x.lbl.toLowerCase());
+      why.unshift(`learned model ${out.score}${top.length ? ': ' + top.join(', ') : ''} (rules alone ${rule})`);
+      if (L.exit && L.exit.rule) out.exit = { rule: L.exit.rule, text: L.exit.text || '', edge: L.exit.edge !== false }; // edge false = no after-cost profit in backtests
+    }
+    return out;
   };
+  // Next-day (BTST) feature vector at bar n — same inputs E.btstAt sees (no look-ahead) + candidates. Used by research.js and the app.
+  E.btstFeatures = function (D, I, n, intra, ctx = {}) {
+    const c = D.c[n], o = D.o[n], h = D.h[n], l = D.l[n], pc = D.c[n - 1], at = atrAt(I, n, c);
+    const rng = Math.max(h - l, c * 0.002), clv = (c - l) / rng, chg = (c / pc - 1) * 100;
+    const v20 = D.v.slice(n - 20, n).reduce((a, b) => a + b, 0) / 20, frac = Math.max(0.2, Math.min(1, ctx.frac || 1)), vr = v20 ? D.v[n] / frac / v20 : 1;
+    const hi20 = Math.max(...D.h.slice(n - 20, n)), pr = n >= 2 ? Math.max(D.h[n - 1] - D.l[n - 1], pc * 0.002) : NaN;
+    let lastHr = NaN; if (intra && intra.c && intra.c.length > 12) { const k = intra.c.length - 1; lastHr = (intra.c[k] / intra.c[Math.max(0, k - 12)] - 1) * 100; }
+    let nr7 = 1; for (let k = 1; k < 7; k++) if (D.h[n - k] - D.l[n - k] <= h - l) nr7 = 0;
+    const F = {
+      clv, chg, vr: Math.log(Math.max(0.05, vr)), brk20: c > hi20 ? 1 : 0, nearHi20: c / hi20 - 1, trend: c > I.e20[n] && I.e20[n] > I.e50[n] ? 1 : 0, below50: c < I.e50[n] ? 1 : 0,
+      rsi: I.rsi[n], lastHr, beat: ok(ctx.nifChg) ? chg - ctx.nifChg : NaN, gapFade: o > pc * 1.03 && c < o ? 1 : 0, gap: (o / pc - 1) * 100,
+      uwick: (h - Math.max(o, c)) / rng, lwick: (Math.min(o, c) - l) / rng, body: (c - o) / rng, ret5: n >= 5 ? (c / D.c[n - 5] - 1) * 100 : NaN, atrp: at / c * 100, d20: (c - I.e20[n]) / at,
+      mom3: n >= 84 ? D.c[n - 21] / D.c[n - 84] - 1 : NaN, hi52: c / maxIn(D.h, n - 251, n) - 1, prevClv: n >= 2 ? (pc - D.l[n - 1]) / pr : NaN, nr7, inside: h < D.h[n - 1] && l > D.l[n - 1] ? 1 : 0,
+      rangeX: (h - l) / at,
+    };
+    for (const k in F) if (!ok(F[k])) F[k] = NaN;
+    return F;
+  };
+  E.BTST_LBL = { clv: 'close near the high', chg: "today's change", vr: 'volume vs normal', brk20: '20-day breakout', nearHi20: 'distance to 20-day high', trend: 'above rising 20/50 EMAs', below50: 'below the 50 EMA',
+    rsi: 'RSI', lastHr: 'last-hour move', beat: 'beat Nifty today', gapFade: 'faded gap-up', gap: "today's opening gap", uwick: 'upper wick', lwick: 'lower wick', body: 'candle body', ret5: '5-day return',
+    atrp: 'volatility', d20: 'stretch above the 20 EMA', mom3: '3-month momentum', hi52: 'distance to 52-week high', prevClv: "yesterday's close location", nr7: 'narrow-range day', inside: 'inside day', rangeX: 'day range vs ATR' };
   E.quick = function (D, opts = {}) {
     const r = E.analyze(D, Object.assign({}, opts, { backtest: true }));
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
-    const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt, fv: h.fv, calib: h.calib, lvL: h.lvL } : h;
+    const slim = h => h && !h.na ? Object.assign({ score: h.score, action: h.action, dir: h.dir, bt: h.bt, fv: h.fv, calib: h.calib, lvL: h.lvL }, h.rule != null ? { rule: h.rule } : {}) : h;
     return { t: D.t[D.t.length - 1], price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi, e20: r.stats.e20, e50: r.stats.e50, e200: r.stats.e200, atr: r.stats.atr, hi52: r.stats.hi52, lo52: r.stats.lo52 };
   };
 
