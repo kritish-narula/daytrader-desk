@@ -1,0 +1,34 @@
+name: Auto scan (all NSE stocks)
+on:
+  schedule:
+    - cron: '0 3 * * 1-5'          # 08:30 IST — pre-open, on yesterday's close
+    - cron: '15,45 4-9 * * 1-5'    # 09:45 → 15:15 IST every 30 min — live session
+    - cron: '15 10 * * 1-5'        # 15:45 IST — after the close
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: morning-scan
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: NSE stock list
+        run: python3 tools/nse_symbols.py || true
+      - name: Scan every NSE stock with the app's engine
+        run: node tools/morning.js
+      - name: Publish results
+        run: |
+          [ -f data/morning.json ] || exit 0
+          git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
+          git add data/morning.json data/scan_in.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Auto scan $(date -u +%F' '%H:%M) UTC [skip ci]"
+          for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && exit 0; sleep $((i*5)); done; exit 1

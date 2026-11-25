@@ -672,6 +672,7 @@ let watchTimer = null;
 function startWatch() { stopWatch(true); Alerts.keepAlive(true, 'Watching your saved stocks'); watchTimer = setInterval(watchTick, 5 * 60e3); }
 function stopWatch(keep) { clearInterval(watchTimer); watchTimer = null; if (!keep && !S.scanning) Alerts.keepAlive(false); }
 async function watchTick() {
+  if (window.Morning) Morning.sync().catch(() => {});
   if (S.scanning) return;
   for (const mkt of ['IN', 'US']) {
     if (!marketOpen(mkt) || !S.saved[mkt].length) continue;
@@ -914,5 +915,6 @@ Promise.all([loadNSE(), loadUS(), pageReady]).then(async () => {
   if (Sec.hasPin()) await pinPad('Enter your PIN', true);
   render();
   if (Alerts.prefs().watch) startWatch();
+  if (window.Morning) Morning.init().catch(() => {}); // pull the latest all-NSE auto scan (pre-open + every 30 min)
   if (window.Learn) setTimeout(() => Learn.tick(learnFetch).catch(() => {}), 8000);
 });

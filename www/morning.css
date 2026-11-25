@@ -1,0 +1,7 @@
+.mr-card .mr-h{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.mr-mood{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--card2);white-space:nowrap}
+.mr-mood.up{background:var(--up-bg);color:var(--up)}.mr-mood.dn{background:var(--down-bg);color:var(--dn)}
+.mr-b{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--mu);margin-top:8px}.mr-b b{color:var(--tx)}.mr-b b.up{color:var(--up)}.mr-b b.dn{color:var(--dn)}
+.mr-picks{display:flex;flex-wrap:wrap;gap:6px}
+.mr-p{display:inline-flex;gap:6px;align-items:center;background:var(--card2);border:1px solid var(--line);color:var(--tx);border-radius:999px;padding:5px 10px;font-size:12.5px}
+.mr-p span{font-weight:700}
