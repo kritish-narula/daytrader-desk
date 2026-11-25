@@ -266,7 +266,7 @@ async function runScan(syms) {
   if (S.scanning) return;
   const mkt = S.mkt; syms = syms || uniSyms();
   if (syms.length > 800 && !confirm(`Scan ${syms.length} stocks? It takes a few minutes. You can leave the app; it keeps scanning until you swipe it out of Recents.`)) return;
-  S.scanning = true; S.scanPct = 0; if (S.tab === 'scan') vScan();
+  S.scanning = true; S.scanPct = 0; S.frozen = {}; if (S.tab === 'scan') vScan();
   Alerts.keepAlive(true, `Scanning ${syms.length} stocks…`);
   try {
     await regime(mkt);
@@ -389,6 +389,7 @@ function vFno() {
   }
 }
 // the searchable, sector-filtered list of every F&O stock: rated ones first (best rating first), then unscanned A-Z
+const done0 = items => items.some(x => x.R); // freeze only once ratings exist
 function drawFoList() {
   const el = $('#foList'); if (!el) return;
   const st = S.fnoF, U = S.fo || {}, cat = S.nse.cat || {}, sc = S.scan.IN, by = new Map(sc ? sc.rows.map(r => [r.sym, r]) : []), q = st.q.toUpperCase();
@@ -403,6 +404,12 @@ function drawFoList() {
   }
   items.sort((a, b) => (b.R ? b.R.rating : -1) - (a.R ? a.R.rating : -1) || a.s.localeCompare(b.s));
   if (st.side === 'short') items.reverse();
+  // same frozen order as the scanner: opening a stock or a live refresh never moves/drops it (re-sorted by a new scan or filter change)
+  { const fk = ['FO', st.sec, st.side, q].join('|'); S.frozen = S.frozen || {}; const fz = S.frozen[fk];
+    if (fz && fz.length) { const pos = new Map(fz.map((x, i) => [x, i])), all = new Map(foStocks().map(x => [x, 1]));
+      for (const x of fz) if (!items.some(i => i.s === x) && all.has(x)) { const r = by.get(x); items.push({ s: x, nm: nameOf(x), r, R: r && !r.err ? rateRow(r, 'IN') : null }); }
+      items.sort((a, b) => (pos.has(a.s) ? pos.get(a.s) : 1e6) - (pos.has(b.s) ? pos.get(b.s) : 1e6)); }
+    else if (done0(items)) S.frozen[fk] = items.map(x => x.s); }
   const shown = items.slice(0, st.n), done = items.filter(x => x.R).length;
   const lotTxt = s => U[s].lot ? `Lot ${U[s].lot} · ` : '';
   el.innerHTML = `<div class="note" style="margin:0 2px 8px">${items.length} stocks${done < items.length && !S.scanning ? ` · ${items.length - done} not scanned` : ''}${sc && done ? ` · scan ${new Date(sc.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}${S.foSrc ? ' · ' + esc(S.foSrc) : ''}</div>

@@ -23,6 +23,7 @@ const Morning = (() => {
     const mine = new Map(((cur && cur.rows) || []).filter(r => (r.at || 0) > at || (!cur.ci && cur.at > at)).map(r => [r.sym, r]));
     const rows = j.rows.map(r => { if (mine.has(r.sym)) return mine.get(r.sym); for (const h of ['swing', 'short', 'medium', 'long']) if (r.horizons && r.horizons[h]) r[h] = r.horizons[h]; r.horizons = r.horizons || {}; return r; });
     for (const [s, r] of mine) if (!rows.some(x => x.sym === s)) rows.push(r);
+    if (!(S.tab === 'scan' || S.tab === 'detail')) S.frozen = {};
     S.scan.IN = { at, rows, src: `Auto scan ${j.time} IST · all NSE${j.phase === 'pre-open' ? ' (pre-open)' : ''}`, ci: j.generatedAt };
     try { store.set('scan', Object.assign({}, S.scan, { IN: Object.assign({}, S.scan.IN, { rows: S.scan.IN.rows.slice(0, 400) }) })); } catch (e) {} // small copy; the full set lives in the cache
     if (S.mkt === 'IN' && !S.scanning) { if (S.tab === 'scan') window.drawScan && drawScan(); else if (S.tab === 'home') render(); else if (S.tab === 'fno') window.drawFoList && drawFoList(); }

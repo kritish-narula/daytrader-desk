@@ -134,11 +134,24 @@ function drawScan() {
   const sc = S.scan[S.mkt], el = $('#sl'); if (!el) return;
   if (!sc) { el.innerHTML = '<div class="empty">Pick a group and tap <b>Scan</b>.<br>Lists are ranked by rating, highest first.</div>'; return; }
   const inUni = new Set(uniSyms()), f = S.scanFilter || 'top', fl = FILTERS.find(z => z[0] === f)[1];
-  const rows = rated(sc.rows.filter(r => inUni.has(r.sym)), f).slice(0, 150);
+  // Order is frozen once a list is shown: opening a stock (which re-analyses it with the latest data), live re-rating or a
+  // background auto scan updates the numbers in place but never moves or drops a stock. Re-sorts only on a new scan you
+  // run, the "Re-rank" button, or a different list/universe.
+  const all = rated(sc.rows.filter(r => inUni.has(r.sym)), f); let rows = all.slice(0, 150), fresh = 0;
+  const fkey = [S.mkt, f, uniLabel(), S.minTurnover[S.mkt] || 0].join('|'); S.frozen = S.frozen || {};
+  const fz = S.frozen[fkey];
+  if (fz) {
+    const by = new Map(all.map(x => [x.r.sym, x])), rowBy = new Map(sc.rows.map(r => [r.sym, r]));
+    const keep = s => { const x = by.get(s); if (x) return x; const r = rowBy.get(s); if (!r) return null;
+      if (HZ.includes(f)) { const Rh = hzRate(r, f); return Rh && { r, rating: Rh.rating, label: HZL[f], R: Rh, sub: `${actLabel(Rh.action)} · changed since the list was made`, hz: f }; }
+      const R = rateRow(r); return R && { r, rating: R.rating, label: actLabel(R.action), R, sub: 'Changed since the list was made', hz: 'overall' }; };
+    rows = fz.map(keep).filter(Boolean); fresh = all.filter(x => !fz.includes(x.r.sym)).slice(0, 150 - rows.length).length;
+  } else S.frozen[fkey] = rows.map(x => x.r.sym);
   const desc = f === 'sell' ? 'Lowest rating first.' : f === 'patterns' ? 'Only patterns with a proven edge. Open a stock to see the lines.' : f === 'leaders' ? 'Positive alpha, rises more than it falls with the market. <a class="help" data-help="leader">What is this?</a>' : f === 'near' ? 'Just under resistance; buy only on a breakout close.' : '';
-  el.innerHTML = rows.length ? `<div class="lhd"><div><b>${esc(fl)}</b><span class="lcnt">${rows.length}${rows.length >= 150 ? '+' : ''} stocks</span></div><span class="note">Scan ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' · prices move' : ''}</span></div>${desc ? `<p class="note ldesc">${desc}</p>` : ''}<div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
+  el.innerHTML = rows.length ? `<div class="lhd"><div><b>${esc(fl)}</b><span class="lcnt">${rows.length}${rows.length >= 150 ? '+' : ''} stocks</span></div><span class="note">Scan ${new Date(sc.at).toLocaleTimeString()}${marketOpen() ? ' · prices move' : ''}${fz ? ` · <a href="#" id="rerank">↻ Re-rank${fresh ? ` (+${fresh} new)` : ''}</a>` : ''}</span></div>${desc ? `<p class="note ldesc">${desc}</p>` : ''}<div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
     : `<div class="empty">Nothing in "${esc(fl)}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
   bindRows(el, HZ.includes(f) ? f : 'overall');
+  const rr = $('#rerank'); if (rr) rr.onclick = e => { e.preventDefault(); delete S.frozen[fkey]; drawScan(); };
   hydrateRows(el, 12);
 }
 
