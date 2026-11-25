@@ -222,6 +222,12 @@
       const out = { v: 4, day: istDay(), eq, idx, opt, fo, counts: Object.fromEntries(Object.entries(opt).map(([k, v]) => [k, v.length])) };
       this._map = out; this._keys = new Map(); set('map', out); return out;
     },
+    // your demat holdings (read-only): [{sym, isin, qty, avg, ltp, close, ex}]
+    async holdings() {
+      const d = await this._req('GET', 'portfolio/holdings'), rows = Array.isArray(d) ? d : (d && (d.holdings || d.data)) || [];
+      return rows.map(x => ({ sym: String(x.tradingsymbol || x.symbol || '').toUpperCase().replace(/^[A-Z]+:/, '').replace(/-(EQ|BE|BZ|SM|ST)$/, ''), isin: x.isin || '',
+        qty: (+x.quantity || 0) + (+x.t1_quantity || 0) + (+x.collateral_quantity || 0), avg: +x.average_price || 0, ltp: +x.last_price || 0, close: +x.close_price || 0, ex: x.exchange || 'NSE' })).filter(x => x.sym && x.qty > 0);
+    },
     // {SYM: {lot, ex:'NFO'|'BFO', type:'stock'|'index'}} — every NSE + BSE F&O underlying, from today's master
     async foUniverse() { const m = await this.map(); return m.fo || null; },
     // index quote key: NIFTY → NSE:NIFTY 50, SENSEX → BSE:SENSEX

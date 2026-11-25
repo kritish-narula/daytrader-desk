@@ -57,6 +57,7 @@
     prefs: () => prefs, setPrefs(p) { Object.assign(prefs, p); wr('prefs', prefs); },
     priceAlert: (mkt, sym) => prices[mkt + ':' + sym] || {},
     setPriceAlert(mkt, sym, pa) { const k = mkt + ':' + sym; if (!pa.above && !pa.below) delete prices[k]; else prices[k] = pa; wr('prices', prices); },
+    add: a => push(a),
     notifyNow: (title, body) => prefs.notify && notifyPhone(title, body),
     evaluate, flush, save, onChange: f => { onChange = f; },
     async requestPermission() {

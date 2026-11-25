@@ -747,7 +747,7 @@
       const bt = opts.backtest && k !== 'intraday' && k !== 'long' && (opts.backtest !== 'swing' || k === 'swing') ? backtest(I, k) : null;
       const fv = k === 'intraday' ? null : Object.fromEntries(f.filter(x => x[4]).map(x => [x[4], Math.round(x[1] * 1000) / 1000]));
       const lvL = fv ? levels(I, i, k, 1, tick, price) : null; // long-side levels: what the learner scores the call against
-      hz[k] = { label: H[k].label, dur: H[k].dur, score, action: act.a, dir: act.d, noShort: act.noShort, levels: lv, why, bt, fv, calib: E.calib(k, score), lvL: lvL && { sl: lvL.stop, t1: lvL.t1 } };
+      hz[k] = { label: H[k].label, dur: H[k].dur, score, action: act.a, dir: act.d, noShort: act.noShort, levels: lv, why, bt, fv, calib: E.calib(k, score), lvL: lvL && { sl: lvL.stop, t1: lvL.t1, t2: lvL.t2 } };
     }
     const wts = { intraday: 0.15, swing: 0.3, short: 0.25, medium: 0.2, long: 0.1 };
     let s = 0, w = 0; for (const k in wts) if (!hz[k].na) { s += wts[k] * hz[k].score; w += wts[k]; }
@@ -835,7 +835,7 @@
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
     const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt, fv: h.fv, calib: h.calib, lvL: h.lvL } : h;
-    return { t: D.t[D.t.length - 1], price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi };
+    return { t: D.t[D.t.length - 1], price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi, e20: r.stats.e20, e50: r.stats.e50, e200: r.stats.e200, atr: r.stats.atr, hi52: r.stats.hi52, lo52: r.stats.lo52 };
   };
 
   E._factors = (I, i, hz) => factors(I, i, hz, {});

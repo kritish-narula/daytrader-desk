@@ -10,7 +10,7 @@ try:
     rows = list(csv.reader(io.StringIO(get('https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv'))))
     for r in rows[1:]:
         if len(r) > 2 and r[2].strip() in ('EQ', 'BE', 'BZ', 'SM', 'ST'):
-            eq.append([r[0].strip(), r[1].strip()])
+            eq.append([r[0].strip(), r[1].strip(), (r[6].strip() if len(r) > 6 else '')])  # [symbol, name, ISIN]
     print('equities', len(eq))
 except Exception as e:
     print('equity list failed:', e)

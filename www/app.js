@@ -100,6 +100,7 @@ function setLive() { const on = marketOpen(); $('#live').className = 'live' + (o
 function go(tab) { if (tab !== S.tab) S.stack.push(S.tab); if (S.stack.length > 20) S.stack.shift(); S.tab = tab; render(); }
 function back() {
   const sh = document.querySelector('.sheet'); if (sh) { sh.remove(); return true; }
+  if (document.querySelector('#pfBg')) { window.closePfSheet && closePfSheet(); return true; }
   if (window.ChartView && document.querySelector('.cfull')) { ChartView.close(); return true; }
   const sr = $('#sres'); if (sr && sr.innerHTML) { $('#q').value = ''; sr.innerHTML = ''; return true; }
   if (S.stack.length) { S.tab = S.stack.pop(); render(); return true; }
@@ -678,6 +679,7 @@ async function watchTick() {
     await pool(S.saved[mkt], 3, async sym => { const q = await dailyQuick(sym, mkt, Q); if (q.err) return; const row = Object.assign({ sym }, q); upsertRow(mkt, row); const R = rateRow(row, mkt);
       Alerts.evaluate({ sym, mkt, price: q.price, rating: R.rating, action: R.action, setups: q.setups, chartPats: q.chartPats, cross: q.cross, news: newsOf(mkt, sym) }, true); });
   }
+  for (const mkt of ['IN', 'US']) if (marketOpen(mkt) && window.Portfolio && Portfolio.list(mkt).length) await Portfolio.check(mkt).catch(() => {}); // holdings advice + stop/target alerts
   Alerts.save(); Alerts.flush(); updBell();
 }
 
