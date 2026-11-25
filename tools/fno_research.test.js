@@ -106,6 +106,20 @@ t('buildCall: no tuned params → identical call; tuned strike / SL / target / s
   const no = OC.buildCall(Object.assign({}, o, { side: null, blockWhy: 'Tuned filter: x' }), mkChain(), { now }); assert.strictEqual(no.notrade, 'Tuned filter: x');
 });
 
+t('gate: indices switch OFF when default and adopted are negative and every stress row is negative; stay ON when any is positive or n is small', () => {
+  const R = require('./fno_research.js'), ci = [-0.3, 0.1];
+  assert.strictEqual(R.indexEnabled({ n: 77, avgR: -0.12 }, { avgR: -0.18 }, true, ci), false, 'BANKNIFTY case');
+  assert.strictEqual(R.indexEnabled({ n: 77, avgR: -0.12 }, { avgR: -0.18 }, false, ci), true, 'a stress row is positive → keep');
+  assert.strictEqual(R.indexEnabled({ n: 77, avgR: -0.05 }, { avgR: 0.1 }, true, ci), true, 'default positive → keep');
+  assert.strictEqual(R.indexEnabled({ n: 20, avgR: -0.3 }, { avgR: -0.3 }, true, ci), true, 'too few trades → keep');
+  assert.strictEqual(R.indexEnabled({ n: 60, avgR: -0.2 }, { avgR: 0.3 }, false, [-0.4, 0.0]), false, 'clear loss');
+});
+t('disabled index / stock book: NO TRADE reason and card note carry the measured reason', () => {
+  const T = { enabled: false, why: 'Measured on 5y: avg -0.12R over 77 trades.', stats: { test: { n: 77, hit: 31, avgR: -0.12, expPct: -5.8 }, from: 'a', to: 'b' } }, i = OC.tuneInfo(T);
+  assert.ok(!i.enabled && /switched off/.test(OC.tuneText(i)) && /-0.12R/.test(OC.tuneText(i)));
+  const g = OC.stockGate('long', { stocks: { enabled: false, why: 'no edge x' } }); assert.ok(!g.ok && g.why === 'no edge x');
+});
+
 // ---- end-to-end: stub fetch, quick run, schema of the outputs
 t('fno_research.js end-to-end on stub data writes fno_params.json + fno_report.txt', () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'fno-')), r = cp.spawnSync(process.execPath, ['-r', path.join(__dirname, 'fno_stub.js'), path.join(__dirname, 'fno_research.js'), '--quick', '--out', out], { env: Object.assign({}, process.env, { FNO_CACHE: path.join(out, 'cache') }), encoding: 'utf8', timeout: 240000 });
@@ -114,6 +128,6 @@ t('fno_research.js end-to-end on stub data writes fno_params.json + fno_report.t
   assert.ok(j.stocks && j.stocks.signal && j.stocks.exit && typeof j.stocks.enabled === 'boolean');
   for (const h of ['A. DIRECTION SIGNAL', 'B. COORDINATE SEARCH', 'C. OUT-OF-SAMPLE GATE', 'D. RESULT', 'E. ROBUSTNESS', 'STOCK FUTURES', 'SUMMARY']) assert.ok(rep.includes(h), 'report section ' + h);
   // only parameters that beat the default OOS are written: every written key is a known tunable
-  const known = new Set(['enabled', 'sim', 'stats', 'mix', 'thr', 'trend', 'vixPctMax', 'vixMax', 'vixMin', 'gapAgainst', 'gapWith', 'dowSkip', 'bigSkip', 'strike', 'minDays', 'hold', 'sl', 'stopU', 'tgt', 'trail', 'ivSpread']); for (const u in j.index) for (const k in j.index[u]) assert.ok(known.has(k), 'unknown key ' + k);
+  const known = new Set(['enabled', 'why', 'sim', 'stats', 'mix', 'thr', 'trend', 'vixPctMax', 'vixMax', 'vixMin', 'gapAgainst', 'gapWith', 'dowSkip', 'bigSkip', 'strike', 'minDays', 'hold', 'sl', 'stopU', 'tgt', 'trail', 'ivSpread']); for (const u in j.index) for (const k in j.index[u]) assert.ok(known.has(k), 'unknown key ' + k);
 });
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

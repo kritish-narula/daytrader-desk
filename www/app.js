@@ -482,7 +482,7 @@ async function indexOption(sym, mkt = 'IN') {
   const late = open && mins >= T.late; // last hour: time decay hurts fresh option buys
   let ce = bull, pe = 100 - bull; if (late) { ce = Math.max(0, ce - 10); pe = Math.max(0, pe - 10); }
   let side = ce >= thr ? 'CE' : pe >= thr ? 'PE' : null, blockWhy = null, vixI = null;
-  if (side && TP && TP.enabled === false) { const ti = OC.tuneInfo(TP); blockWhy = `Tuned off: the 5-year walk-forward backtest (simulated premiums) found no after-cost edge for ${sym} option calls out-of-sample${ti ? ` (${ti.n} trades, avg ${ti.avgR.toFixed(2)}R)` : ''}. Wait for the next weekly re-test.`; side = null; }
+  if (side && TP && TP.enabled === false) { const ti = OC.tuneInfo(TP); blockWhy = 'Tuned off: ' + (OC.tuneText(ti) || TP.why || 'the 5-year walk-forward backtest found no after-cost edge'); side = null; }
   if (side && TP && OC.needsVix(TP)) vixI = await OC.vixInfo();
   if (side && TP && !blockWhy) { // tuned entry filters (trend / VIX / gap / weekday / exhaustion), measured on the signal bar = last completed session
     const D = d.D, n = D.c.length, bi = open ? n - 2 : n - 1, I = A.I, nowI = new Date(Date.now() + 5.5 * 3600e3); let dow = nowI.getUTCDay();

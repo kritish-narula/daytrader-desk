@@ -122,7 +122,7 @@ const PARAMS = [
 ];
 const keyOf = (p, c) => JSON.stringify(p.get(c));
 const showP = (p, v) => p.show ? p.show(v) : v == null ? 'off' : Array.isArray(v) ? (v.length ? v.join(',') : 'none') : String(v);
-const MINN = 30, MARGIN_IDX = 0.05, MARGIN_STK = 0.03; // a parameter must add ≥ this much net R/trade OUT-OF-SAMPLE to be adopted (noise guard)
+const MINN = 30, MARGIN_IDX = 0.05, MARGIN_STK = 0.03, NFLOOR = 0.6; // NFLOOR: an adopted set may not cut the OOS trade count below 60% of the default's (complexity / overfit guard) // a parameter must add ≥ this much net R/trade OUT-OF-SAMPLE to be adopted (noise guard)
 const objective = st => st.n < MINN ? -99 : st.t;
 
 function search(ev, M, passes, logLines) {
@@ -144,16 +144,16 @@ function search(ev, M, passes, logLines) {
 function select(ev, M, tuned) {
   const def = S.DEFAULT_CFG, base = S.stats(ev.run(def, M.a, M.split)), diff = PARAMS.filter(p => keyOf(p, tuned) !== keyOf(p, def));
   const contrib = diff.map(p => { const c = S.clone(tuned); p.set(c, S.clone(p.get(def))); return { p, drop: S.stats(ev.run(tuned, M.a, M.split)).t - S.stats(ev.run(c, M.a, M.split)).t }; }).sort((a, b) => b.drop - a.drop);
-  let cur = S.clone(def), curT = S.stats(ev.run(cur, M.split, M.b)), curTr = base; const rows = [], defTest = curT;
+  let cur = S.clone(def), curT = S.stats(ev.run(cur, M.split, M.b)), curTr = base; const rows = [], order = [], defTest = curT;
   for (const { p, drop } of contrib) {
     const c2 = S.clone(cur); p.set(c2, S.clone(p.get(tuned)));
     const te = S.stats(ev.run(c2, M.split, M.b)), tr = S.stats(ev.run(c2, M.a, M.split));
-    const enough = te.n >= 20 && te.n >= 0.35 * defTest.n, better = te.avgR > curT.avgR + MARGIN_IDX && tr.avgR >= curTr.avgR - 0.02;
+    const enough = te.n >= 20 && te.n >= NFLOOR * defTest.n, better = te.avgR > curT.avgR + MARGIN_IDX && tr.avgR >= curTr.avgR - 0.02;
     const acc = enough && better;
     rows.push({ k: p.k, lbl: p.lbl, from: showP(p, p.get(cur)), to: showP(p, p.get(tuned)), drop, trainAvgR: tr.avgR, testAvgR: te.avgR, testN: te.n, acc, why: acc ? 'adopted' : !enough ? 'too few OOS trades' : 'no OOS gain' });
-    if (acc) { cur = c2; curT = te; curTr = tr; }
+    if (acc) { cur = c2; curT = te; curTr = tr; order.push(p); }
   }
-  return { cfg: cur, rows };
+  return { cfg: cur, rows, order };
 }
 
 // ---------------------------------------------------------------------------------------------------------------- diagnostics on the underlying (direction signal)
@@ -195,6 +195,8 @@ function indexParams(und, cfg, sel, ev, M, fin) {
   put('minDays', cfg.exit.minDays); put('hold', cfg.exit.hold); put('sl', cfg.exit.sl); put('stopU', cfg.exit.stopU); put('tgt', cfg.exit.tgt); put('trail', cfg.exit.trail); put('ivSpread', cfg.exit.ivSpread);
   return o;
 }
+// calls are switched off when the adopted rules lose clearly, or when default AND adopted are negative out-of-sample and negative in every IV/slippage stress row
+function indexEnabled(sf, sd, allNeg, ci) { return !((sf.n >= 25 && sf.avgR < -0.10 && ci[1] < 0.05) || (sf.n >= 25 && sf.avgR < 0 && sd.avgR < 0 && allNeg)); }
 function runIndex(und, M, L) {
   const sim = { ivm: S.IDX[und].mult }, ev = makeEval(M, sim), T = M.T;
   L.push('', '='.repeat(118), `${und}  (${S.IDX[und].y})   data ${M.D.day[M.a]} → ${M.D.day[M.b]}  ·  TRAIN ${M.D.day[M.a]} → ${M.D.day[M.split - 1]} (${M.split - M.a} sessions)  ·  TEST ${M.splitDay} → ${M.D.day[M.b]} (${M.b - M.split} sessions)  ·  lot ${M.lot}  ·  IV = ${M.vixSrc} × ${sim.ivm} + put skew`, '='.repeat(118));
@@ -202,11 +204,20 @@ function runIndex(und, M, L) {
   const sl = []; const t0 = Date.now(); const res = search(ev, M, QUICK ? 1 : 2, sl);
   L.push('', `B. COORDINATE SEARCH on TRAIN only (${res.evals} configurations, ${((Date.now() - t0) / 1000).toFixed(0)}s; objective = t-stat of net R/trade, n ≥ ${MINN}; +0.05 hysteresis)`, ...sl);
   const sel = select(ev, M, res.cfg);
-  L.push('', 'C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ ' + MARGIN_IDX + ' R, n ≥ 20 and ≥ 35% of default trades)');
+  L.push('', 'C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ ' + MARGIN_IDX + ' R, n ≥ 20 and ≥ ' + NFLOOR * 100 + '% of default trades)');
   L.push(`  ${pad('parameter', 52)}${pad('default → tuned', 44)}${lpad('trainΔt', 8)}${lpad('train R', 8)}${lpad('test R', 8)}${lpad('test n', 7)}  verdict`);
   for (const r of sel.rows) L.push(`  ${pad(r.lbl, 52)}${pad(r.from + ' → ' + r.to, 44)}${lpad(sg(r.drop, 2), 8)}${lpad(sg(r.trainAvgR, 2), 8)}${lpad(sg(r.testAvgR, 2), 8)}${lpad(r.testN, 7)}  ${r.acc ? 'ADOPT' : 'keep default (' + r.why + ')'}`);
   if (!sel.rows.length) L.push('  search found nothing better than the defaults on TRAIN.');
-  const fin = sel.cfg, W = { def: split(ev, M, S.DEFAULT_CFG), tun: split(ev, M, res.cfg), fin: split(ev, M, fin) };
+  // complexity guard: with more than 2 adopted parameters also build the simplest version (first 2 by train contribution); prefer it when its TEST CI overlaps the full version's
+  let fin = sel.cfg, accKeys = sel.order.map(p => p.k), simpleNote = '';
+  if (sel.order.length > 2) {
+    const sc = S.clone(S.DEFAULT_CFG); for (const p of sel.order.slice(0, 2)) p.set(sc, S.clone(p.get(sel.cfg)));
+    const fT = ev.run(sel.cfg, M.split, M.b), sT = ev.run(sc, M.split, M.b), fS = S.stats(fT), sS = S.stats(sT), fC = S.bootCI(fT.map(t => t.R)), sC = S.bootCI(sT.map(t => t.R)), overlap = sC[1] >= fC[0] && fC[1] >= sC[0] && sS.n >= NFLOOR * S.stats(ev.run(S.DEFAULT_CFG, M.split, M.b)).n;
+    simpleNote = `  SIMPLER ALTERNATIVE (${sel.order.slice(0, 2).map(p => p.k).join(' + ')}): TEST n=${sS.n} avgR ${sg(sS.avgR, 2)} CI [${sg(sC[0], 2)}, ${sg(sC[1], 2)}]  vs full (${sel.order.length} params): n=${fS.n} avgR ${sg(fS.avgR, 2)} CI [${sg(fC[0], 2)}, ${sg(fC[1], 2)}]  → ${overlap ? 'CIs overlap: the SIMPLER version is used' : 'CIs do not overlap: the full version is kept'}`;
+    if (overlap) { fin = sc; accKeys = sel.order.slice(0, 2).map(p => p.k); }
+  }
+  const W = { def: split(ev, M, S.DEFAULT_CFG), tun: split(ev, M, res.cfg), fin: split(ev, M, fin) };
+  if (simpleNote) L.push('', simpleNote);
   L.push('', 'D. RESULT (simulated option P&L, 1 lot, after costs + slippage; R = P&L / premium risked at the stop)');
   L.push('  TRAIN'); L.push(line('today\'s defaults', S.stats(W.def.train))); L.push(line('search optimum (unvalidated)', S.stats(W.tun.train))); L.push(line('ADOPTED parameters', S.stats(W.fin.train)));
   L.push('  TEST (out-of-sample)'); const sd = S.stats(W.def.test), sf = S.stats(W.fin.test); L.push(line('today\'s defaults', sd)); L.push(line('search optimum (unvalidated)', S.stats(W.tun.test))); L.push(line('ADOPTED parameters', sf));
@@ -225,9 +236,10 @@ function runIndex(und, M, L) {
   }
   const oos = { n: sf.n, hit: sf.hit, avgR: sf.avgR, expPct: sf.expPct, pf: sf.pf, mdd: sf.mdd, t: sf.t, ci95R: ci, defaultAvgR: sd.avgR, defaultExpPct: sd.expPct, defaultN: sd.n };
   const trainSt = S.stats(W.fin.train);
-  const params = indexParams(und, fin, sel, ev, M);
-  const enabled = !(sf.n >= 25 && sf.avgR < -0.10 && ci[1] < 0.05);
-  return { params: Object.assign({ enabled, sim: { ivMult: sim.ivm, lot: M.lot } }, params, { stats: { train: { n: trainSt.n, hit: trainSt.hit, avgR: trainSt.avgR, expPct: trainSt.expPct }, test: oos, from: M.D.day[M.a], trainTo: M.D.day[M.split - 1], to: M.D.day[M.b] } }), oos, sf, sd, nChanged: sel.rows.filter(r => r.acc).length, robustOK: rob[0][2].avgR > 0 && rob[4][2].avgR > 0 };
+  const params = indexParams(und, fin, { rows: accKeys.map(k => ({ k, acc: true })) }, ev, M);
+  const allNeg = rob.every(r => r[2].avgR < 0), enabled = indexEnabled(sf, sd, allNeg, ci);
+  const offWhy = enabled ? null : `Measured on 5y of data (simulated premiums, ${sf.n} out-of-sample trades): average ${sg(sf.avgR, 2)}R per trade after costs for the best rule set and ${sg(sd.avgR, 2)}R for today's rules${allNeg ? ', negative under every IV/slippage stress' : ''}: no edge.`;
+  return { params: Object.assign({ enabled, why: offWhy, sim: { ivMult: sim.ivm, lot: M.lot } }, params, { stats: { train: { n: trainSt.n, hit: trainSt.hit, avgR: trainSt.avgR, expPct: trainSt.expPct }, test: oos, from: M.D.day[M.a], trainTo: M.D.day[M.split - 1], to: M.D.day[M.b] } }), oos, sf, sd, nChanged: accKeys.length, enabled, robustOK: rob[0][2].avgR > 0 && rob[4][2].avgR > 0 };
 }
 
 // ---------------------------------------------------------------------------------------------------------------- stock futures
@@ -307,13 +319,14 @@ function runStocks(stocks, splitDay, L) {
   // OOS gate, forward selection vs STK_DEF
   const defTe = te(STK_DEF), defTr = tr(STK_DEF); let acc = Object.assign({}, STK_DEF), accTe = defTe, accTr = defTr; const rows = [];
   const keys = SP.map(p => p.k).filter(k => cur[k] !== STK_DEF[k]).map(k => { const c = Object.assign({}, cur, { [k]: STK_DEF[k] }); return { k, drop: tr(cur).t - tr(c).t }; }).sort((a, b) => b.drop - a.drop);
-  for (const { k, drop } of keys) { const c2 = Object.assign({}, acc, { [k]: cur[k] }), t2 = te(c2), r2 = tr(c2), ok = t2.n >= 40 && t2.n >= 0.35 * defTe.n && t2.avgR > accTe.avgR + MARGIN_STK && r2.avgR >= accTr.avgR - 0.02; rows.push(`  ${pad(k, 10)}${pad(STK_DEF[k] + ' → ' + cur[k], 24)} trainΔt ${lpad(sg(drop, 2), 6)}  train R ${lpad(sg(r2.avgR, 2), 6)}  test R ${lpad(sg(t2.avgR, 2), 6)} (n=${t2.n})  ${ok ? 'ADOPT' : 'keep default'}`); if (ok) { acc = c2; accTe = t2; accTr = r2; } }
+  for (const { k, drop } of keys) { const c2 = Object.assign({}, acc, { [k]: cur[k] }), t2 = te(c2), r2 = tr(c2), ok = t2.n >= 40 && t2.n >= NFLOOR * defTe.n && t2.avgR > accTe.avgR + MARGIN_STK && r2.avgR >= accTr.avgR - 0.02; rows.push(`  ${pad(k, 10)}${pad(STK_DEF[k] + ' → ' + cur[k], 24)} trainΔt ${lpad(sg(drop, 2), 6)}  train R ${lpad(sg(r2.avgR, 2), 6)}  test R ${lpad(sg(t2.avgR, 2), 6)} (n=${t2.n})  ${ok ? 'ADOPT' : 'keep default'}`); if (ok) { acc = c2; accTe = t2; accTr = r2; } }
   L.push('', 'C. OUT-OF-SAMPLE GATE', ...(rows.length ? rows : ['  nothing differs from the default.']));
   const fin = acc, trF = accTr, teF = accTe, teTr = runC(fin, splitDay, '9999'), ci = S.bootCI(teTr.map(t => t.R));
   L.push('', 'D. RESULT (after costs)'); L.push(line('default TRAIN', defTr)); L.push(line('default TEST', defTe)); L.push(line('ADOPTED TRAIN', trF)); L.push(line('ADOPTED TEST', teF)); L.push(`  ADOPTED test avgR 95% CI [${sg(ci[0], 2)}, ${sg(ci[1], 2)}] · adopted: ${JSON.stringify(fin)}`);
   for (const sd of ['long', 'short']) { const c = Object.assign({}, fin, { sides: sd }), a = tr(c), b = te(c); L.push(`  side ${pad(sd, 6)} (adopted signal/exit)  TRAIN ${cellS(a)}   TEST ${cellS(b)}`); }
-  const enabled = !(teF.n >= 60 && teF.avgR < -0.05 && ci[1] < 0.05);
-  return { enabled, signal: { fam: fin.fam, thr: fin.thr, sides: fin.sides }, exit: { stopAtr: fin.stopAtr, tgtAtr: fin.tgtAtr, hold: fin.hold }, adopted: Object.keys(STK_DEF).filter(k => fin[k] !== STK_DEF[k]), stats: { train: { n: trF.n, hit: trF.hit, avgR: trF.avgR, expPct: trF.expPct }, test: { n: teF.n, hit: teF.hit, avgR: teF.avgR, expPct: teF.expPct, pf: teF.pf, ci95R: ci, defaultAvgR: defTe.avgR, defaultN: defTe.n } }, famTable: famTable.map(r => ({ fam: r.fam, sides: r.sides, thr: r.thr, trainAvgR: r.trn.avgR, testAvgR: r.tst.avgR, testN: r.tst.n })) };
+  const enabled = !(teF.n >= 60 && ci[1] < 0.05); // no meaningful edge after costs (upper end of the 95% CI below +0.05R) → stock calls off
+  const why = enabled ? null : `Measured on 5y of data (${teF.n} out-of-sample trades, after futures costs): average ${sg(teF.avgR, 2)}R per trade, 95% CI [${sg(ci[0], 2)}, ${sg(ci[1], 2)}] → no meaningful edge; default ${sg(defTe.avgR, 2)}R.`;
+  return { enabled, why, signal: { fam: fin.fam, thr: fin.thr, sides: fin.sides }, exit: { stopAtr: fin.stopAtr, tgtAtr: fin.tgtAtr, hold: fin.hold }, adopted: Object.keys(STK_DEF).filter(k => fin[k] !== STK_DEF[k]), stats: { train: { n: trF.n, hit: trF.hit, avgR: trF.avgR, expPct: trF.expPct }, test: { n: teF.n, hit: teF.hit, avgR: teF.avgR, expPct: teF.expPct, pf: teF.pf, ci95R: ci, defaultAvgR: defTe.avgR, defaultN: defTe.n } }, famTable: famTable.map(r => ({ fam: r.fam, sides: r.sides, thr: r.thr, trainAvgR: r.trn.avgR, testAvgR: r.tst.avgR, testN: r.tst.n })) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------- main
@@ -345,8 +358,8 @@ async function main() {
   // summary
   const S1 = ['', '='.repeat(118), 'SUMMARY (what changes in the app)', '='.repeat(118)];
   for (const [und, r] of verdict) {
-    const p = out.index[und], keys = Object.keys(p).filter(k => !['enabled', 'sim', 'stats'].includes(k));
-    S1.push(`  ${pad(und, 10)} ${r.nChanged ? keys.length + ' parameter(s) tuned: ' + keys.join(', ') : 'defaults kept (nothing beat them out-of-sample)'} · TEST avgR ${sg(r.sf.avgR, 2)} (default ${sg(r.sd.avgR, 2)}), exp ${sg(r.sf.expPct, 1)}%/trade, hit ${f1(r.sf.hit, 0)}%, n=${r.sf.n} · ${p.enabled ? 'calls ON' : 'CALLS OFF: no after-cost edge out-of-sample'}${r.robustOK ? '' : ' · fragile: edge disappears under IV×/slippage stress'}`);
+    const p = out.index[und], keys = Object.keys(p).filter(k => !['enabled', 'why', 'sim', 'stats'].includes(k));
+    S1.push(`  ${pad(und, 10)} ${r.nChanged ? keys.length + ' parameter(s) tuned: ' + keys.join(', ') : 'defaults kept (nothing beat them out-of-sample)'} · TEST avgR ${sg(r.sf.avgR, 2)} (default ${sg(r.sd.avgR, 2)}), exp ${sg(r.sf.expPct, 1)}%/trade, hit ${f1(r.sf.hit, 0)}%, n=${r.sf.n} · ${p.enabled ? 'calls ON' : 'CALLS OFF: ' + (p.why || 'no after-cost edge out-of-sample')}${r.robustOK ? '' : ' · fragile: edge disappears under IV×/slippage stress'}`);
   }
   if (stk) S1.push(`  STOCKS     ${stk.adopted.length ? 'tuned: ' + stk.adopted.join(', ') : 'defaults kept'} · ${stk.signal.fam} ${stk.signal.sides} thr ${stk.signal.thr}; TEST avgR ${sg(stk.stats.test.avgR, 2)} (default ${sg(stk.stats.test.defaultAvgR, 2)}), n=${stk.stats.test.n} · ${stk.enabled ? 'ON' : 'OFF: no OOS edge'}`);
   S1.push('', `Runtime ${((Date.now() - t0) / 60000).toFixed(1)} min.`);
@@ -357,4 +370,4 @@ async function main() {
   console.log(L.join('\n'));
 }
 if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });
-module.exports = { prepIndex, makeEval, PARAMS, search, select, prepStock, stockSide, stockTrade };
+module.exports = { indexEnabled, prepIndex, makeEval, PARAMS, search, select, prepStock, stockSide, stockTrade };

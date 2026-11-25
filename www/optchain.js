@@ -315,7 +315,7 @@
   // 3b. Tuned parameters (data/fno_params.json, weekly walk-forward research by tools/fno_research.js)
   //     Missing file / missing keys → today's constants. Premiums in that research are SIMULATED, so everything here is labelled "backtest".
   // ======================================================================================================
-  const TUNE_META = ['enabled', 'sim', 'stats'];
+  const TUNE_META = ['enabled', 'why', 'sim', 'stats'];
   OC.tunedFor = function (und, P) { P = P || root.FNO_PARAMS; const t = P && P.index && P.index[und]; return t && typeof t === 'object' ? t : null; };
   OC.hasTuned = t => !!t && Object.keys(t).some(k => !TUNE_META.includes(k));
   OC.needsVix = t => !!t && (t.vixMax != null || t.vixMin != null || t.vixPctMax != null || t.ivSpread != null);
@@ -353,16 +353,16 @@
   // one line of measured backtest stats for the card; label makes clear it is simulated
   OC.tuneInfo = function (t) {
     const st = t && t.stats && t.stats.test; if (!st || !(st.n > 0)) return null;
-    return { tuned: OC.hasTuned(t), n: st.n, hit: st.hit, avgR: st.avgR, expPct: st.expPct, from: t.stats.from, to: t.stats.to, ci: st.ci95R || null, enabled: t.enabled !== false };
+    return { tuned: OC.hasTuned(t), why: t.why || null, n: st.n, hit: st.hit, avgR: st.avgR, expPct: st.expPct, from: t.stats.from, to: t.stats.to, ci: st.ci95R || null, enabled: t.enabled !== false };
   };
   OC.tuneText = function (i) {
-    if (!i) return ''; const f = (x, d = 1) => (x >= 0 ? '+' : '') + x.toFixed(d);
+    if (!i) return ''; if (!i.enabled) return `Calls switched off by the weekly 5y backtest: ${i.why || 'no after-cost edge out-of-sample'} (simulated premiums; re-tested every Sunday).`; const f = (x, d = 1) => (x >= 0 ? '+' : '') + x.toFixed(d);
     return `${i.tuned ? 'Tuned on 5y data' : 'Defaults checked on 5y data (nothing beat them)'} · backtest out-of-sample (simulated premiums, after costs): ${f(i.expPct)}% per trade, avg ${f(i.avgR, 2)}R, hit ${Math.round(i.hit)}% over ${i.n} trades. Not a live track record.`;
   };
   // stock F&O gate from the same file: which side the research found an edge on
   OC.stockGate = function (side, P) { // side: 'long' | 'short'
     P = P || root.FNO_PARAMS; const s = P && P.stocks; if (!s) return { ok: true, tuned: false };
-    if (s.enabled === false) return { ok: false, tuned: true, why: `Backtest (5y, out-of-sample ${s.stats && s.stats.test ? s.stats.test.n : '?'} trades) found no after-cost edge in stock futures signals.` };
+    if (s.enabled === false) return { ok: false, tuned: true, why: s.why || `Backtest (5y, out-of-sample ${s.stats && s.stats.test ? s.stats.test.n : '?'} trades) found no after-cost edge in stock futures signals.` };
     const sd = s.signal && s.signal.sides; if (sd && sd !== 'both' && sd !== side) return { ok: false, tuned: true, why: `Backtest found an edge only on the ${sd} side for stock futures.` };
     return { ok: true, tuned: true };
   };
