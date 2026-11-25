@@ -1,43 +1,43 @@
 {
- "generatedAt": "2026-11-25T09:33:20.493Z",
+ "generatedAt": "2026-11-25T10:25:08.220Z",
  "stocks": 80,
  "costNote": "Returns are before costs; a BTST round trip costs roughly 0.25% (delivery STT both sides + charges).",
  "bands": [
   {
    "band": "80+",
-   "n": 1252,
-   "upPct": 49.5,
-   "avgRet": 0.178,
-   "avgGap": 0.315,
-   "t1Pct": 18,
-   "stopPct": 9.3
+   "n": 2420,
+   "upPct": 50.6,
+   "avgRet": 0.157,
+   "avgGap": 0.296,
+   "t1Pct": 16.7,
+   "stopPct": 9.8
   },
   {
    "band": "70–79",
-   "n": 4299,
-   "upPct": 50.4,
-   "avgRet": 0.085,
-   "avgGap": 0.222,
-   "t1Pct": 16.3,
-   "stopPct": 13
+   "n": 4955,
+   "upPct": 49.5,
+   "avgRet": 0.054,
+   "avgGap": 0.205,
+   "t1Pct": 16.2,
+   "stopPct": 14
   },
   {
    "band": "60–69",
-   "n": 9724,
-   "upPct": 49.5,
-   "avgRet": 0.085,
-   "avgGap": 0.175,
-   "t1Pct": 18.4,
-   "stopPct": 18.2
+   "n": 9382,
+   "upPct": 49.8,
+   "avgRet": 0.092,
+   "avgGap": 0.169,
+   "t1Pct": 19.2,
+   "stopPct": 19.4
   },
   {
    "band": "below 60",
-   "n": 66722,
+   "n": 65240,
    "upPct": 51.1,
-   "avgRet": 0.07,
-   "avgGap": 0.111,
+   "avgRet": 0.071,
+   "avgGap": 0.109,
    "t1Pct": 22.7,
-   "stopPct": 44.9
+   "stopPct": 45.4
   }
  ]
 }
