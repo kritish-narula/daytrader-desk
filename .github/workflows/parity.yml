@@ -1,0 +1,20 @@
+name: List vs page parity (real data)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - run: node tools/parity.js
+      - name: Publish
+        run: |
+          git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
+          git add data/parity_report.txt; git diff --cached --quiet && exit 0
+          git commit -m "Parity report $(date -u +%F) [skip ci]"
+          for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && exit 0; sleep $((i*5)); done; exit 1
