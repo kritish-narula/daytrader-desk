@@ -85,6 +85,12 @@ function marketOpen(m = S.mkt) {
   const day = new Intl.DateTimeFormat('en-CA', { timeZone: MK[m].tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   return !(m === 'IN' ? NSE_HOLIDAYS : US_HOLIDAYS).has(day);
 }
+// true while the last daily bar is today's still-forming candle → the engine scores daily horizons on the last completed bar
+function formingBar(D, mkt = S.mkt) {
+  if (!D || !D.t || !D.t.length || !marketOpen(mkt)) return false;
+  const f = new Intl.DateTimeFormat('en-CA', { timeZone: MK[mkt].tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+  return f.format(new Date(D.t[D.t.length - 1] * 1000)) === f.format(new Date());
+}
 // exchange holidays (weekdays). NSE 2026 per exchange calendar; US NYSE 2026.
 const NSE_HOLIDAYS = new Set(['2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26', '2026-03-31', '2026-04-03', '2026-04-14', '2026-05-01', '2026-05-28', '2026-06-26', '2026-09-14', '2026-10-02', '2026-10-20', '2026-11-10', '2026-11-24', '2026-12-25']);
 const US_HOLIDAYS = new Set(['2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25']);
@@ -154,7 +160,7 @@ function newsOf(mkt, sym) { const n = S.news[nkey(mkt, sym)]; return n && Date.n
 function putNews(mkt, sym, N) { S.news[nkey(mkt, sym)] = { s: +(N.score * Math.min(1, N.n / 3)).toFixed(2), n: N.n, top: (N.items.find(i => i.s) || {}).title || '', at: Date.now() }; store.set('news', S.news); }
 async function regime(mkt) { // market trend from the index: nudges ratings ±5
   const r = S.regime[mkt]; if (r && S.idxD[mkt] && Date.now() - r.at < 15 * 60e3) return r.v;
-  try { const { D } = await chart(mkt === 'IN' ? '^NSEI' : '^GSPC', '2y', '1d'); const q = Engine.quick(D, { tick: 0.05 }); const v = Engine.rating(q).signal; S.regime[mkt] = { v, at: Date.now(), ret63: q.ret63 }; S.idxD[mkt] = D; return v; }
+  try { const { D } = await chart(mkt === 'IN' ? '^NSEI' : '^GSPC', '2y', '1d'); const q = Engine.quick(D, { tick: 0.05, live: formingBar(D, mkt) }); const v = Engine.rating(q).signal; S.regime[mkt] = { v, at: Date.now(), ret63: q.ret63 }; S.idxD[mkt] = D; return v; }
   catch (e) { return 50; }
 }
 function rateRow(r, mkt = S.mkt) {
@@ -162,6 +168,14 @@ function rateRow(r, mkt = S.mkt) {
   const isIdx = mkt === 'IN' ? window.IDX_IN.some(x => x[0] === r.sym) : false, n = newsOf(mkt, r.sym);
   return Engine.rating(r, { regime: isIdx ? 50 : (S.regime[mkt] || {}).v, news: n ? n.s : 0, beta: betaOf(r) });
 }
+// a row scored by an older model: a horizon that now has a learned model but was scored by the rules (no `rule` kept), or a
+// different model version. Its number would change the moment the stock page re-scores it → kept out of the ranking until refreshed.
+function rowStale(r) {
+  if (!r || r.err) return false;
+  const lin = Engine.MODEL.lin || {}; return Object.keys(lin).some(h => r[h] && !r[h].na && r[h].rule == null);
+}
+// scored with other factor weights (model retrained since): still listed, but re-scored first by the rolling refresh
+const rowOld = r => !!(r && !r.err && (rowStale(r) || (r.mv && Engine.MODEL.v && r.mv !== Engine.MODEL.v)));
 function hzRate(r, hz, mkt = S.mkt) {
   if (!r || !r[hz] || r[hz].na) return null;
   const n = newsOf(mkt, r.sym), isIdx = mkt === 'IN' && window.IDX_IN.some(x => x[0] === r.sym);
@@ -189,7 +203,7 @@ async function dailyQuick(sym, mkt, Q) {
   // the close before the range start). mStock quote when connected, else Yahoo's last price, marked src 'yf'.
   const mq = Q && Q[sym], hasMs = !!(mq && mq.last_price);
   const b = MS.basis(D, { mkt, lp: hasMs ? mq.last_price : meta.regularMarketPrice, pq: hasMs && mq.ohlc ? mq.ohlc.close : null, q: mq, ms: hasMs, ts: meta.regularMarketTime });
-  const q = Engine.quick(D, { intra, tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price: b ? b.price : undefined });
+  const q = Engine.quick(D, { intra, tick: MK[mkt].tick, canShort: mkt === 'US' || isFno(sym), price: b ? b.price : undefined, live: formingBar(D, mkt) });
   if (!q.err && intra) q.intraAt = Date.now();
   if (!q.err) try { q.btst = Engine.btst(D, intra, { regime: (S.regime[mkt] || {}).v, nifChg: idxChg(mkt), frac: sessionFrac(mkt) }); } catch (e) {}
   if (!q.err && b && b.prev) { q.chg = (q.price / b.prev - 1) * 100; q.prev = b.prev; }
@@ -206,7 +220,7 @@ const HZ = ['intraday', 'swing', 'short', 'medium', 'long'], HZL = { intraday: '
 function rated(rows, f, mkt = S.mkt) {
   const out = [], minT = S.minTurnover[mkt] || 0;
   for (const r of rows) {
-    if (!r || r.err) continue;
+    if (!r || r.err || rowStale(r)) continue;
     if (minT && r.turnover != null && r.turnover < minT) continue;
     if (HZ.includes(f)) {
       if (f === 'intraday' && marketOpen(mkt) && !freshIntra(r)) continue; // not yet rated on today's 5-min candles
@@ -466,7 +480,7 @@ async function indexOption(sym, mkt = 'IN') {
     if (ov && ov.prev) live.prev = ov.prev; // guarded previous close (mStock may switch ohlc.close to today's close after 15:30)
     if (open && live.key.tok) { try { const D5 = await MS.candles(sym, '5minute', 5); if (D5.c.length > 20) { D5.c[D5.c.length - 1] = live.price; it = { D: D5 }; srcLbl = 'mStock live · mStock 5-min bars'; } } catch (e) {} }
   }
-  const A = Engine.analyze(d.D, { intra: open && it ? it.D : null, tick: US ? 0.01 : 0.05, canShort: true, backtest: true, price, fnoSym: sym, lot: foLot(sym, mkt) });
+  const A = Engine.analyze(d.D, { intra: open && it ? it.D : null, live: formingBar(d.D, mkt), tick: US ? 0.01 : 0.05, canShort: true, backtest: true, price, fnoSym: sym, lot: foLot(sym, mkt) });
   if (A.err) throw new Error(A.err);
   if (live && !live.err && live.prev) A.chg = (live.price / live.prev - 1) * 100;
   const row = Object.assign({ sym }, rowFromA(A)), ctx = { regime: 50, news: 0, canShort: true };
@@ -740,8 +754,8 @@ async function watchTick() {
 // ---------- detail ----------
 function openDetail(sym, hz) { S.detail = { sym, mkt: S.mkt }; S.hz = hz || 'overall'; go('detail'); }
 function rowFromA(A) { // same shape as a scan row, so the list shows the same rating
-  const slim = h => h && !h.na ? { score: h.score, action: h.action, dir: h.dir, bt: h.bt } : h, H = A.horizons;
-  return { price: A.price, chg: A.chg, overall: A.overall, act: A.overallAction, swing: slim(H.swing), short: slim(H.short), intraday: slim(H.intraday), medium: slim(H.medium), long: slim(H.long),
+  const slim = h => h && !h.na ? Object.assign({ score: h.score, action: h.action, dir: h.dir, bt: h.bt }, h.rule != null ? { rule: h.rule } : {}) : h, H = A.horizons;
+  return { mv: Engine.MODEL.v || 0, barT: A.barT, live: A.live, price: A.price, chg: A.chg, overall: A.overall, act: A.overallAction, swing: slim(H.swing), short: slim(H.short), intraday: slim(H.intraday), medium: slim(H.medium), long: slim(H.long),
     horizons: { swing: slim(H.swing), short: slim(H.short), medium: slim(H.medium), long: slim(H.long) }, turnover: A.stats.turnover, ret63: A.stats.ret63, risk: A.risk || null, patterns: A.patterns.map(p => ({ n: p.n, b: p.b })), setups: A.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (A.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: A.cross, volx: A.stats.volx, rsi: A.stats.rsi };
 }
 async function loadDetail() {
@@ -770,7 +784,7 @@ async function loadDetail() {
   let news = S.detail.news;
   if (!news || Date.now() - news.at > 5 * 60e3) { try { news = Object.assign(await News.get(ys, nameOf(sym, mkt), mkt === 'IN'), { at: Date.now() }); putNews(mkt, sym, news); } catch (e) { news = { items: [], score: 0, n: 0, err: e.message, at: Date.now() }; } }
   await regime(mkt);
-  const A = Engine.analyze(d.D, { intra: it && marketOpen(mkt) ? it.D : null, tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
+  const A = Engine.analyze(d.D, { intra: it && marketOpen(mkt) ? it.D : null, live: formingBar(d.D, mkt), tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
   if (prev && !A.err) { A.chg = (A.price / prev - 1) * 100; A.prev = prev; }
   if (!A.err) A.risk = riskOf(d.D, mkt, sym);
   if (!A.err && window.Learn) { Learn.resolve(sym, mkt, d.D); Learn.log(sym, mkt, A.horizons, d.D.t[d.D.t.length - 1], A.price); }

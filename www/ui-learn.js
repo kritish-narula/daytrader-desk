@@ -21,7 +21,7 @@ function vAI() {
    <div>1 · <b>Every Sunday</b> it replays 5 years of 80 NSE stocks, re-tunes each factor's weight and re-measures every score band and setup.</div>
    <div>2 · <b>Champion vs challenger:</b> new weights go live only if they predict better on 40 stocks they were not tuned on. Otherwise the old model stays.</div>
    <div>3 · <b>On your phone</b> every rating is logged and graded when the horizon ends: did it hit Target 1 before the stop?</div>
-   <div>4 · Your results refine the score bands and nudge weights (max ±50%). A nudge that makes later results worse is <b>rolled back</b> automatically.</div></div>
+   <div>4 · Your results refine the score bands (win-rate per score). Weight nudges from your phone are tracked and shown below but not applied, so the list and the stock page always score the same way; weights are retrained on GitHub.</div></div>
   <h3>Score bands → what actually happened</h3>
   <div class="chips" id="aiHz">${hzs.map(h => `<button class="chip ${h === sel ? 'on' : ''}" data-h="${h}">${L[h]}</button>`).join('')}</div>
   <div class="card"><table class="ai-t"><tr><th>Score</th><th>Hit T1</th><th>Avg return</th><th>Signals</th><th>Your phone</th></tr>

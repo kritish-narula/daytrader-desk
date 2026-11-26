@@ -479,6 +479,7 @@
   feat('vcr', 'stock', 'Volatility contraction (10d / 60d range)', X => { const r = j => (X.D.h[j] - X.D.l[j]) / X.D.c[j]; const a = avgOf(X, 10, r), b = avgOf(X, 60, r); return b > 0 ? a / b : NaN; });
   feat('volTr', 'stock', 'Volume trend (20d / 60d)', X => { const v = j => X.D.v[j] || 0; const a = avgOf(X, 20, v), b = avgOf(X, 60, v); return b > 0 ? Math.log(a / b) : NaN; });
   feat('volx', 'stock', "Today's volume vs 20d average", X => X.I.v20[X.i - 1] > 0 ? Math.log(Math.max(0.05, X.D.v[X.i] / X.I.v20[X.i - 1])) : NaN);
+  feat('volx5', 'stock', 'Volume vs 20d average, 5-day mean', X => X.i >= 25 && X.I.v20[X.i - 5] > 0 ? Math.log(Math.max(0.05, avgOf(X, 5, j => X.D.v[j] || 0) / X.I.v20[X.i - 5])) : NaN);
   feat('d20', 'stock', 'Distance from 20 EMA (ATRs)', X => (X.c - X.I.e20[X.i]) / X.A);
   feat('d50', 'stock', 'Distance from 50 EMA (ATRs)', X => (X.c - X.I.e50[X.i]) / X.A);
   feat('d200', 'stock', 'Distance from 200 EMA (ATRs)', X => (X.c - X.I.e200[X.i]) / X.A);
@@ -521,6 +522,17 @@
     for (const [k, x] of Object.entries(ctx.fv || {})) F['f.' + k] = ok(x) ? x : 0;
     return F;
   };
+  // feature vector at an earlier bar j (no news, no cross-sectional values — research.js records exactly this for every lag), plus the
+  // rule score of every horizon at that bar. ctx: {m: alignMarket(...) | null, hz: horizons whose factors enter fv (default all four)}
+  const LIN_HZ = ['swing', 'short', 'medium', 'long'];
+  E.featuresAt = function (I, j, ctx = {}) {
+    const fv = {}, rule = {};
+    for (const hz of ctx.hz || LIN_HZ) { const f = factors(I, j, hz, {}); for (const x of f) if (x[4]) fv[x[4]] = x[1]; rule[hz] = toScore(combine(f)); }
+    return { F: E.features(I, j, { fv, m: ctx.m || null }), rule };
+  };
+  // score smoothing (model.json lin[hz].smooth = k): the learned score averages the model's raw output over the last k completed
+  // bars. Absent / 1 = single bar (the original behaviour). F may be one feature object or frames [F(i), F(i-1), …].
+  E.linK = L => (L && L.smooth != null ? L.smooth | 0 : 1) || 1;
   E.featScope = k => k.startsWith('f.') ? 'stock' : ((E.FEATS.find(q => q.k === k) || {}).scope || 'stock');
   // standardisation shared with research.js: winsorise to [lo, hi], z-score, cap ±5; missing → 0 for engine factors (didn't fire),
   // neutral (z = 0) for everything else
@@ -540,6 +552,7 @@
     const n = L.features.length, arr = k => Array.isArray(L[k]) && L[k].length === n && L[k].every(ok);
     if (!['weights', 'mu', 'sd', 'lo', 'hi'].every(arr) || !L.cal || !Array.isArray(L.cal.x) || !Array.isArray(L.cal.y) || L.cal.x.length < 2 || L.cal.x.length !== L.cal.y.length) return false;
     if (!L.cal.x.every(ok) || !L.cal.y.every(ok) || L.cal.x.some((x, j) => j && x < L.cal.x[j - 1])) return false;
+    if (L.smooth != null && !(Number.isInteger(L.smooth) && L.smooth >= 1 && L.smooth <= 10)) return false;
     return [L.intercept || 0, L.mmu, L.msd, L.rmu, L.rsd, L.blend].every(ok) && L.msd > 0 && L.rsd > 0 && L.blend >= 0 && L.blend <= 1;
   };
   // raw linear model output (before blending) for a feature object F
@@ -549,14 +562,23 @@
     return s;
   };
   // blended + calibrated 0–100 score: blend × model (z) + (1 − blend) × rule score (z), mapped by L.cal
+  // (smoothed: mean of E.linRaw over the first k frames, k = L.smooth, fewer if fewer frames; research.js mirrors this exactly)
   E.linScore = function (L, F, rule) {
-    const m = (E.linRaw(L, F) - L.mmu) / L.msd, r = (rule - L.rmu) / L.rsd, raw = L.blend * m + (1 - L.blend) * r;
+    const Fs = Array.isArray(F) ? F : [F], k = Math.max(1, Math.min(E.linK(L), Fs.length));
+    let acc = 0; for (let t = 0; t < k; t++) acc += E.linRaw(L, Fs[t]);
+    const m = (acc / k - L.mmu) / L.msd, r = (rule - L.rmu) / L.rsd, raw = L.blend * m + (1 - L.blend) * r;
     return Math.round(clamp(E.calMap(L.cal, raw), 0, 100));
   };
-  // top contributions of a learned model, for the "why" list: [{k, lbl, c}] (c = weight × z)
+  // top contributions of a learned model, for the "why" list: [{k, lbl, c}] (c = weight × z, averaged over the smoothing frames);
+  // features sharing a label (e.g. the same setup factor of several horizons) are merged into one entry
   E.linWhy = function (L, F, n = 3, names) {
-    return L.features.map((k, j) => ({ k, lbl: (names && names[k]) || (E.FEATS.find(q => q.k === k) || {}).lbl || (k.startsWith('f.') ? E.label(k.slice(2)) : k), c: L.weights[j] * E.zFeat(k, F[k], L.lo[j], L.hi[j], L.mu[j], L.sd[j]) }))
-      .filter(x => Math.abs(x.c) > 1e-6).sort((a, b) => Math.abs(b.c) - Math.abs(a.c)).slice(0, n);
+    const Fs = Array.isArray(F) ? F : [F], K = Math.max(1, Math.min(E.linK(L), Fs.length)), by = new Map();
+    L.features.forEach((k, j) => {
+      const lbl = (names && names[k]) || (E.FEATS.find(q => q.k === k) || {}).lbl || (k.startsWith('f.') ? E.label(k.slice(2)) : k);
+      let c = 0; for (let t = 0; t < K; t++) c += L.weights[j] * E.zFeat(k, Fs[t][k], L.lo[j], L.hi[j], L.mu[j], L.sd[j]);
+      const e = by.get(lbl); if (e) e.c += c / K; else by.set(lbl, { k, lbl, c: c / K });
+    });
+    return [...by.values()].filter(x => Math.abs(x.c) > 1e-6).sort((a, b) => Math.abs(b.c) - Math.abs(a.c)).slice(0, n);
   };
 
   // ---------- verdicts ----------
@@ -852,8 +874,13 @@
   // D: {t,o,h,l,c,v} daily bars (oldest first); opts: {intra, tick, canShort, backtest, fnoSym, lot}
   E.analyze = function (D, opts = {}) {
     if (!D || D.c.length < 60) return { err: 'Not enough price history (need 60+ days).' };
+    // opts.live: the last daily bar is today's still-forming candle (market open). Daily horizons, patterns and setups are then
+    // scored on the last COMPLETED bar — the models were trained on full-day bars, and a forming candle (half a day's volume,
+    // a close that is not a close) made the score jump every few minutes. The live price still sets levels and the day change.
+    const D0 = D; let live = false;
+    if (opts.live && D.c.length > 61) { D = Object.fromEntries(Object.entries(D).map(([k, v]) => [k, Array.isArray(v) ? v.slice(0, -1) : v])); live = true; }
     const tick = opts.tick || 0.05, I = E.indicators(D), i = I.n - 1;
-    const price = opts.price || D.c[i];
+    const price = opts.price || D0.c[D0.c.length - 1], prevC = live ? D0.c[D0.c.length - 2] : D.c[i - 1];
     const hz = {}, FS = {};
     for (const k of Object.keys(H)) {
       if ((k === 'medium' && I.n < 160) || (k === 'long' && I.n < 210)) continue;
@@ -864,8 +891,11 @@
     const LIN = E.MODEL.lin || {}; let FV = null;
     if (Object.keys(LIN).some(k => FS[k] && k !== 'intraday')) {
       const fv = {}; for (const k in FS) if (k !== 'intraday') for (const x of FS[k]) if (x[4]) fv[x[4]] = x[1];
-      const M = opts.idx || E.CTX.idx;
-      FV = E.features(I, i, { fv, m: M ? E.alignMarket(D, M) : null, xs: opts.xs || null });
+      const M = opts.idx || E.CTX.idx, MA = M ? E.alignMarket(D, M) : null;
+      FV = E.features(I, i, { fv, m: MA, xs: opts.xs || null });
+      // smoothed models (lin[hz].smooth = k): feature frames of the k−1 previous bars, computed once for every horizon
+      const kMax = Math.max(1, ...Object.keys(LIN).filter(k => FS[k] && k !== 'intraday').map(k => E.linK(LIN[k])));
+      if (kMax > 1) { const hzs = Object.keys(FS).filter(k => k !== 'intraday'); FV = [FV]; for (let t = 1; t < kMax && i - t >= 30; t++) FV.push(E.featuresAt(I, i - t, { m: MA, hz: hzs }).F); }
     }
     for (const k of Object.keys(H)) {
       if (!FS[k]) { hz[k] = { na: true, label: H[k].label, dur: H[k].dur }; continue; }
@@ -886,7 +916,7 @@
     const pats = E.patterns(I, tick), cross = E.emaCross(I), sets = E.setups(I, i, tick);
     const hi52 = maxIn(D.h, i - 251, i), lo52 = minIn(D.l, i - 251, i);
     const res = {
-      price, prev: D.c[i - 1], chg: (price / D.c[i - 1] - 1) * 100, overall, overallAction: action(overall, 'overall', opts.canShort).a,
+      price, prev: prevC, chg: (price / prevC - 1) * 100, live, barT: D.t[i], overall, overallAction: action(overall, 'overall', opts.canShort).a,
       horizons: hz, patterns: pats, cross, setups: sets, chartPats: E.chartPatterns(I, tick), srLevels: E.levels(I),
       stats: { ret63: I.n > 63 ? (D.c[i] / D.c[i - 63] - 1) * 100 : NaN, ret126: I.n > 126 ? (D.c[i] / D.c[i - 126] - 1) * 100 : NaN, turnover: (() => { let s = 0, m = 0; for (let j = Math.max(0, i - 19); j <= i; j++) { s += D.c[j] * (D.v[j] || 0); m++; } return s / m; })(), rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
       I,
@@ -1028,7 +1058,7 @@
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
     const slim = h => h && !h.na ? Object.assign({ score: h.score, action: h.action, dir: h.dir, bt: h.bt, fv: h.fv, calib: h.calib, lvL: h.lvL }, h.rule != null ? { rule: h.rule } : {}) : h;
-    return { t: D.t[D.t.length - 1], price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi, e20: r.stats.e20, e50: r.stats.e50, e200: r.stats.e200, atr: r.stats.atr, hi52: r.stats.hi52, lo52: r.stats.lo52 };
+    return { t: D.t[D.t.length - 1], barT: r.barT, live: r.live, mv: E.MODEL.v || 0, price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi, e20: r.stats.e20, e50: r.stats.e50, e200: r.stats.e200, atr: r.stats.atr, hi52: r.stats.hi52, lo52: r.stats.lo52 };
   };
 
   E._factors = (I, i, hz) => factors(I, i, hz, {});

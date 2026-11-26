@@ -38,7 +38,9 @@ const Learn = (() => {
         if (rm && rm.v > (E.MODEL.v || 0) && E.setModel(rm)) { store.set('modelRemote', rm); src = 'downloaded'; apply(); } } catch (e) {}
     })();
   }
-  function apply() { E.LOCAL.w = st.on ? Object.assign({}, st.adj) : {}; E.LOCAL.calib = st.on ? bands() : {}; }
+  // Phone-side weight nudges are tracked (shown on the AI screen) but NOT applied to scores: the auto scan on GitHub cannot see
+  // them, so applying them made the list (GitHub-scored) and the stock page (phone-scored) disagree. Weights are learned in CI.
+  function apply() { E.LOCAL.w = {}; E.LOCAL.calib = st.on ? bands() : {}; }
 
   // ---------- journal ----------
   function log(sym, mkt, horizons, t, price) {

@@ -30,7 +30,8 @@ async function pool(items, n, fn) { let i = 0; const out = []; await Promise.all
   if (!eq) { console.log('NSE equity list unavailable — keeping the last morning scan'); process.exitCode = 0; return; }
   const fo = new Set(Object.keys(nse.fo || {})), cat = nse.cat || {};
   const idx = await yahoo('^NSEI'); if (!idx) throw new Error('Nifty data unavailable');
-  const iq = E.quick(idx.D, { tick: 0.05 }), regime = E.rating(iq).signal;
+  const session = hm >= '09:15' && hm < '15:30', liveOf = D => session && D.day[D.day.length - 1] === today; // forming candle → score the last completed bar (same rule as the app)
+  const iq = E.quick(idx.D, { tick: 0.05, live: liveOf(idx.D) }), regime = E.rating(iq).signal;
   const phase = hm < '09:15' ? 'pre-open' : 'after open';
   console.log(`Morning scan ${today} ${hm} IST (${phase}) · ${eq.length} NSE stocks · Nifty regime ${regime}`);
 
@@ -38,7 +39,7 @@ async function pool(items, n, fn) { let i = 0; const out = []; await Promise.all
   const rows = (await pool(eq, CONC, async ([sym]) => {
     const y = await yahoo(sym + '.NS'); if (!y || y.D.c.length < 60) { fail++; return null; }
     const D = y.D, n = D.c.length - 1;
-    const q = E.quick(D, { tick: 0.05, canShort: fo.has(sym), price: y.meta.regularMarketPrice || D.c[n] });
+    const q = E.quick(D, { tick: 0.05, canShort: fo.has(sym), price: y.meta.regularMarketPrice || D.c[n], live: liveOf(D) });
     if (q.err) { fail++; return null; }
     const frac = hm < '09:15' || hm >= '15:30' ? 1 : Math.max(0.05, ((+hm.slice(0, 2)) * 60 + (+hm.slice(3)) - 555) / 375);
     try { q.btst = E.btst(D, null, { regime, nifChg: iq.chg, frac }); } catch (e) {}

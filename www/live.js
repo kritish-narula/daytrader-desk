@@ -58,16 +58,20 @@ const Live = (() => {
   const ageOf = (r, sc) => Date.now() - (r.at || sc.at || 0);
   async function rerate() {
     const mkt = S.mkt, sc = S.scan[mkt];
-    if (reBusy || S.scanning || !sc || document.hidden || !marketOpen(mkt)) return;
+    const stale = sc && typeof rowOld === 'function' ? sc.rows.filter(rowOld) : []; // scored by an older model → re-score even after hours
+    if (reBusy || S.scanning || !sc || document.hidden || (!marketOpen(mkt) && !stale.length)) return;
     reBusy = true; lastRerate = Date.now();
     try {
       const by = new Map(sc.rows.map(r => [r.sym, r])), pick = [], seen = new Set();
       const add = (s, minAge) => { if (seen.has(s) || pick.length >= 25) return; const r = by.get(s); if (r && ageOf(r, sc) < minAge) return; seen.add(s); pick.push(s); };
       visible().forEach(r => add(r.dataset.sym, 3 * 60e3));
+      stale.forEach(r => add(r.sym, 0));
+      if (!marketOpen(mkt)) { if (!pick.length) return; } else {
       const mine = [...(window.Portfolio ? Portfolio.list(mkt).map(h => h.sym) : []), ...(S.saved[mkt] || []), ...((window.Trades && Trades.openSyms) ? Trades.openSyms(mkt) : [])];
       mine.forEach(s => add(s, 5 * 60e3));
       if (S.tab === 'scan') [...document.querySelectorAll('#sl .row.gf[data-sym]')].forEach(r => add(r.dataset.sym, 10 * 60e3));
       const uni = new Set(uniSyms()); sc.rows.filter(r => uni.has(r.sym)).sort((a, b) => (a.at || sc.at || 0) - (b.at || sc.at || 0)).forEach(r => add(r.sym, 30 * 60e3));
+      }
       if (!pick.length) return;
       const Q = await msQuotes(pick, mkt); let n = 0;
       await pool(pick, 4, async s => { try { const q = await dailyQuick(s, mkt, Q); if (!q.err) { if (by.has(s)) upsertRow(mkt, Object.assign({ sym: s, at: Date.now() }, q)); n++; } } catch (e) {} });
