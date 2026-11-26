@@ -1,0 +1,49 @@
+List vs page parity · 2026-11-26T13:27:18.165Z · scan_in 2026-11-26T12:52:21.978Z · model v25 · lin: swing,short · 198 stocks
+
+== SWING (learned model)
+  quick vs page (same data, same moment):     n=198 median 0 p90 0 max 0 >10pts 0
+  list (CI row) vs page now:                  n=198 median 0 p90 0 max 0 >10pts 0
+  page vs page with last bar dropped:         n=198 median 6 p90 23 max 50 >10pts 60
+  page vs page on 1y history (mStock path):   n=198 median 0 p90 0 max 4 >10pts 0
+   FAZE3Q       list 90 quick 90 page 90 drop1 88 1y 90 rule 73 sameBar true · drivers ADX 14 0.87, Volume trend (20d / 60d) 0.51, 5-day return 0.36
+   REGAAL       list 89 quick 89 page 89 drop1 80 1y 89 rule 72 sameBar true · drivers ADX 14 0.58, Liquidity (log10 ₹ turnover, 20d) 0.44, Distance from 52-week high 0.3
+   APLLTD       list 90 quick 90 page 90 drop1 85 1y 90 rule 83 sameBar true · drivers ADX 14 0.86, Volume trend (20d / 60d) 0.44, Distance from 52-week high 0.28
+   ASAHIINDIA   list 88 quick 88 page 88 drop1 82 1y 88 rule 76 sameBar true · drivers ADX 14 0.86, Distance from 52-week high 0.36, Volume trend (20d / 60d) 0.34
+   PVRINOX      list 92 quick 92 page 92 drop1 82 1y 92 rule 77 sameBar true · drivers ADX 14 1.08, Today's return 0.33, Close location in the day range 0.27
+   VRLLOG       list 89 quick 89 page 89 drop1 87 1y 89 rule 55 sameBar true · drivers Volume trend (20d / 60d) 0.51, ADX 14 0.32, Today's return 0.32
+
+== SHORT (learned model)
+  quick vs page (same data, same moment):     n=198 median 0 p90 0 max 0 >10pts 0
+  list (CI row) vs page now:                  n=198 median 0 p90 0 max 0 >10pts 0
+  page vs page with last bar dropped:         n=198 median 3 p90 11 max 23 >10pts 23
+  page vs page on 1y history (mStock path):   n=198 median 0 p90 0 max 21 >10pts 4
+   FAZE3Q       list 75 quick 75 page 75 drop1 79 1y 75 rule 68 sameBar true · drivers Liquidity (log10 ₹ turnover, 20d) 0.38, 1-month return 0.18, Active bullish setup (SMC / VCP / trend) 0.14
+   REGAAL       list 91 quick 91 page 91 drop1 87 1y 91 rule 71 sameBar true · drivers Liquidity (log10 ₹ turnover, 20d) 0.8, Drawdown from 52-week closing high 0.23, Distance from 52-week high 0.22
+   APLLTD       list 83 quick 83 page 83 drop1 76 1y 83 rule 80 sameBar true · drivers Active bullish setup (SMC / VCP / trend) 0.22, Active bullish setup (SMC / VCP / trend) 0.22, Active bullish setup (SMC / VCP / trend) 0.22
+   ASAHIINDIA   list 84 quick 84 page 84 drop1 80 1y 84 rule 77 sameBar true · drivers Liquidity (log10 ₹ turnover, 20d) 0.3, Distance from 52-week high 0.27, Drawdown from 52-week closing high 0.25
+   PVRINOX      list 77 quick 77 page 77 drop1 67 1y 77 rule 76 sameBar true · drivers Today's return 0.22, Distance from 52-week high 0.19, Drawdown from 52-week closing high 0.19
+   VRLLOG       list 79 quick 79 page 79 drop1 81 1y 79 rule 63 sameBar true · drivers Today's return 0.21, Close location in the day range 0.17, Active bullish setup (SMC / VCP / trend) 0.16
+
+== MEDIUM (rule score)
+  quick vs page (same data, same moment):     n=198 median 0 p90 0 max 0 >10pts 0
+  list (CI row) vs page now:                  n=198 median 0 p90 0 max 0 >10pts 0
+  page vs page with last bar dropped:         n=198 median 1 p90 4 max 18 >10pts 3
+  page vs page on 1y history (mStock path):   n=198 median 1 p90 2 max 7 >10pts 0
+   FAZE3Q       list 57 quick 57 page 57 drop1 59 1y 58 rule  – sameBar true
+   REGAAL       list 62 quick 62 page 62 drop1 65 1y 64 rule  – sameBar true
+   APLLTD       list 74 quick 74 page 74 drop1 74 1y 75 rule  – sameBar true
+   ASAHIINDIA   list 78 quick 78 page 78 drop1 78 1y 77 rule  – sameBar true
+   PVRINOX      list 82 quick 82 page 82 drop1 86 1y 82 rule  – sameBar true
+   VRLLOG       list 66 quick 66 page 66 drop1 68 1y 65 rule  – sameBar true
+
+== LONG (rule score)
+  quick vs page (same data, same moment):     n=198 median 0 p90 0 max 0 >10pts 0
+  list (CI row) vs page now:                  n=198 median 0 p90 0 max 0 >10pts 0
+  page vs page with last bar dropped:         n=198 median 1 p90 2 max 7 >10pts 0
+  page vs page on 1y history (mStock path):   n=198 median 1 p90 5 max 21 >10pts 3
+   FAZE3Q       list 52 quick 52 page 52 drop1 52 1y 53 rule  – sameBar true
+   REGAAL       list 58 quick 58 page 58 drop1 59 1y 61 rule  – sameBar true
+   APLLTD       list 62 quick 62 page 62 drop1 62 1y 65 rule  – sameBar true
+   ASAHIINDIA   list 68 quick 68 page 68 drop1 68 1y 67 rule  – sameBar true
+   PVRINOX      list 80 quick 80 page 80 drop1 82 1y 79 rule  – sameBar true
+   VRLLOG       list 59 quick 59 page 59 drop1 60 1y 59 rule  – sameBar true
