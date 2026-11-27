@@ -1,169 +1,169 @@
-DayTrader Desk · F&O research · 2026-11-25T10:29:05.912Z
+DayTrader Desk · F&O research · 2026-11-27T14:22:39.467Z
 All option premiums are SIMULATED (Black-Scholes, IV = India VIX × per-index factor + put skew). Results rank rules; they are not live results.
 STT/costs: {"optSttSell":0.0015,"slipOpt":0.01} (STT 0.15% on premium from 2026-04-01) · lots {"NIFTY":65,"BANKNIFTY":30,"FINNIFTY":60,"MIDCPNIFTY":120,"SENSEX":20}
 
 ======================================================================================================================
-NIFTY  (^NSEI)   data 2021-10-14 → 2026-11-23  ·  TRAIN 2021-10-14 → 2024-11-05 (756 sessions)  ·  TEST 2024-11-06 → 2026-11-23 (504 sessions)  ·  lot 65  ·  IV = ^INDIAVIX × 1 + put skew
+NIFTY  (^NSEI)   data 2021-10-19 → 2026-11-26  ·  TRAIN 2021-10-19 → 2024-11-07 (756 sessions)  ·  TEST 2024-11-08 → 2026-11-26 (504 sessions)  ·  lot 65  ·  IV = ^INDIAVIX × 1 + put skew
 ======================================================================================================================
 
 A. DIRECTION SIGNAL (underlying only)
   Directional underlying return after the signal, entry at next OPEN → close of day 1 / 2 / 3 (bp, after nothing: pure direction, no option costs).
 
   Mean reversion after big days (all days, no signal needed): sign = +1 continuation, −1 reversal of the last close-to-close move; return of next day open→close in bp (direction = same as the big move):
-  |move| ≥ 1σ: TRAIN n=247   -6.3bp | TEST n=160   +0.7bp
-  |move| ≥ 1.5σ: TRAIN n=104  -16.0bp | TEST n= 75   -0.4bp
+  |move| ≥ 1σ: TRAIN n=247   -6.2bp | TEST n=160   -0.5bp
+  |move| ≥ 1.5σ: TRAIN n=106  -16.6bp | TEST n= 74   +0.0bp
   |move| ≥ 2σ: TRAIN n= 42  -36.2bp | TEST n= 22   -5.7bp
   |move| ≥ 2.5σ: TRAIN n= 13  -85.8bp | TEST n= 10  -21.0bp
-  mix 0.3/0.7/0 @65                 TRAIN n= 80 hit  48%   -11/   -7/  -20bp  | TEST n= 58 hit  50%    +6/   +5/  +11bp
-  mix 0/1/0 @65                     TRAIN n= 99 hit  54%    +1/   +6/   -4bp  | TEST n= 97 hit  46%    -0/   +6/  +13bp
-  mix 0.15/0.85/0 @65               TRAIN n= 79 hit  52%    -5/   +3/   -5bp  | TEST n= 70 hit  51%    +3/   +8/  +10bp
-  mix 0.5/0.5/0 @65                 TRAIN n=103 hit  49%   -11/   -4/  -19bp  | TEST n= 64 hit  48%    +6/  +14/  +28bp
-  mix 0/0.7/0.3 @65                 TRAIN n= 81 hit  47%   -10/  -17/  -33bp  | TEST n= 78 hit  50%    +2/   +3/   +6bp
-  mix 0.3/0.5/0.2 @65               TRAIN n= 76 hit  54%    -7/   -7/  -21bp  | TEST n= 52 hit  50%    +4/   +1/   +4bp
-  mix 0.2/0.4/0.4 @65               TRAIN n= 76 hit  50%   -12/  -15/  -34bp  | TEST n= 52 hit  46%    -4/   -7/  -10bp
-  mix 0.15/0.55/0.3 @65             TRAIN n= 71 hit  51%    -9/  -10/  -27bp  | TEST n= 60 hit  47%    -0/   -2/   +0bp
-  mix 0/0.5/0.5 @65                 TRAIN n=104 hit  48%    -8/  -24/  -32bp  | TEST n= 74 hit  51%    +3/   +5/  +11bp
-  mix 0.5/0.3/0.2 @65               TRAIN n= 87 hit  47%   -15/  -11/  -27bp  | TEST n= 51 hit  47%    +6/   +4/  +16bp
-  mix 0.7/0.3/0 @65                 TRAIN n=109 hit  48%   -12/   -7/  -16bp  | TEST n= 65 hit  43%    -2/   +3/   +7bp
-  default mix, threshold 55         TRAIN n=472 hit  47%    -5/   -7/  -11bp  | TEST n=301 hit  47%    +1/   +2/   -2bp
-  default mix, threshold 60         TRAIN n=216 hit  48%    -5/   -9/  -18bp  | TEST n=138 hit  48%    +3/   +5/  +10bp
-  default mix, threshold 65         TRAIN n= 80 hit  48%   -11/   -7/  -20bp  | TEST n= 58 hit  50%    +6/   +5/  +11bp
-  default mix, threshold 70         TRAIN n= 15 hit  47%   -52/  -37/  -34bp  | TEST n= 21 hit  38%   -11/  -40/  -20bp
+  mix 0.3/0.7/0 @65                 TRAIN n= 81 hit  49%   -11/   -6/  -17bp  | TEST n= 58 hit  50%    +9/   +4/  +12bp
+  mix 0/1/0 @65                     TRAIN n=106 hit  53%    -0/   +1/   -8bp  | TEST n= 97 hit  46%    -0/   +6/  +13bp
+  mix 0.15/0.85/0 @65               TRAIN n= 79 hit  54%    -3/   +5/   -2bp  | TEST n= 70 hit  51%    +3/   +8/  +10bp
+  mix 0.5/0.5/0 @65                 TRAIN n=103 hit  50%   -11/   -4/  -17bp  | TEST n= 64 hit  48%    +8/  +13/  +29bp
+  mix 0/0.7/0.3 @65                 TRAIN n= 84 hit  46%   -12/  -21/  -36bp  | TEST n= 78 hit  50%    +2/   +3/   +6bp
+  mix 0.3/0.5/0.2 @65               TRAIN n= 75 hit  56%    -4/   -0/  -10bp  | TEST n= 52 hit  50%    +7/   +0/   +4bp
+  mix 0.2/0.4/0.4 @65               TRAIN n= 74 hit  50%   -12/  -17/  -33bp  | TEST n= 53 hit  47%    -0/   -7/   -7bp
+  mix 0.15/0.55/0.3 @65             TRAIN n= 69 hit  52%    -7/  -13/  -27bp  | TEST n= 60 hit  47%    -0/   -2/   +0bp
+  mix 0/0.5/0.5 @65                 TRAIN n=101 hit  49%    -7/  -19/  -27bp  | TEST n= 74 hit  51%    +3/   +5/  +11bp
+  mix 0.5/0.3/0.2 @65               TRAIN n= 88 hit  48%   -15/  -11/  -23bp  | TEST n= 51 hit  47%    +9/   +3/  +17bp
+  mix 0.7/0.3/0 @65                 TRAIN n=109 hit  49%   -11/   -6/  -14bp  | TEST n= 65 hit  43%    +1/   +3/   +8bp
+  default mix, threshold 55         TRAIN n=473 hit  47%    -5/   -7/  -10bp  | TEST n=302 hit  47%    +2/   +2/   -2bp
+  default mix, threshold 60         TRAIN n=218 hit  48%    -5/   -8/  -15bp  | TEST n=138 hit  48%    +4/   +4/  +10bp
+  default mix, threshold 65         TRAIN n= 81 hit  49%   -11/   -6/  -17bp  | TEST n= 58 hit  50%    +9/   +4/  +12bp
+  default mix, threshold 70         TRAIN n= 16 hit  50%   -45/  -27/  -22bp  | TEST n= 21 hit  38%   -11/  -40/  -20bp
   default mix, threshold 75         TRAIN        (too few)             | TEST        (too few)           
-  default @65 + trend e20           TRAIN n= 80 hit  48%   -11/   -7/  -20bp  | TEST n= 58 hit  50%    +6/   +5/  +11bp
-  default @65 + trend e50           TRAIN n= 80 hit  48%   -11/   -7/  -20bp  | TEST n= 58 hit  50%    +6/   +5/  +11bp
-  default @65 + trend e2050         TRAIN n= 63 hit  48%    -9/   -4/  -18bp  | TEST n= 51 hit  49%    +3/   -4/   -5bp
-  default @65 + trend e200          TRAIN n= 59 hit  53%    -7/   +8/   -7bp  | TEST n= 48 hit  50%    +7/   -1/   -2bp
-  default @65 + trend adx20         TRAIN n= 58 hit  43%    -9/  -12/  -25bp  | TEST n= 48 hit  52%   +10/   +9/   +7bp
-  default @65 + trend adx25         TRAIN n= 30 hit  37%   -11/  -15/  -44bp  | TEST n= 35 hit  57%   +16/  +13/   -5bp
-  default @65, VIX pct ≤50          TRAIN n= 38 hit  47%    +2/   +4/  -11bp  | TEST n= 15 hit  53%    -4/  +18/  +25bp
-  default @65, VIX pct 50-80        TRAIN n= 22 hit  45%   -11/   +4/   +8bp  | TEST n= 23 hit  57%   +22/  +33/  +56bp
+  default @65 + trend e20           TRAIN n= 81 hit  49%   -11/   -6/  -17bp  | TEST n= 58 hit  50%    +9/   +4/  +12bp
+  default @65 + trend e50           TRAIN n= 81 hit  49%   -11/   -6/  -17bp  | TEST n= 58 hit  50%    +9/   +4/  +12bp
+  default @65 + trend e2050         TRAIN n= 64 hit  50%    -8/   -4/  -15bp  | TEST n= 51 hit  49%    +6/   -5/   -4bp
+  default @65 + trend e200          TRAIN n= 59 hit  54%    -6/   +8/   -5bp  | TEST n= 49 hit  51%   +10/   -1/   +2bp
+  default @65 + trend adx20         TRAIN n= 59 hit  46%    -8/  -11/  -21bp  | TEST n= 48 hit  52%   +13/   +8/   +8bp
+  default @65 + trend adx25         TRAIN n= 30 hit  40%   -10/  -13/  -36bp  | TEST n= 35 hit  57%   +20/  +12/   -4bp
+  default @65, VIX pct ≤50          TRAIN n= 38 hit  50%    +3/   +4/   -9bp  | TEST n= 15 hit  53%    -4/  +18/  +25bp
+  default @65, VIX pct 50-80        TRAIN n= 23 hit  48%   -10/   +5/  +14bp  | TEST n= 23 hit  57%   +28/  +32/  +58bp
   default @65, VIX pct >80          TRAIN n= 20 hit  50%   -37/  -38/  -67bp  | TEST n= 20 hit  40%    -4/  -37/  -52bp
   default @65, VIX rising >5% d/d   TRAIN n= 19 hit  37%   -21/  -24/  -38bp  | TEST n= 24 hit  29%   -22/  -14/   -4bp
   default @65, VIX falling <-5% d/d TRAIN        (too few)             | TEST        (too few)           
-  default @65, entry on Mon         TRAIN n= 19 hit  47%    +4/   -1/  -31bp  | TEST n= 17 hit  47%    +7/  -20/  -34bp
+  default @65, entry on Mon         TRAIN n= 18 hit  50%    +5/   +1/  -26bp  | TEST n= 17 hit  47%    +7/  -20/  -34bp
   default @65, entry on Tue         TRAIN n= 14 hit  43%   -72/  -79/  -85bp  | TEST n= 13 hit  31%   -33/  -42/   -5bp
-  default @65, entry on Wed         TRAIN n= 12 hit  42%    +0/  -10/  -43bp  | TEST n=  8 hit  63%   +40/  +66/  +93bp
+  default @65, entry on Wed         TRAIN n= 13 hit  46%    +0/  -11/  -43bp  | TEST n=  8 hit  63%   +40/  +66/  +93bp
   default @65, entry on Thu         TRAIN n= 14 hit  64%   +21/  +13/  +63bp  | TEST n=  8 hit  63%   +26/  +12/  +26bp
-  default @65, entry on Fri         TRAIN n= 21 hit  43%   -12/  +25/   -8bp  | TEST n= 12 hit  58%   +11/  +46/  +27bp
-  default @65, gap <-0.5% (with trade)TRAIN n= 16 hit  38%    -8/  -39/  -55bp  | TEST n=  6 hit  50%    +4/  -17/  +24bp
+  default @65, entry on Fri         TRAIN n= 22 hit  45%   -11/  +25/   -1bp  | TEST n= 12 hit  58%   +23/  +43/  +30bp
+  default @65, gap <-0.5% (with trade)TRAIN n= 16 hit  38%    -8/  -39/  -55bp  | TEST n=  7 hit  57%   +28/  -16/  +46bp
   default @65, gap -0.5..-0.2% (with trade)TRAIN n=  8 hit  13%   -93/  -46/  -89bp  | TEST n= 14 hit  21%   -20/   -5/  +10bp
-  default @65, gap -0.2..0.2% (with trade)TRAIN n= 24 hit  58%    -1/   +9/   -2bp  | TEST n= 23 hit  48%    +0/  +12/  +18bp
+  default @65, gap -0.2..0.2% (with trade)TRAIN n= 26 hit  62%    +0/   +8/   +1bp  | TEST n= 22 hit  45%    -1/  +12/  +13bp
   default @65, gap 0.2..0.5% (with trade)TRAIN n= 17 hit  47%    -7/   +2/  +38bp  | TEST n=  7 hit  71%   +20/  +19/  +37bp
-  default @65, gap >0.5% (with trade)TRAIN n= 15 hit  60%    +8/  +14/  -38bp  | TEST n=  8 hit  88%   +59/   +6/  -42bp
+  default @65, gap >0.5% (with trade)TRAIN n= 14 hit  64%    +9/  +18/  -32bp  | TEST n=  8 hit  88%   +59/   +6/  -42bp
 
 B. COORDINATE SEARCH on TRAIN only (246 configurations, 0s; objective = t-stat of net R/trade, n ≥ 30; +0.05 hysteresis)
-  pass 1 · horizon mix (intraday/swing/short)                         → 0.15/0.85/0  (train t=-0.12)
-  pass 1 · entry threshold (side score ≥)                             → 65  (train t=-0.12)
-  pass 1 · trend filter                                               → e200  (train t=0.49)
-  pass 1 · skip when VIX 1-yr percentile >                            → 90  (train t=0.95)
-  pass 1 · skip when India VIX >                                      → 99  (train t=0.95)
-  pass 1 · skip when India VIX <                                      → 0  (train t=0.95)
-  pass 1 · skip if open gaps against the trade by >%                  → 0.2  (train t=1.35)
-  pass 1 · skip if open gaps with the trade by >% (chasing)           → off  (train t=1.35)
-  pass 1 · skip entry weekday (1=Mon … 5=Fri)                         → none  (train t=1.35)
-  pass 1 · skip if last day already moved ≥ kσ with the trade         → off  (train t=1.35)
-  pass 1 · strike (delta aim / ITM1-ATM-OTM1)                         → delta 0.4  (train t=1.48)
-  pass 1 · expiry: min trading days left                              → 4  (train t=1.48)
-  pass 1 · holding period (sessions; 1 = same-day close)              → 3  (train t=1.48)
-  pass 1 · premium stop (% of premium)                                → 40%  (train t=1.55)
-  pass 1 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=1.55)
-  pass 1 · target (engine T1/T2 · premium multiple · ATR · none)      → +100% premium  (train t=1.75)
-  pass 1 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=1.75)
-  pass 1 · IV rich: debit spread when VIX percentile >                → 100  (train t=1.75)
-  pass 2 · horizon mix (intraday/swing/short)                         → 0.15/0.85/0  (train t=1.75)
-  pass 2 · entry threshold (side score ≥)                             → 65  (train t=1.75)
-  pass 2 · trend filter                                               → e2050  (train t=2.14)
-  pass 2 · skip when VIX 1-yr percentile >                            → 90  (train t=2.14)
-  pass 2 · skip when India VIX >                                      → 99  (train t=2.14)
-  pass 2 · skip when India VIX <                                      → 0  (train t=2.14)
-  pass 2 · skip if open gaps against the trade by >%                  → 0.2  (train t=2.14)
-  pass 2 · skip if open gaps with the trade by >% (chasing)           → 0.5  (train t=2.43)
-  pass 2 · skip entry weekday (1=Mon … 5=Fri)                         → none  (train t=2.43)
-  pass 2 · skip if last day already moved ≥ kσ with the trade         → off  (train t=2.43)
-  pass 2 · strike (delta aim / ITM1-ATM-OTM1)                         → delta 0.4  (train t=2.43)
-  pass 2 · expiry: min trading days left                              → 4  (train t=2.43)
-  pass 2 · holding period (sessions; 1 = same-day close)              → 5  (train t=2.51)
-  pass 2 · premium stop (% of premium)                                → 40%  (train t=2.51)
-  pass 2 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=2.51)
-  pass 2 · target (engine T1/T2 · premium multiple · ATR · none)      → +100% premium  (train t=2.51)
-  pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=2.51)
-  pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=2.51)
+  pass 1 · horizon mix (intraday/swing/short)                         → 0.15/0.85/0  (train t=-0.06)
+  pass 1 · entry threshold (side score ≥)                             → 65  (train t=-0.06)
+  pass 1 · trend filter                                               → e200  (train t=0.56)
+  pass 1 · skip when VIX 1-yr percentile >                            → 90  (train t=1.03)
+  pass 1 · skip when India VIX >                                      → 99  (train t=1.03)
+  pass 1 · skip when India VIX <                                      → 0  (train t=1.03)
+  pass 1 · skip if open gaps against the trade by >%                  → 0.2  (train t=1.45)
+  pass 1 · skip if open gaps with the trade by >% (chasing)           → off  (train t=1.45)
+  pass 1 · skip entry weekday (1=Mon … 5=Fri)                         → 3  (train t=1.51)
+  pass 1 · skip if last day already moved ≥ kσ with the trade         → off  (train t=1.51)
+  pass 1 · strike (delta aim / ITM1-ATM-OTM1)                         → delta 0.3  (train t=1.62)
+  pass 1 · expiry: min trading days left                              → 4  (train t=1.62)
+  pass 1 · holding period (sessions; 1 = same-day close)              → 3  (train t=1.62)
+  pass 1 · premium stop (% of premium)                                → 45%  (train t=1.72)
+  pass 1 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=1.72)
+  pass 1 · target (engine T1/T2 · premium multiple · ATR · none)      → +100% premium  (train t=1.93)
+  pass 1 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=1.93)
+  pass 1 · IV rich: debit spread when VIX percentile >                → 100  (train t=1.93)
+  pass 2 · horizon mix (intraday/swing/short)                         → 0.15/0.85/0  (train t=1.93)
+  pass 2 · entry threshold (side score ≥)                             → 65  (train t=1.93)
+  pass 2 · trend filter                                               → e2050  (train t=2.39)
+  pass 2 · skip when VIX 1-yr percentile >                            → 90  (train t=2.39)
+  pass 2 · skip when India VIX >                                      → 99  (train t=2.39)
+  pass 2 · skip when India VIX <                                      → 0  (train t=2.39)
+  pass 2 · skip if open gaps against the trade by >%                  → 0.2  (train t=2.39)
+  pass 2 · skip if open gaps with the trade by >% (chasing)           → off  (train t=2.39)
+  pass 2 · skip entry weekday (1=Mon … 5=Fri)                         → 3  (train t=2.39)
+  pass 2 · skip if last day already moved ≥ kσ with the trade         → off  (train t=2.39)
+  pass 2 · strike (delta aim / ITM1-ATM-OTM1)                         → delta 0.4  (train t=2.46)
+  pass 2 · expiry: min trading days left                              → 4  (train t=2.46)
+  pass 2 · holding period (sessions; 1 = same-day close)              → 5  (train t=2.57)
+  pass 2 · premium stop (% of premium)                                → 40%  (train t=2.75)
+  pass 2 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=2.75)
+  pass 2 · target (engine T1/T2 · premium multiple · ATR · none)      → +100% premium  (train t=2.75)
+  pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=2.75)
+  pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=2.75)
 
 C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 60% of default trades)
   parameter                                           default → tuned                              trainΔt train R  test R test n  verdict
-  target (engine T1/T2 · premium multiple · ATR · none)engine T1 half / T2 → +100% premium            +1.63   +0.02   +0.17     59  keep default (no OOS gain)
-  horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.15/0.85/0                        +1.02   -0.02   +0.13     70  keep default (no OOS gain)
-  premium stop (% of premium)                         50% → 40%                                      +0.24   -0.09   +0.12     59  keep default (no OOS gain)
-  skip if open gaps against the trade by >%           off → 0.2                                      +0.18   +0.05   +0.29     38  ADOPT
-  strike (delta aim / ITM1-ATM-OTM1)                  delta 0.55 → delta 0.4                         +0.16   +0.10   +0.30     38  keep default (no OOS gain)
-  skip if open gaps with the trade by >% (chasing)    off → 0.5                                      +0.14   +0.10   +0.47     30  keep default (too few OOS trades)
-  trend filter                                        none → e2050                                   +0.13   +0.09   +0.28     32  keep default (too few OOS trades)
-  skip when VIX 1-yr percentile >                     100 → 90                                       +0.11   +0.14   +0.44     32  keep default (too few OOS trades)
-  holding period (sessions; 1 = same-day close)       3 → 5                                          +0.09   -0.11   +0.23     38  keep default (no OOS gain)
+  target (engine T1/T2 · premium multiple · ATR · none)engine T1 half / T2 → +100% premium            +1.48   +0.00   +0.19     58  keep default (no OOS gain)
+  horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.15/0.85/0                        +0.83   -0.01   +0.13     70  keep default (no OOS gain)
+  skip if open gaps against the trade by >%           off → 0.2                                      +0.30   +0.03   +0.33     37  ADOPT
+  skip entry weekday (1=Mon … 5=Fri)                  none → 3                                       +0.28   +0.01   +0.24     33  keep default (too few OOS trades)
+  strike (delta aim / ITM1-ATM-OTM1)                  delta 0.55 → delta 0.4                         +0.24   +0.08   +0.33     37  keep default (no OOS gain)
+  trend filter                                        none → e2050                                   +0.19   +0.07   +0.32     31  keep default (too few OOS trades)
+  premium stop (% of premium)                         50% → 40%                                      +0.15   +0.03   +0.30     37  keep default (no OOS gain)
+  skip when VIX 1-yr percentile >                     100 → 90                                       +0.14   +0.12   +0.48     31  keep default (too few OOS trades)
+  holding period (sessions; 1 = same-day close)       3 → 5                                          +0.13   -0.12   +0.27     37  keep default (no OOS gain)
 
 D. RESULT (simulated option P&L, 1 lot, after costs + slippage; R = P&L / premium risked at the stop)
   TRAIN
-  today's defaults           n= 80  hit  35%  avgR  -0.09  exp   -4.5%/trade  PF  0.69  maxDD  15.8R  worst -1.54R  t=-0.60
-  search optimum (unvalidated) n= 30  hit  57%  avgR  +1.04  exp  +41.7%/trade  PF  3.51  maxDD   4.5R  worst -1.94R  t= 2.51
-  ADOPTED parameters         n= 56  hit  41%  avgR  +0.05  exp   +2.5%/trade  PF  0.90  maxDD  10.4R  worst -1.54R  t= 0.27
+  today's defaults           n= 81  hit  35%  avgR  -0.10  exp   -5.0%/trade  PF  0.68  maxDD  15.8R  worst -1.54R  t=-0.68
+  search optimum (unvalidated) n= 36  hit  58%  avgR  +1.01  exp  +40.4%/trade  PF  3.30  maxDD   7.0R  worst -1.94R  t= 2.75
+  ADOPTED parameters         n= 57  hit  40%  avgR  +0.03  exp   +1.6%/trade  PF  0.88  maxDD  11.3R  worst -1.54R  t= 0.17
   TEST (out-of-sample)
-  today's defaults           n= 59  hit  41%  avgR  +0.14  exp   +6.9%/trade  PF  1.23  maxDD  12.5R  worst -1.23R  t= 0.75
-  search optimum (unvalidated) n= 23  hit  43%  avgR  +0.45  exp  +18.1%/trade  PF  1.58  maxDD   7.8R  worst -1.48R  t= 1.20
-  ADOPTED parameters         n= 38  hit  45%  avgR  +0.29  exp  +14.5%/trade  PF  1.45  maxDD   8.6R  worst -1.20R  t= 1.28
-  ADOPTED test avgR 95% bootstrap CI [-0.14, +0.73]   ·  default test avgR CI [-0.19, +0.50]
+  today's defaults           n= 58  hit  41%  avgR  +0.16  exp   +7.9%/trade  PF  1.27  maxDD  12.5R  worst -1.23R  t= 0.84
+  search optimum (unvalidated) n= 22  hit  36%  avgR  +0.20  exp   +7.9%/trade  PF  1.12  maxDD   6.8R  worst -1.48R  t= 0.52
+  ADOPTED parameters         n= 37  hit  46%  avgR  +0.33  exp  +16.3%/trade  PF  1.52  maxDD   8.6R  worst -1.20R  t= 1.41
+  ADOPTED test avgR 95% bootstrap CI [-0.12, +0.80]   ·  default test avgR CI [-0.18, +0.50]
   adopted config: mix 0.3/0.7/0 · thr 65 · trend none · VIXpct≤100 · VIX 0–99 · gapAgainst 0.2 · gapWith off · skipDow none · bigSkip off · strike delta 0.55 · minDays 4 · hold 3 · SL 50% · stopU engine swing stop · target engine T1 half / T2 · trail off · spread@VIXpct>100
-  by year (ADOPTED): 2021: n=2 -0.86R · 2022: n=25 -0.23R · 2023: n=17 +0.78R · 2024: n=16 -0.21R · 2025: n=12 -0.07R · 2026: n=22 +0.56R
-  exits (TEST): stop 11 · time 22 · gap stop 4 · breakeven/trail stop 1
+  by year (ADOPTED): 2021: n=1 -0.71R · 2022: n=26 -0.26R · 2023: n=17 +0.78R · 2024: n=16 -0.21R · 2025: n=12 -0.07R · 2026: n=22 +0.56R
+  exits (TEST): time 22 · stop 10 · gap stop 4 · breakeven/trail stop 1
 
 E. ROBUSTNESS on TEST (avgR; does the edge survive other IV levels and double slippage?)
-  model IV ×1.00 (base)    default  +0.14R (n=59)   adopted  +0.29R (n=38)
-  IV ×0.90                 default  +0.23R (n=59)   adopted  +0.41R (n=38)
-  IV ×1.10                 default  +0.10R (n=59)   adopted  +0.23R (n=38)
-  IV ×1.25                 default  +0.04R (n=59)   adopted  +0.18R (n=38)
-  slippage ×2              default  +0.10R (n=59)   adopted  +0.25R (n=38)
-  slippage ×3              default  +0.06R (n=59)   adopted  +0.21R (n=38)
+  model IV ×1.00 (base)    default  +0.16R (n=58)   adopted  +0.33R (n=37)
+  IV ×0.90                 default  +0.25R (n=58)   adopted  +0.45R (n=37)
+  IV ×1.10                 default  +0.11R (n=58)   adopted  +0.26R (n=37)
+  IV ×1.25                 default  +0.03R (n=58)   adopted  +0.15R (n=37)
+  slippage ×2              default  +0.12R (n=58)   adopted  +0.28R (n=37)
+  slippage ×3              default  +0.08R (n=58)   adopted  +0.24R (n=37)
 
 ======================================================================================================================
-BANKNIFTY  (^NSEBANK)   data 2021-10-13 → 2026-11-23  ·  TRAIN 2021-10-13 → 2024-11-04 (756 sessions)  ·  TEST 2024-11-05 → 2026-11-23 (504 sessions)  ·  lot 30  ·  IV = ^INDIAVIX × 1.15 + put skew
+BANKNIFTY  (^NSEBANK)   data 2021-10-18 → 2026-11-26  ·  TRAIN 2021-10-18 → 2024-11-06 (756 sessions)  ·  TEST 2024-11-07 → 2026-11-26 (504 sessions)  ·  lot 30  ·  IV = ^INDIAVIX × 1.15 + put skew
 ======================================================================================================================
 
 A. DIRECTION SIGNAL (underlying only)
   Directional underlying return after the signal, entry at next OPEN → close of day 1 / 2 / 3 (bp, after nothing: pure direction, no option costs).
 
   Mean reversion after big days (all days, no signal needed): sign = +1 continuation, −1 reversal of the last close-to-close move; return of next day open→close in bp (direction = same as the big move):
-  |move| ≥ 1σ: TRAIN n=208   -4.5bp | TEST n=158   +1.7bp
-  |move| ≥ 1.5σ: TRAIN n=103  -16.3bp | TEST n= 76   -8.0bp
-  |move| ≥ 2σ: TRAIN n= 37  -30.6bp | TEST n= 30   -3.3bp
+  |move| ≥ 1σ: TRAIN n=208   -4.5bp | TEST n=159   -0.8bp
+  |move| ≥ 1.5σ: TRAIN n=103  -16.3bp | TEST n= 77  -13.1bp
+  |move| ≥ 2σ: TRAIN n= 37  -30.6bp | TEST n= 32  -16.2bp
   |move| ≥ 2.5σ: TRAIN n= 17  -51.1bp | TEST n=  9  +12.4bp
-  mix 0.3/0.7/0 @65                 TRAIN n= 70 hit  37%   -27/  -49/  -66bp  | TEST n= 59 hit  41%    -4/   -6/  -18bp
+  mix 0.3/0.7/0 @65                 TRAIN n= 69 hit  38%   -27/  -48/  -66bp  | TEST n= 59 hit  41%    -4/   -6/  -18bp
   mix 0/1/0 @65                     TRAIN n=109 hit  45%    -1/  -14/  -25bp  | TEST n= 85 hit  45%    +2/   +8/  +11bp
-  mix 0.15/0.85/0 @65               TRAIN n= 77 hit  36%   -28/  -39/  -54bp  | TEST n= 76 hit  45%    +2/  +10/  +16bp
-  mix 0.5/0.5/0 @65                 TRAIN n= 87 hit  37%   -24/  -36/  -37bp  | TEST n= 61 hit  38%    +0/   -9/   -9bp
+  mix 0.15/0.85/0 @65               TRAIN n= 76 hit  37%   -28/  -38/  -53bp  | TEST n= 76 hit  45%    +2/  +10/  +16bp
+  mix 0.5/0.5/0 @65                 TRAIN n= 86 hit  37%   -24/  -35/  -36bp  | TEST n= 62 hit  39%    +5/   -9/   -6bp
   mix 0/0.7/0.3 @65                 TRAIN n= 85 hit  42%    -4/  -20/  -39bp  | TEST n= 83 hit  47%    +1/   +8/   +3bp
-  mix 0.3/0.5/0.2 @65               TRAIN n= 66 hit  35%   -35/  -53/  -68bp  | TEST n= 56 hit  43%    +0/   -5/  -19bp
-  mix 0.2/0.4/0.4 @65               TRAIN n= 61 hit  41%   -21/  -53/  -74bp  | TEST n= 67 hit  48%    +1/   +6/  +10bp
-  mix 0.15/0.55/0.3 @65             TRAIN n= 62 hit  37%   -21/  -38/  -51bp  | TEST n= 67 hit  46%    -1/   +1/   +2bp
-  mix 0/0.5/0.5 @65                 TRAIN n= 84 hit  40%   -13/  -28/  -54bp  | TEST n= 93 hit  44%    -1/   +5/   -7bp
-  mix 0.5/0.3/0.2 @65               TRAIN n= 75 hit  40%   -19/  -29/  -45bp  | TEST n= 59 hit  39%    +4/   -5/  -10bp
-  mix 0.7/0.3/0 @65                 TRAIN n=109 hit  41%   -21/  -17/   -7bp  | TEST n= 75 hit  39%    +1/   -7/  -13bp
-  default mix, threshold 55         TRAIN n=453 hit  49%    -0/   -4/  -12bp  | TEST n=306 hit  47%    +0/   +3/   -0bp
-  default mix, threshold 60         TRAIN n=212 hit  44%    -4/  -10/  -12bp  | TEST n=140 hit  46%    +6/   +8/   +8bp
-  default mix, threshold 65         TRAIN n= 70 hit  37%   -27/  -49/  -66bp  | TEST n= 59 hit  41%    -4/   -6/  -18bp
+  mix 0.3/0.5/0.2 @65               TRAIN n= 65 hit  35%   -35/  -53/  -68bp  | TEST n= 56 hit  43%    +0/   -5/  -19bp
+  mix 0.2/0.4/0.4 @65               TRAIN n= 60 hit  42%   -21/  -53/  -75bp  | TEST n= 67 hit  48%    +1/   +6/  +10bp
+  mix 0.15/0.55/0.3 @65             TRAIN n= 61 hit  38%   -20/  -38/  -51bp  | TEST n= 67 hit  46%    -1/   +1/   +2bp
+  mix 0/0.5/0.5 @65                 TRAIN n= 83 hit  40%   -15/  -32/  -57bp  | TEST n= 93 hit  44%    -1/   +5/   -7bp
+  mix 0.5/0.3/0.2 @65               TRAIN n= 74 hit  41%   -19/  -29/  -45bp  | TEST n= 60 hit  40%    +9/   -5/   -7bp
+  mix 0.7/0.3/0 @65                 TRAIN n=109 hit  41%   -21/  -17/   -8bp  | TEST n= 75 hit  40%    +6/   -6/   -9bp
+  default mix, threshold 55         TRAIN n=451 hit  49%    -0/   -5/  -12bp  | TEST n=308 hit  47%    +2/   +5/   +0bp
+  default mix, threshold 60         TRAIN n=211 hit  45%    -4/  -10/  -12bp  | TEST n=141 hit  47%    +8/   +7/   +9bp
+  default mix, threshold 65         TRAIN n= 69 hit  38%   -27/  -48/  -66bp  | TEST n= 59 hit  41%    -4/   -6/  -18bp
   default mix, threshold 70         TRAIN n= 16 hit  44%   -17/  -29/  -59bp  | TEST n= 21 hit  33%    -5/  -29/  -24bp
   default mix, threshold 75         TRAIN        (too few)             | TEST        (too few)           
-  default @65 + trend e20           TRAIN n= 70 hit  37%   -27/  -49/  -66bp  | TEST n= 59 hit  41%    -4/   -6/  -18bp
-  default @65 + trend e50           TRAIN n= 70 hit  37%   -27/  -49/  -66bp  | TEST n= 59 hit  41%    -4/   -6/  -18bp
-  default @65 + trend e2050         TRAIN n= 50 hit  36%   -26/  -52/  -75bp  | TEST n= 50 hit  44%    +1/   -0/  -26bp
-  default @65 + trend e200          TRAIN n= 45 hit  38%   -25/  -36/  -50bp  | TEST n= 43 hit  40%    -2/   +2/  -14bp
-  default @65 + trend adx20         TRAIN n= 48 hit  35%   -20/  -55/  -84bp  | TEST n= 47 hit  43%    +1/   +4/  -20bp
+  default @65 + trend e20           TRAIN n= 69 hit  38%   -27/  -48/  -66bp  | TEST n= 59 hit  41%    -4/   -6/  -18bp
+  default @65 + trend e50           TRAIN n= 69 hit  38%   -27/  -48/  -66bp  | TEST n= 59 hit  41%    -4/   -6/  -18bp
+  default @65 + trend e2050         TRAIN n= 49 hit  37%   -26/  -52/  -75bp  | TEST n= 50 hit  44%    +1/   -0/  -26bp
+  default @65 + trend e200          TRAIN n= 44 hit  39%   -25/  -35/  -50bp  | TEST n= 43 hit  40%    -2/   +2/  -14bp
+  default @65 + trend adx20         TRAIN n= 47 hit  36%   -20/  -55/  -84bp  | TEST n= 47 hit  43%    +1/   +4/  -20bp
   default @65 + trend adx25         TRAIN n= 27 hit  37%   -31/  -82/ -115bp  | TEST n= 34 hit  44%    +2/   +3/  -32bp
-  default @65, VIX pct ≤50          TRAIN n= 31 hit  32%    -4/  -35/  -48bp  | TEST n= 22 hit  41%    -7/  -33/  -32bp
+  default @65, VIX pct ≤50          TRAIN n= 30 hit  33%    -3/  -34/  -48bp  | TEST n= 22 hit  41%    -7/  -33/  -32bp
   default @65, VIX pct 50-80        TRAIN n= 16 hit  44%   -22/  -60/ -100bp  | TEST n= 19 hit  37%   -10/  +11/   -7bp
   default @65, VIX pct >80          TRAIN n= 23 hit  39%   -63/  -59/  -65bp  | TEST n= 18 hit  44%    +7/   +9/  -13bp
   default @65, VIX rising >5% d/d   TRAIN n= 22 hit  41%   -26/  -41/  -54bp  | TEST n= 20 hit  30%   -22/  -21/  -20bp
   default @65, VIX falling <-5% d/d TRAIN n=  8 hit  38%   -95/   -8/  -26bp  | TEST        (too few)           
-  default @65, entry on Mon         TRAIN n= 14 hit  36%   -11/  -68/ -120bp  | TEST n= 18 hit  44%    +9/  -10/  -16bp
+  default @65, entry on Mon         TRAIN n= 13 hit  38%   -10/  -68/ -124bp  | TEST n= 18 hit  44%    +9/  -10/  -16bp
   default @65, entry on Tue         TRAIN n= 17 hit  41%   -78/ -107/ -111bp  | TEST n= 10 hit  30%   -42/  -98/  -87bp
   default @65, entry on Wed         TRAIN n= 11 hit  55%   -10/  -27/  -59bp  | TEST n= 12 hit  25%   -30/  -41/  -60bp
   default @65, entry on Thu         TRAIN n= 16 hit  25%    -8/  -56/  -43bp  | TEST n=  8 hit  38%   +20/  +99/  +89bp
@@ -172,103 +172,103 @@ A. DIRECTION SIGNAL (underlying only)
   default @65, gap -0.5..-0.2% (with trade)TRAIN n=  8 hit  38%   -14/  -63/ -139bp  | TEST n=  9 hit  33%   -20/  -11/  -32bp
   default @65, gap -0.2..0.2% (with trade)TRAIN n= 14 hit  43%   -24/  -57/ -102bp  | TEST n= 21 hit  33%   -10/  +26/   +3bp
   default @65, gap 0.2..0.5% (with trade)TRAIN n= 10 hit  20%   -39/  -85/  -56bp  | TEST n=  9 hit  56%    -2/  -32/  +25bp
-  default @65, gap >0.5% (with trade)TRAIN n= 21 hit  24%   -31/  -40/  -45bp  | TEST n= 12 hit  58%   +33/  -16/  -48bp
+  default @65, gap >0.5% (with trade)TRAIN n= 20 hit  25%   -31/  -39/  -44bp  | TEST n= 12 hit  58%   +33/  -16/  -48bp
 
 B. COORDINATE SEARCH on TRAIN only (246 configurations, 0s; objective = t-stat of net R/trade, n ≥ 30; +0.05 hysteresis)
-  pass 1 · horizon mix (intraday/swing/short)                         → 0.7/0.3/0  (train t=-1.28)
-  pass 1 · entry threshold (side score ≥)                             → 70  (train t=-0.36)
-  pass 1 · trend filter                                               → none  (train t=-0.36)
-  pass 1 · skip when VIX 1-yr percentile >                            → 90  (train t=0.68)
-  pass 1 · skip when India VIX >                                      → 22  (train t=0.88)
-  pass 1 · skip when India VIX <                                      → 0  (train t=0.88)
-  pass 1 · skip if open gaps against the trade by >%                  → off  (train t=0.88)
-  pass 1 · skip if open gaps with the trade by >% (chasing)           → off  (train t=0.88)
-  pass 1 · skip entry weekday (1=Mon … 5=Fri)                         → none  (train t=0.88)
-  pass 1 · skip if last day already moved ≥ kσ with the trade         → off  (train t=0.88)
-  pass 1 · strike (delta aim / ITM1-ATM-OTM1)                         → OTM1  (train t=0.99)
-  pass 1 · expiry: min trading days left                              → 4  (train t=0.99)
-  pass 1 · holding period (sessions; 1 = same-day close)              → 2  (train t=1.08)
-  pass 1 · premium stop (% of premium)                                → 35%  (train t=1.14)
-  pass 1 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=1.14)
-  pass 1 · target (engine T1/T2 · premium multiple · ATR · none)      → engine T1 half / T2  (train t=1.14)
-  pass 1 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=1.14)
-  pass 1 · IV rich: debit spread when VIX percentile >                → 100  (train t=1.14)
-  pass 2 · horizon mix (intraday/swing/short)                         → 0.7/0.3/0  (train t=1.14)
-  pass 2 · entry threshold (side score ≥)                             → 70  (train t=1.14)
-  pass 2 · trend filter                                               → none  (train t=1.14)
-  pass 2 · skip when VIX 1-yr percentile >                            → 90  (train t=1.14)
-  pass 2 · skip when India VIX >                                      → 22  (train t=1.14)
-  pass 2 · skip when India VIX <                                      → 0  (train t=1.14)
-  pass 2 · skip if open gaps against the trade by >%                  → off  (train t=1.14)
-  pass 2 · skip if open gaps with the trade by >% (chasing)           → off  (train t=1.14)
-  pass 2 · skip entry weekday (1=Mon … 5=Fri)                         → none  (train t=1.14)
-  pass 2 · skip if last day already moved ≥ kσ with the trade         → off  (train t=1.14)
-  pass 2 · strike (delta aim / ITM1-ATM-OTM1)                         → OTM1  (train t=1.14)
-  pass 2 · expiry: min trading days left                              → 4  (train t=1.14)
-  pass 2 · holding period (sessions; 1 = same-day close)              → 2  (train t=1.14)
-  pass 2 · premium stop (% of premium)                                → 35%  (train t=1.14)
-  pass 2 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=1.14)
-  pass 2 · target (engine T1/T2 · premium multiple · ATR · none)      → engine T1 half / T2  (train t=1.14)
-  pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=1.14)
-  pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=1.14)
+  pass 1 · horizon mix (intraday/swing/short)                         → 0.7/0.3/0  (train t=-1.32)
+  pass 1 · entry threshold (side score ≥)                             → 70  (train t=-0.27)
+  pass 1 · trend filter                                               → none  (train t=-0.27)
+  pass 1 · skip when VIX 1-yr percentile >                            → 90  (train t=0.78)
+  pass 1 · skip when India VIX >                                      → 22  (train t=0.98)
+  pass 1 · skip when India VIX <                                      → 0  (train t=0.98)
+  pass 1 · skip if open gaps against the trade by >%                  → off  (train t=0.98)
+  pass 1 · skip if open gaps with the trade by >% (chasing)           → off  (train t=0.98)
+  pass 1 · skip entry weekday (1=Mon … 5=Fri)                         → none  (train t=0.98)
+  pass 1 · skip if last day already moved ≥ kσ with the trade         → off  (train t=0.98)
+  pass 1 · strike (delta aim / ITM1-ATM-OTM1)                         → delta 0.5  (train t=1.04)
+  pass 1 · expiry: min trading days left                              → 4  (train t=1.04)
+  pass 1 · holding period (sessions; 1 = same-day close)              → 2  (train t=1.11)
+  pass 1 · premium stop (% of premium)                                → 35%  (train t=1.21)
+  pass 1 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=1.21)
+  pass 1 · target (engine T1/T2 · premium multiple · ATR · none)      → engine T1 half / T2  (train t=1.21)
+  pass 1 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=1.21)
+  pass 1 · IV rich: debit spread when VIX percentile >                → 100  (train t=1.21)
+  pass 2 · horizon mix (intraday/swing/short)                         → 0.7/0.3/0  (train t=1.21)
+  pass 2 · entry threshold (side score ≥)                             → 70  (train t=1.21)
+  pass 2 · trend filter                                               → none  (train t=1.21)
+  pass 2 · skip when VIX 1-yr percentile >                            → 90  (train t=1.21)
+  pass 2 · skip when India VIX >                                      → 22  (train t=1.21)
+  pass 2 · skip when India VIX <                                      → 0  (train t=1.21)
+  pass 2 · skip if open gaps against the trade by >%                  → off  (train t=1.21)
+  pass 2 · skip if open gaps with the trade by >% (chasing)           → off  (train t=1.21)
+  pass 2 · skip entry weekday (1=Mon … 5=Fri)                         → none  (train t=1.21)
+  pass 2 · skip if last day already moved ≥ kσ with the trade         → off  (train t=1.21)
+  pass 2 · strike (delta aim / ITM1-ATM-OTM1)                         → delta 0.3  (train t=1.27)
+  pass 2 · expiry: min trading days left                              → 4  (train t=1.27)
+  pass 2 · holding period (sessions; 1 = same-day close)              → 2  (train t=1.27)
+  pass 2 · premium stop (% of premium)                                → 35%  (train t=1.27)
+  pass 2 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=1.27)
+  pass 2 · target (engine T1/T2 · premium multiple · ATR · none)      → engine T1 half / T2  (train t=1.27)
+  pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=1.27)
+  pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=1.27)
 
 C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 60% of default trades)
   parameter                                           default → tuned                              trainΔt train R  test R test n  verdict
-  entry threshold (side score ≥)                      65 → 70                                        +1.23   -0.36   -0.19     21  keep default (too few OOS trades)
-  skip when VIX 1-yr percentile >                     100 → 90                                       +0.47   -0.27   -0.18     49  keep default (no OOS gain)
-  horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.7/0.3/0                          +0.37   -0.12   -0.12     77  ADOPT
-  strike (delta aim / ITM1-ATM-OTM1)                  delta 0.55 → OTM1                              +0.26   -0.13   -0.12     77  keep default (no OOS gain)
-  skip when India VIX >                               99 → 22                                        +0.18   -0.07   -0.10     72  keep default (no OOS gain)
-  holding period (sessions; 1 = same-day close)       3 → 2                                          +0.10   -0.14   -0.03     77  keep default (no OOS gain)
-  premium stop (% of premium)                         50% → 35%                                      +0.06   -0.14   -0.17     77  keep default (no OOS gain)
+  entry threshold (side score ≥)                      65 → 70                                        +1.07   -0.36   -0.19     21  keep default (too few OOS trades)
+  holding period (sessions; 1 = same-day close)       3 → 2                                          +0.53   -0.25   -0.04     60  ADOPT
+  skip when VIX 1-yr percentile >                     100 → 90                                       +0.52   -0.21   -0.06     49  keep default (no OOS gain)
+  horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.7/0.3/0                          +0.37   -0.15   -0.02     76  keep default (no OOS gain)
+  strike (delta aim / ITM1-ATM-OTM1)                  delta 0.55 → delta 0.3                         +0.23   -0.31   +0.00     60  keep default (no OOS gain)
+  premium stop (% of premium)                         50% → 35%                                      +0.18   -0.32   -0.07     60  keep default (no OOS gain)
+  skip when India VIX >                               99 → 22                                        +0.12   -0.22   -0.06     55  keep default (no OOS gain)
 
 D. RESULT (simulated option P&L, 1 lot, after costs + slippage; R = P&L / premium risked at the stop)
   TRAIN
-  today's defaults           n= 70  hit  29%  avgR  -0.35  exp  -17.5%/trade  PF  0.36  maxDD  24.6R  worst -1.32R  t=-3.72
-  search optimum (unvalidated) n= 31  hit  55%  avgR  +0.29  exp  +10.1%/trade  PF  1.56  maxDD   3.4R  worst -1.10R  t= 1.14
-  ADOPTED parameters         n=109  hit  35%  avgR  -0.12  exp   -6.1%/trade  PF  0.71  maxDD  16.8R  worst -1.32R  t=-1.28
+  today's defaults           n= 69  hit  29%  avgR  -0.35  exp  -17.4%/trade  PF  0.36  maxDD  24.0R  worst -1.32R  t=-3.64
+  search optimum (unvalidated) n= 30  hit  50%  avgR  +0.41  exp  +14.3%/trade  PF  1.84  maxDD   4.0R  worst -1.36R  t= 1.27
+  ADOPTED parameters         n= 69  hit  29%  avgR  -0.25  exp  -12.6%/trade  PF  0.44  maxDD  17.7R  worst -1.32R  t=-2.81
   TEST (out-of-sample)
   today's defaults           n= 60  hit  30%  avgR  -0.18  exp   -9.1%/trade  PF  0.54  maxDD  15.7R  worst -1.87R  t=-1.30
-  search optimum (unvalidated) n= 32  hit  34%  avgR  +0.26  exp   +9.2%/trade  PF  1.29  maxDD   8.2R  worst -2.69R  t= 0.69
-  ADOPTED parameters         n= 77  hit  31%  avgR  -0.12  exp   -5.8%/trade  PF  0.70  maxDD  17.9R  worst -1.87R  t=-0.82
-  ADOPTED test avgR 95% bootstrap CI [-0.36, +0.17]   ·  default test avgR CI [-0.42, +0.14]
-  adopted config: mix 0.7/0.3/0 · thr 65 · trend none · VIXpct≤100 · VIX 0–99 · gapAgainst off · gapWith off · skipDow none · bigSkip off · strike delta 0.55 · minDays 4 · hold 3 · SL 50% · stopU engine swing stop · target engine T1 half / T2 · trail off · spread@VIXpct>100
-  by year (ADOPTED): 2021: n=10 -0.16R · 2022: n=46 +0.07R · 2023: n=27 -0.20R · 2024: n=32 -0.42R · 2025: n=32 +0.00R · 2026: n=39 -0.13R
-  exits (TEST): stop 22 · time 48 · gap stop 6 · T2 1
+  search optimum (unvalidated) n= 32  hit  34%  avgR  +0.62  exp  +21.5%/trade  PF  1.68  maxDD   8.7R  worst -2.81R  t= 1.14
+  ADOPTED parameters         n= 60  hit  30%  avgR  -0.04  exp   -2.1%/trade  PF  0.77  maxDD   7.8R  worst -1.87R  t=-0.32
+  ADOPTED test avgR 95% bootstrap CI [-0.30, +0.24]   ·  default test avgR CI [-0.42, +0.14]
+  adopted config: mix 0.3/0.7/0 · thr 65 · trend none · VIXpct≤100 · VIX 0–99 · gapAgainst off · gapWith off · skipDow none · bigSkip off · strike delta 0.55 · minDays 4 · hold 2 · SL 50% · stopU engine swing stop · target engine T1 half / T2 · trail off · spread@VIXpct>100
+  by year (ADOPTED): 2021: n=7 -0.07R · 2022: n=28 -0.30R · 2023: n=19 -0.15R · 2024: n=18 -0.40R · 2025: n=33 +0.03R · 2026: n=24 -0.09R
+  exits (TEST): time 50 · stop 8 · gap stop 2
 
 E. ROBUSTNESS on TEST (avgR; does the edge survive other IV levels and double slippage?)
-  model IV ×1.00 (base)    default  -0.18R (n=60)   adopted  -0.12R (n=77)
-  IV ×0.90                 default  -0.16R (n=60)   adopted  -0.09R (n=77)
-  IV ×1.10                 default  -0.20R (n=60)   adopted  -0.14R (n=77)
-  IV ×1.25                 default  -0.21R (n=60)   adopted  -0.15R (n=77)
-  slippage ×2              default  -0.22R (n=60)   adopted  -0.15R (n=77)
-  slippage ×3              default  -0.25R (n=60)   adopted  -0.18R (n=77)
+  model IV ×1.00 (base)    default  -0.18R (n=60)   adopted  -0.04R (n=60)
+  IV ×0.90                 default  -0.16R (n=60)   adopted  -0.01R (n=60)
+  IV ×1.10                 default  -0.20R (n=60)   adopted  -0.06R (n=60)
+  IV ×1.25                 default  -0.21R (n=60)   adopted  -0.08R (n=60)
+  slippage ×2              default  -0.22R (n=60)   adopted  -0.08R (n=60)
+  slippage ×3              default  -0.25R (n=60)   adopted  -0.12R (n=60)
 
 ======================================================================================================================
-SENSEX  (^BSESN)   data 2021-10-12 → 2026-11-23  ·  TRAIN 2021-10-12 → 2024-11-04 (756 sessions)  ·  TEST 2024-11-05 → 2026-11-23 (504 sessions)  ·  lot 20  ·  IV = ^INDIAVIX × 1 + put skew
+SENSEX  (^BSESN)   data 2021-10-14 → 2026-11-26  ·  TRAIN 2021-10-14 → 2024-11-06 (756 sessions)  ·  TEST 2024-11-07 → 2026-11-26 (504 sessions)  ·  lot 20  ·  IV = ^INDIAVIX × 1 + put skew
 ======================================================================================================================
 
 A. DIRECTION SIGNAL (underlying only)
   Directional underlying return after the signal, entry at next OPEN → close of day 1 / 2 / 3 (bp, after nothing: pure direction, no option costs).
 
   Mean reversion after big days (all days, no signal needed): sign = +1 continuation, −1 reversal of the last close-to-close move; return of next day open→close in bp (direction = same as the big move):
-  |move| ≥ 1σ: TRAIN n=237   -7.2bp | TEST n=167   -0.8bp
-  |move| ≥ 1.5σ: TRAIN n=104  -20.1bp | TEST n= 69   -5.1bp
+  |move| ≥ 1σ: TRAIN n=238   -7.6bp | TEST n=167   -2.3bp
+  |move| ≥ 1.5σ: TRAIN n=105  -21.1bp | TEST n= 69   -4.1bp
   |move| ≥ 2σ: TRAIN n= 41  -34.0bp | TEST n= 22  -11.8bp
   |move| ≥ 2.5σ: TRAIN n= 14  -67.3bp | TEST n=  7  -30.3bp
   mix 0.3/0.7/0 @65                 TRAIN n= 79 hit  51%    -7/  -10/  -30bp  | TEST n= 65 hit  42%    -6/  -13/  -32bp
-  mix 0/1/0 @65                     TRAIN n=105 hit  47%    -6/   -8/  -11bp  | TEST n=118 hit  49%    +2/   -0/   -4bp
-  mix 0.15/0.85/0 @65               TRAIN n= 79 hit  48%    -3/   -1/  -11bp  | TEST n= 91 hit  48%    +0/   +4/   -1bp
-  mix 0.5/0.5/0 @65                 TRAIN n= 90 hit  49%    -8/  -14/  -33bp  | TEST n= 65 hit  43%    +2/   -1/  -14bp
-  mix 0/0.7/0.3 @65                 TRAIN n= 79 hit  52%    +4/  -16/  -32bp  | TEST n=111 hit  48%    -0/   +2/   -7bp
-  mix 0.3/0.5/0.2 @65               TRAIN n= 70 hit  51%    -9/  -13/  -36bp  | TEST n= 63 hit  41%   -10/  -14/  -29bp
-  mix 0.2/0.4/0.4 @65               TRAIN n= 66 hit  55%    -1/  -13/  -38bp  | TEST n= 81 hit  46%    -2/   +3/   +3bp
-  mix 0.15/0.55/0.3 @65             TRAIN n= 69 hit  52%    -2/  -12/  -33bp  | TEST n= 87 hit  47%    +0/  +10/   +7bp
-  mix 0/0.5/0.5 @65                 TRAIN n= 74 hit  50%    +1/  -19/  -38bp  | TEST n=107 hit  49%    +1/   +5/   -2bp
-  mix 0.5/0.3/0.2 @65               TRAIN n= 78 hit  51%    -6/  -11/  -29bp  | TEST n= 51 hit  51%   +17/   +6/   +6bp
-  mix 0.7/0.3/0 @65                 TRAIN n=101 hit  46%   -11/  -15/  -27bp  | TEST n= 57 hit  40%    +6/   +7/  +21bp
-  default mix, threshold 55         TRAIN n=446 hit  48%    -4/   -3/   -8bp  | TEST n=304 hit  48%    +2/   +0/   -5bp
-  default mix, threshold 60         TRAIN n=218 hit  46%    -5/  -11/  -21bp  | TEST n=156 hit  47%    +1/   -2/   -2bp
+  mix 0/1/0 @65                     TRAIN n=103 hit  46%    -7/  -10/  -14bp  | TEST n=118 hit  49%    +2/   -0/   -4bp
+  mix 0.15/0.85/0 @65               TRAIN n= 78 hit  47%    -3/   -2/  -12bp  | TEST n= 91 hit  48%    +0/   +4/   -1bp
+  mix 0.5/0.5/0 @65                 TRAIN n= 90 hit  49%    -8/  -14/  -33bp  | TEST n= 66 hit  44%    +4/   -2/  -11bp
+  mix 0/0.7/0.3 @65                 TRAIN n= 77 hit  51%    +3/  -19/  -37bp  | TEST n=111 hit  48%    -0/   +2/   -7bp
+  mix 0.3/0.5/0.2 @65               TRAIN n= 68 hit  50%   -10/  -17/  -42bp  | TEST n= 63 hit  41%   -10/  -14/  -29bp
+  mix 0.2/0.4/0.4 @65               TRAIN n= 64 hit  53%    -2/  -17/  -44bp  | TEST n= 81 hit  46%    -2/   +3/   +3bp
+  mix 0.15/0.55/0.3 @65             TRAIN n= 67 hit  51%    -3/  -16/  -38bp  | TEST n= 87 hit  47%    +0/  +10/   +7bp
+  mix 0/0.5/0.5 @65                 TRAIN n= 72 hit  49%    +0/  -22/  -43bp  | TEST n=107 hit  49%    +1/   +5/   -2bp
+  mix 0.5/0.3/0.2 @65               TRAIN n= 77 hit  51%    -7/  -12/  -31bp  | TEST n= 52 hit  52%   +19/   +6/   +9bp
+  mix 0.7/0.3/0 @65                 TRAIN n=101 hit  46%   -11/  -15/  -27bp  | TEST n= 58 hit  41%    +9/   +7/  +23bp
+  default mix, threshold 55         TRAIN n=444 hit  48%    -4/   -3/   -9bp  | TEST n=305 hit  48%    +2/   +0/   -4bp
+  default mix, threshold 60         TRAIN n=216 hit  45%    -6/  -12/  -22bp  | TEST n=157 hit  47%    +2/   -2/   -1bp
   default mix, threshold 65         TRAIN n= 79 hit  51%    -7/  -10/  -30bp  | TEST n= 65 hit  42%    -6/  -13/  -32bp
   default mix, threshold 70         TRAIN n= 22 hit  59%    -9/   -2/  +34bp  | TEST n= 20 hit  35%   -16/  -34/  -27bp
   default mix, threshold 75         TRAIN        (too few)             | TEST n=  7 hit  14%   -33/   -2/  -25bp
@@ -295,10 +295,10 @@ A. DIRECTION SIGNAL (underlying only)
   default @65, gap >0.5% (with trade)TRAIN n= 10 hit  70%   +16/  -20/ -112bp  | TEST n= 10 hit  70%   +25/  -17/  -45bp
 
 B. COORDINATE SEARCH on TRAIN only (246 configurations, 0s; objective = t-stat of net R/trade, n ≥ 30; +0.05 hysteresis)
-  pass 1 · horizon mix (intraday/swing/short)                         → 0.15/0.85/0  (train t=-0.53)
-  pass 1 · entry threshold (side score ≥)                             → 65  (train t=-0.53)
-  pass 1 · trend filter                                               → none  (train t=-0.53)
-  pass 1 · skip when VIX 1-yr percentile >                            → 90  (train t=0.17)
+  pass 1 · horizon mix (intraday/swing/short)                         → 0.15/0.85/0  (train t=-0.63)
+  pass 1 · entry threshold (side score ≥)                             → 65  (train t=-0.63)
+  pass 1 · trend filter                                               → none  (train t=-0.63)
+  pass 1 · skip when VIX 1-yr percentile >                            → 90  (train t=0.08)
   pass 1 · skip when India VIX >                                      → 16  (train t=0.56)
   pass 1 · skip when India VIX <                                      → 0  (train t=0.56)
   pass 1 · skip if open gaps against the trade by >%                  → 0.2  (train t=0.84)
@@ -314,35 +314,35 @@ B. COORDINATE SEARCH on TRAIN only (246 configurations, 0s; objective = t-stat o
   pass 1 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=2.34)
   pass 1 · IV rich: debit spread when VIX percentile >                → 100  (train t=2.34)
   pass 2 · horizon mix (intraday/swing/short)                         → 0.15/0.85/0  (train t=2.34)
-  pass 2 · entry threshold (side score ≥)                             → 62.5  (train t=2.57)
-  pass 2 · trend filter                                               → none  (train t=2.57)
-  pass 2 · skip when VIX 1-yr percentile >                            → 90  (train t=2.57)
-  pass 2 · skip when India VIX >                                      → 16  (train t=2.57)
-  pass 2 · skip when India VIX <                                      → 0  (train t=2.57)
-  pass 2 · skip if open gaps against the trade by >%                  → 0.5  (train t=2.73)
-  pass 2 · skip if open gaps with the trade by >% (chasing)           → off  (train t=2.73)
-  pass 2 · skip entry weekday (1=Mon … 5=Fri)                         → 2  (train t=3.05)
-  pass 2 · skip if last day already moved ≥ kσ with the trade         → 2.5  (train t=3.28)
-  pass 2 · strike (delta aim / ITM1-ATM-OTM1)                         → delta 0.4  (train t=3.28)
-  pass 2 · expiry: min trading days left                              → 1  (train t=3.28)
-  pass 2 · holding period (sessions; 1 = same-day close)              → 1  (train t=3.28)
-  pass 2 · premium stop (% of premium)                                → 50%  (train t=3.28)
-  pass 2 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=3.28)
-  pass 2 · target (engine T1/T2 · premium multiple · ATR · none)      → none (time exit)  (train t=3.28)
-  pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=3.28)
-  pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=3.28)
+  pass 2 · entry threshold (side score ≥)                             → 62.5  (train t=2.55)
+  pass 2 · trend filter                                               → none  (train t=2.55)
+  pass 2 · skip when VIX 1-yr percentile >                            → 90  (train t=2.55)
+  pass 2 · skip when India VIX >                                      → 16  (train t=2.55)
+  pass 2 · skip when India VIX <                                      → 0  (train t=2.55)
+  pass 2 · skip if open gaps against the trade by >%                  → 0.5  (train t=2.72)
+  pass 2 · skip if open gaps with the trade by >% (chasing)           → off  (train t=2.72)
+  pass 2 · skip entry weekday (1=Mon … 5=Fri)                         → 2  (train t=3.04)
+  pass 2 · skip if last day already moved ≥ kσ with the trade         → 2.5  (train t=3.26)
+  pass 2 · strike (delta aim / ITM1-ATM-OTM1)                         → delta 0.4  (train t=3.26)
+  pass 2 · expiry: min trading days left                              → 1  (train t=3.26)
+  pass 2 · holding period (sessions; 1 = same-day close)              → 1  (train t=3.26)
+  pass 2 · premium stop (% of premium)                                → 50%  (train t=3.26)
+  pass 2 · underlying stop (engine level / k·ATR / none)              → engine swing stop  (train t=3.26)
+  pass 2 · target (engine T1/T2 · premium multiple · ATR · none)      → none (time exit)  (train t=3.26)
+  pass 2 · trailing stop (activates at +x%, trails y% below peak)     → off  (train t=3.26)
+  pass 2 · IV rich: debit spread when VIX percentile >                → 100  (train t=3.26)
 
 C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST net expectancy beats the accepted set by ≥ 0.05 R, n ≥ 20 and ≥ 60% of default trades)
   parameter                                           default → tuned                              trainΔt train R  test R test n  verdict
-  holding period (sessions; 1 = same-day close)       3 → 1                                          +1.83   +0.03   -0.01     65  ADOPT
-  horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.15/0.85/0                        +0.69   +0.05   +0.05     91  ADOPT
-  skip when India VIX >                               99 → 16                                        +0.68   +0.19   +0.06     66  keep default (no OOS gain)
-  entry threshold (side score ≥)                      65 → 62.5                                      +0.43   -0.00   +0.10    127  keep default (no OOS gain)
-  skip entry weekday (1=Mon … 5=Fri)                  none → 2                                       +0.37   +0.13   +0.13     71  ADOPT
+  holding period (sessions; 1 = same-day close)       3 → 1                                          +1.95   +0.03   -0.01     65  ADOPT
+  skip when India VIX >                               99 → 16                                        +0.71   +0.18   -0.01     45  keep default (no OOS gain)
+  horizon mix (intraday/swing/short)                  0.3/0.7/0 → 0.15/0.85/0                        +0.70   +0.05   +0.05     91  ADOPT
+  entry threshold (side score ≥)                      65 → 62.5                                      +0.42   -0.00   +0.10    127  keep default (no OOS gain)
+  skip entry weekday (1=Mon … 5=Fri)                  none → 2                                       +0.37   +0.12   +0.13     71  ADOPT
   skip if open gaps against the trade by >%           off → 0.5                                      +0.26   +0.15   +0.15     62  keep default (no OOS gain)
   strike (delta aim / ITM1-ATM-OTM1)                  delta 0.55 → delta 0.4                         +0.25   +0.17   +0.19     71  ADOPT
-  skip if last day already moved ≥ kσ with the trade  off → 2.5                                      +0.23   +0.23   +0.20     69  keep default (no OOS gain)
-  expiry: min trading days left                       4 → 1                                          +0.23   +0.35   +0.33     71  ADOPT
+  expiry: min trading days left                       4 → 1                                          +0.24   +0.35   +0.33     71  ADOPT
+  skip if last day already moved ≥ kσ with the trade  off → 2.5                                      +0.23   +0.46   +0.36     69  keep default (no OOS gain)
   target (engine T1/T2 · premium multiple · ATR · none)engine T1 half / T2 → none (time exit)         +0.08   +0.35   +0.34     71  keep default (no OOS gain)
   skip when VIX 1-yr percentile >                     100 → 90                                       +0.05   +0.40   +0.27     53  keep default (no OOS gain)
 
@@ -351,15 +351,15 @@ C. OUT-OF-SAMPLE GATE (forward selection on TEST; a change is kept only if TEST 
 D. RESULT (simulated option P&L, 1 lot, after costs + slippage; R = P&L / premium risked at the stop)
   TRAIN
   today's defaults           n= 79  hit  35%  avgR  -0.22  exp  -10.9%/trade  PF  0.54  maxDD  17.8R  worst -1.54R  t=-1.74
-  search optimum (unvalidated) n= 52  hit  54%  avgR  +0.79  exp  +39.7%/trade  PF  3.37  maxDD   3.2R  worst -1.06R  t= 3.28
-  ADOPTED parameters         n= 79  hit  46%  avgR  +0.05  exp   +2.7%/trade  PF  1.02  maxDD   3.1R  worst -1.02R  t= 0.71
+  search optimum (unvalidated) n= 51  hit  53%  avgR  +0.81  exp  +40.3%/trade  PF  3.35  maxDD   3.2R  worst -1.06R  t= 3.26
+  ADOPTED parameters         n= 78  hit  45%  avgR  +0.05  exp   +2.6%/trade  PF  1.01  maxDD   3.1R  worst -1.02R  t= 0.68
   TEST (out-of-sample)
   today's defaults           n= 65  hit  31%  avgR  -0.18  exp   -8.9%/trade  PF  0.60  maxDD  19.5R  worst -1.52R  t=-1.20
   search optimum (unvalidated) n= 66  hit  50%  avgR  +0.52  exp  +25.9%/trade  PF  2.47  maxDD   8.0R  worst -1.05R  t= 2.12
   ADOPTED parameters         n= 91  hit  43%  avgR  +0.05  exp   +2.6%/trade  PF  1.16  maxDD   4.3R  worst -1.02R  t= 0.70
   ADOPTED test avgR 95% bootstrap CI [-0.08, +0.21]   ·  default test avgR CI [-0.46, +0.10]
   adopted config: mix 0.15/0.85/0 · thr 65 · trend none · VIXpct≤100 · VIX 0–99 · gapAgainst off · gapWith off · skipDow none · bigSkip off · strike delta 0.55 · minDays 4 · hold 1 · SL 50% · stopU engine swing stop · target engine T1 half / T2 · trail off · spread@VIXpct>100
-  by year (ADOPTED): 2021: n=5 -0.21R · 2022: n=36 -0.03R · 2023: n=21 +0.26R · 2024: n=22 +0.07R · 2025: n=33 -0.03R · 2026: n=53 +0.10R
+  by year (ADOPTED): 2021: n=4 -0.32R · 2022: n=36 -0.03R · 2023: n=21 +0.26R · 2024: n=22 +0.07R · 2025: n=33 -0.03R · 2026: n=53 +0.10R
   exits (TEST): time 84 · stop 7
 
 E. ROBUSTNESS on TEST (avgR; does the edge survive other IV levels and double slippage?)
@@ -371,75 +371,72 @@ E. ROBUSTNESS on TEST (avgR; does the edge survive other IV levels and double sl
   slippage ×3              default  -0.26R (n=65)   adopted  -0.03R (n=91)
 
 ======================================================================================================================
-STOCK FUTURES  (148 F&O stocks · 2021-10-14 → 2026-11-25 · TRAIN → 2024-11-06 · TEST 2024-11-06 → ; lots 148 from NSE list, 0 estimated from the ₹15 lakh minimum contract)
+STOCK FUTURES  (148 F&O stocks · 2021-10-19 → 2026-11-27 · TRAIN → 2024-11-08 · TEST 2024-11-08 → ; lots 148 from NSE list, 0 estimated from the ₹15 lakh minimum contract)
 ======================================================================================================================
   Trades: signal at the close, enter next OPEN (slippage 0.03%), stop/target in ATR, time exit; one open trade per stock; futures costs incl. STT 0.05% sell side from 1-Apr-2026. R = P&L / (stop distance × lot).
   Note: trades across stocks are correlated (same market days), so t-statistics are optimistic; trust TEST averages and CI, not t.
 
 A. SIGNAL FAMILIES (each at its best TRAIN threshold; default exit 1.5 ATR stop / 2.25 ATR target / 10 sessions)
   family · sides · thr        TRAIN                                           TEST
-  swing · both · 65           n=11087 hit  45% avgR  +0.01 exp  -0.05%        n=7637 hit  43% avgR  -0.05 exp  -0.22%
-  swing · long · 65           n=7680 hit  47% avgR  +0.06 exp  +0.23%         n=4476 hit  44% avgR  -0.04 exp  -0.07%
-  swing · short · 90          n=  75 hit  39% avgR  -0.21 exp  -1.45%         n= 120 hit  34% avgR  -0.30 exp  -1.66%
-  short · both · 60           n=11196 hit  44% avgR  +0.00 exp  -0.05%        n=7437 hit  43% avgR  -0.06 exp  -0.28%
-  short · long · 60           n=7593 hit  47% avgR  +0.06 exp  +0.25%         n=4024 hit  43% avgR  -0.05 exp  -0.13%
-  short · short · 90          n= 272 hit  36% avgR  -0.20 exp  -1.00%         n= 378 hit  35% avgR  -0.27 exp  -1.53%
-  medium · both · 60          n=11307 hit  46% avgR  +0.04 exp  +0.21%        n=6779 hit  42% avgR  -0.06 exp  -0.31%
-  medium · long · 60          n=9180 hit  47% avgR  +0.07 exp  +0.35%         n=4125 hit  43% avgR  -0.05 exp  -0.15%
-  medium · short · 90         n= 279 hit  38% avgR  -0.19 exp  -1.28%         n= 323 hit  40% avgR  -0.14 exp  -0.84%
-  blend · both · 65           n=9320 hit  45% avgR  +0.01 exp  +0.01%         n=6100 hit  43% avgR  -0.07 exp  -0.32%
-  blend · long · 60           n=8502 hit  47% avgR  +0.06 exp  +0.24%         n=4549 hit  44% avgR  -0.04 exp  -0.11%
-  blend · short · 85          n= 176 hit  37% avgR  -0.18 exp  -0.92%         n= 249 hit  37% avgR  -0.28 exp  -1.58%
-  mom63 · both · 90           n=4414 hit  44% avgR  -0.01 exp  +0.06%         n=3115 hit  45% avgR  -0.01 exp  -0.08%
-  mom63 · long · 60           n=7866 hit  48% avgR  +0.06 exp  +0.34%         n=5399 hit  44% avgR  -0.01 exp  +0.02%
-  mom63 · short · 90          n=2149 hit  41% avgR  -0.08 exp  -0.33%         n=1554 hit  43% avgR  -0.05 exp  -0.40%
-  mom126 · both · 85          n=5960 hit  46% avgR  +0.03 exp  +0.16%         n=4266 hit  45% avgR  -0.02 exp  -0.15%
-  mom126 · long · 60          n=7529 hit  48% avgR  +0.07 exp  +0.41%         n=5198 hit  44% avgR  -0.01 exp  +0.03%
-  mom126 · short · 90         n=1989 hit  43% avgR  -0.04 exp  -0.23%         n=1486 hit  45% avgR  -0.02 exp  -0.24%
-  brk55 · both · 60           n=2985 hit  42% avgR  -0.06 exp  -0.33%         n=1953 hit  41% avgR  -0.11 exp  -0.52%
-  brk55 · long · 60           n=2276 hit  43% avgR  -0.03 exp  -0.17%         n=1113 hit  42% avgR  -0.06 exp  -0.18%
-  brk55 · short · 60          n= 709 hit  38% avgR  -0.16 exp  -0.85%         n= 840 hit  39% avgR  -0.17 exp  -0.97%
-  rsi · both · 70             n= 848 hit  54% avgR  +0.18 exp  +1.00%         n= 534 hit  45% avgR  +0.04 exp  +0.15%
-  rsi · long · 70             n= 635 hit  58% avgR  +0.25 exp  +1.38%         n= 343 hit  45% avgR  +0.01 exp  -0.01%
+  swing · both · 65           n=11039 hit  45% avgR  +0.01 exp  -0.03%        n=7644 hit  43% avgR  -0.06 exp  -0.24%
+  swing · long · 65           n=7628 hit  47% avgR  +0.07 exp  +0.27%         n=4494 hit  44% avgR  -0.04 exp  -0.08%
+  swing · short · 90          n=  76 hit  39% avgR  -0.20 exp  -1.36%         n= 119 hit  34% avgR  -0.31 exp  -1.72%
+  short · both · 60           n=11154 hit  45% avgR  +0.01 exp  -0.03%        n=7432 hit  43% avgR  -0.06 exp  -0.29%
+  short · long · 60           n=7541 hit  47% avgR  +0.06 exp  +0.28%         n=4041 hit  43% avgR  -0.05 exp  -0.14%
+  short · short · 90          n= 272 hit  36% avgR  -0.20 exp  -1.00%         n= 377 hit  35% avgR  -0.27 exp  -1.55%
+  medium · both · 60          n=11263 hit  46% avgR  +0.04 exp  +0.23%        n=6778 hit  42% avgR  -0.07 exp  -0.32%
+  medium · long · 60          n=9137 hit  48% avgR  +0.07 exp  +0.38%         n=4118 hit  42% avgR  -0.05 exp  -0.16%
+  medium · short · 90         n= 279 hit  38% avgR  -0.19 exp  -1.28%         n= 324 hit  40% avgR  -0.15 exp  -0.89%
+  blend · both · 65           n=9276 hit  45% avgR  +0.02 exp  +0.04%         n=6113 hit  43% avgR  -0.07 exp  -0.34%
+  blend · long · 60           n=8447 hit  47% avgR  +0.06 exp  +0.27%         n=4566 hit  43% avgR  -0.05 exp  -0.12%
+  blend · short · 85          n= 176 hit  37% avgR  -0.18 exp  -0.92%         n= 251 hit  36% avgR  -0.28 exp  -1.59%
+  mom63 · both · 90           n=4415 hit  44% avgR  -0.01 exp  +0.05%         n=3118 hit  45% avgR  -0.01 exp  -0.10%
+  mom63 · long · 60           n=7853 hit  48% avgR  +0.06 exp  +0.36%         n=5403 hit  44% avgR  -0.02 exp  +0.01%
+  mom63 · short · 90          n=2146 hit  41% avgR  -0.08 exp  -0.34%         n=1556 hit  43% avgR  -0.06 exp  -0.43%
+  mom126 · both · 85          n=5961 hit  46% avgR  +0.03 exp  +0.16%         n=4272 hit  44% avgR  -0.02 exp  -0.17%
+  mom126 · long · 60          n=7517 hit  48% avgR  +0.07 exp  +0.42%         n=5195 hit  44% avgR  -0.01 exp  +0.01%
+  mom126 · short · 90         n=1990 hit  43% avgR  -0.04 exp  -0.23%         n=1489 hit  44% avgR  -0.02 exp  -0.27%
+  brk55 · both · 60           n=2968 hit  42% avgR  -0.06 exp  -0.30%         n=1957 hit  40% avgR  -0.11 exp  -0.53%
+  brk55 · long · 60           n=2258 hit  43% avgR  -0.02 exp  -0.13%         n=1115 hit  42% avgR  -0.06 exp  -0.19%
+  brk55 · short · 60          n= 710 hit  38% avgR  -0.16 exp  -0.86%         n= 842 hit  39% avgR  -0.17 exp  -0.98%
+  rsi · both · 70             n= 847 hit  54% avgR  +0.18 exp  +1.00%         n= 528 hit  46% avgR  +0.05 exp  +0.19%
+  rsi · long · 70             n= 634 hit  58% avgR  +0.25 exp  +1.39%         n= 336 hit  45% avgR  +0.02 exp  +0.04%
   rsi · short · 75            n=  65 hit  46% avgR  +0.02 exp  -0.02%         n=  46 hit  41% avgR  -0.04 exp  -0.15%
 
 B. COORDINATE SEARCH on TRAIN (238 configurations)
-  pass 1 · signal family                                                                → rsi  (train t=4.73)
-  pass 1 · threshold (rating ≥ x long / ≤ 100−x short; momentum percentile; RSI extreme) → 70  (train t=4.73)
-  pass 1 · which side                                                                   → long  (train t=5.87)
-  pass 1 · stop (× ATR)                                                                 → 3  (train t=6.46)
-  pass 1 · target (× ATR, 0 = none)                                                     → 2.25  (train t=6.46)
-  pass 1 · max holding (sessions)                                                       → 10  (train t=6.46)
-  pass 2 · signal family                                                                → mom126  (train t=6.76)
-  pass 2 · threshold (rating ≥ x long / ≤ 100−x short; momentum percentile; RSI extreme) → 60  (train t=7.05)
-  pass 2 · which side                                                                   → long  (train t=7.05)
-  pass 2 · stop (× ATR)                                                                 → 3  (train t=7.05)
-  pass 2 · target (× ATR, 0 = none)                                                     → 4.5  (train t=7.59)
-  pass 2 · max holding (sessions)                                                       → 30  (train t=9.62)
+  pass 1 · signal family                                                                → rsi  (train t=4.78)
+  pass 1 · threshold (rating ≥ x long / ≤ 100−x short; momentum percentile; RSI extreme) → 70  (train t=4.78)
+  pass 1 · which side                                                                   → long  (train t=5.94)
+  pass 1 · stop (× ATR)                                                                 → 2  (train t=6.39)
+  pass 1 · target (× ATR, 0 = none)                                                     → 2.25  (train t=6.39)
+  pass 1 · max holding (sessions)                                                       → 10  (train t=6.39)
+  pass 2 · signal family                                                                → rsi  (train t=6.39)
+  pass 2 · threshold (rating ≥ x long / ≤ 100−x short; momentum percentile; RSI extreme) → 70  (train t=6.39)
+  pass 2 · which side                                                                   → long  (train t=6.39)
+  pass 2 · stop (× ATR)                                                                 → 2  (train t=6.39)
+  pass 2 · target (× ATR, 0 = none)                                                     → 2.25  (train t=6.39)
+  pass 2 · max holding (sessions)                                                       → 10  (train t=6.39)
 
 C. OUT-OF-SAMPLE GATE
-  sides     both → long              trainΔt  +8.28  train R  +0.05  test R  -0.05 (n=3552)  keep default
-  hold      10 → 30                  trainΔt  +2.03  train R  -0.02  test R  -0.08 (n=5246)  keep default
-  stopAtr   1.5 → 3                  trainΔt  +1.12  train R  -0.00  test R  -0.04 (n=5654)  ADOPT
-  thr       70 → 60                  trainΔt  +0.98  train R  +0.00  test R  -0.03 (n=7744)  keep default
-  tgtAtr    2.25 → 4.5               trainΔt  +0.74  train R  +0.01  test R  -0.04 (n=5017)  keep default
-  fam       swing → mom126           trainΔt  +0.21  train R  -0.00  test R  -0.00 (n=6386)  ADOPT
+  fam       swing → rsi              trainΔt  +2.12  train R  +0.18  test R  +0.05 (n=528)  keep default
+  sides     both → long              trainΔt  +1.67  train R  +0.05  test R  -0.06 (n=3563)  keep default
+  stopAtr   1.5 → 2                  trainΔt  +0.45  train R  -0.00  test R  -0.05 (n=5856)  keep default
 
 D. RESULT (after costs)
-  default TRAIN              n=9007  hit  44%  avgR  -0.01  exp   -0.1%/trade  PF  0.92  maxDD 210.2R  worst -3.77R  t=-0.71
-  default TEST               n=6195  hit  43%  avgR  -0.07  exp   -0.3%/trade  PF  0.87  maxDD 435.5R  worst -3.09R  t=-4.93
-  ADOPTED TRAIN              n=9120  hit  52%  avgR  -0.00  exp   +0.1%/trade  PF  1.00  maxDD  82.5R  worst -1.58R  t=-0.21
-  ADOPTED TEST               n=6386  hit  51%  avgR  -0.00  exp   -0.1%/trade  PF  0.97  maxDD  55.1R  worst -2.40R  t=-0.48
-  ADOPTED test avgR 95% CI [-0.02, +0.01] · adopted: {"fam":"mom126","thr":70,"sides":"both","stopAtr":3,"tgtAtr":2.25,"hold":10}
-  side long   (adopted signal/exit)  TRAIN n=4640 hit  56% avgR  +0.06 exp  +0.72%   TEST n=3209 hit  52% avgR  +0.01 exp  +0.15%
-  side short  (adopted signal/exit)  TRAIN n=4497 hit  48% avgR  -0.07 exp  -0.54%   TEST n=3191 hit  51% avgR  -0.02 exp  -0.33%
+  default TRAIN              n=8971  hit  44%  avgR  -0.00  exp   -0.1%/trade  PF  0.93  maxDD 178.7R  worst -3.77R  t=-0.28
+  default TEST               n=6202  hit  42%  avgR  -0.07  exp   -0.3%/trade  PF  0.87  maxDD 456.6R  worst -3.09R  t=-5.17
+  ADOPTED TRAIN              n=8971  hit  44%  avgR  -0.00  exp   -0.1%/trade  PF  0.93  maxDD 178.7R  worst -3.77R  t=-0.28
+  ADOPTED TEST               n=6202  hit  42%  avgR  -0.07  exp   -0.3%/trade  PF  0.87  maxDD 456.6R  worst -3.09R  t=-5.17
+  ADOPTED test avgR 95% CI [-0.10, -0.05] · adopted: {"fam":"swing","thr":70,"sides":"both","stopAtr":1.5,"tgtAtr":2.25,"hold":10}
+  side long   (adopted signal/exit)  TRAIN n=6191 hit  46% avgR  +0.05 exp  +0.20%   TEST n=3563 hit  43% avgR  -0.06 exp  -0.16%
+  side short  (adopted signal/exit)  TRAIN n=2780 hit  39% avgR  -0.13 exp  -0.78%   TEST n=2641 hit  42% avgR  -0.09 exp  -0.56%
 
 ======================================================================================================================
 SUMMARY (what changes in the app)
 ======================================================================================================================
-  NIFTY      1 parameter(s) tuned: gapAgainst · TEST avgR +0.29 (default +0.14), exp +14.5%/trade, hit 45%, n=38 · calls ON
-  BANKNIFTY  1 parameter(s) tuned: mix · TEST avgR -0.12 (default -0.18), exp -5.8%/trade, hit 31%, n=77 · CALLS OFF: Measured on 5y of data (simulated premiums, 77 out-of-sample trades): average -0.12R per trade after costs for the best rule set and -0.18R for today's rules, negative under every IV/slippage stress: no edge. · fragile: edge disappears under IV×/slippage stress
+  NIFTY      1 parameter(s) tuned: gapAgainst · TEST avgR +0.33 (default +0.16), exp +16.3%/trade, hit 46%, n=37 · calls ON
+  BANKNIFTY  1 parameter(s) tuned: hold · TEST avgR -0.04 (default -0.18), exp -2.1%/trade, hit 30%, n=60 · CALLS OFF: Measured on 5y of data (simulated premiums, 60 out-of-sample trades): average -0.04R per trade after costs for the best rule set and -0.18R for today's rules, negative under every IV/slippage stress: no edge. · fragile: edge disappears under IV×/slippage stress
   SENSEX     2 parameter(s) tuned: mix, hold · TEST avgR +0.05 (default -0.18), exp +2.6%/trade, hit 43%, n=91 · calls ON
-  STOCKS     tuned: fam, stopAtr · mom126 both thr 70; TEST avgR -0.00 (default -0.07), n=6386 · OFF: no OOS edge
+  STOCKS     defaults kept · swing both thr 70; TEST avgR -0.07 (default -0.07), n=6202 · OFF: no OOS edge
 
-Runtime 0.2 min.
+Runtime 0.3 min.

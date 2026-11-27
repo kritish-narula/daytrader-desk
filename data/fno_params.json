@@ -1,6 +1,6 @@
 {
  "version": 1,
- "generatedAt": "2026-11-25T10:29:05.912Z",
+ "generatedAt": "2026-11-27T14:22:39.467Z",
  "method": "walk-forward: search on first 60% (≈ years 1-3), adopt only what also beats today's default on the last 40% (≈ years 4-5), after costs; premiums simulated (Black-Scholes on India VIX)",
  "index": {
   "NIFTY": {
@@ -13,70 +13,66 @@
    "gapAgainst": 0.2,
    "stats": {
     "train": {
-     "n": 56,
-     "hit": 41.07142857142857,
-     "avgR": 0.05075866425879651,
-     "expPct": 2.5379332129398224
+     "n": 57,
+     "hit": 40.35087719298245,
+     "avgR": 0.031976686824646924,
+     "expPct": 1.5988343412323458
     },
     "test": {
-     "n": 38,
-     "hit": 44.73684210526316,
-     "avgR": 0.2903056350168906,
-     "expPct": 14.515281750844531,
-     "pf": 1.4482278271356568,
+     "n": 37,
+     "hit": 45.94594594594595,
+     "avgR": 0.32568383636652,
+     "expPct": 16.284191818325997,
+     "pf": 1.524682722130615,
      "mdd": 8.646081743462211,
-     "t": 1.2786291997942054,
+     "t": 1.4134557596204949,
      "ci95R": [
-      -0.14104436739235757,
-      0.7283178483393712
+      -0.11838305991049762,
+      0.8038431464255477
      ],
-     "defaultAvgR": 0.13739634405151505,
-     "defaultExpPct": 6.869817202575749,
-     "defaultN": 59
+     "defaultAvgR": 0.15730473335901862,
+     "defaultExpPct": 7.865236667950936,
+     "defaultN": 58
     },
-    "from": "2021-10-14",
-    "trainTo": "2024-11-05",
-    "to": "2026-11-23"
+    "from": "2021-10-19",
+    "trainTo": "2024-11-07",
+    "to": "2026-11-26"
    }
   },
   "BANKNIFTY": {
    "enabled": false,
-   "why": "Measured on 5y of data (simulated premiums, 77 out-of-sample trades): average -0.12R per trade after costs for the best rule set and -0.18R for today's rules, negative under every IV/slippage stress: no edge.",
+   "why": "Measured on 5y of data (simulated premiums, 60 out-of-sample trades): average -0.04R per trade after costs for the best rule set and -0.18R for today's rules, negative under every IV/slippage stress: no edge.",
    "sim": {
     "ivMult": 1.15,
     "lot": 30
    },
-   "mix": {
-    "wI": 0.7,
-    "wS": 0.3,
-    "wH": 0
-   },
+   "hold": 2,
    "stats": {
     "train": {
-     "n": 109,
-     "hit": 34.862385321100916,
-     "avgR": -0.12270126614049029,
-     "expPct": -6.135063307024514
+     "n": 69,
+     "hit": 28.985507246376812,
+     "avgR": -0.25289966310179146,
+     "expPct": -12.644983155089573
     },
     "test": {
-     "n": 77,
-     "hit": 31.16883116883117,
-     "avgR": -0.11636492531664516,
-     "expPct": -5.818246265832257,
-     "pf": 0.6996783378600877,
-     "mdd": 17.948525441069286,
-     "t": -0.8243435326463293,
+     "n": 60,
+     "hit": 30,
+     "avgR": -0.04224392135907721,
+     "expPct": -2.11219606795386,
+     "pf": 0.7706473753531891,
+     "mdd": 7.764985309067437,
+     "t": -0.322153067471329,
      "ci95R": [
-      -0.3627016877519821,
-      0.17333216309666458
+      -0.29695420418739776,
+      0.23656546700696926
      ],
      "defaultAvgR": -0.1812739526883854,
      "defaultExpPct": -9.063697634419267,
      "defaultN": 60
     },
-    "from": "2021-10-13",
-    "trainTo": "2024-11-04",
-    "to": "2026-11-23"
+    "from": "2021-10-18",
+    "trainTo": "2024-11-06",
+    "to": "2026-11-26"
    }
   },
   "SENSEX": {
@@ -94,10 +90,10 @@
    "hold": 1,
    "stats": {
     "train": {
-     "n": 79,
-     "hit": 45.56962025316456,
-     "avgR": 0.0533394484503278,
-     "expPct": 2.66697242251639
+     "n": 78,
+     "hit": 44.871794871794876,
+     "avgR": 0.051337661005552225,
+     "expPct": 2.5668830502776125
     },
     "test": {
      "n": 91,
@@ -115,48 +111,45 @@
      "defaultExpPct": -8.855907170497794,
      "defaultN": 65
     },
-    "from": "2021-10-12",
-    "trainTo": "2024-11-04",
-    "to": "2026-11-23"
+    "from": "2021-10-14",
+    "trainTo": "2024-11-06",
+    "to": "2026-11-26"
    }
   }
  },
  "stocks": {
   "enabled": false,
-  "why": "Measured on 5y of data (6386 out-of-sample trades, after futures costs): average -0.00R per trade, 95% CI [-0.02, +0.01] → no meaningful edge; default -0.07R.",
+  "why": "Measured on 5y of data (6202 out-of-sample trades, after futures costs): average -0.07R per trade, 95% CI [-0.10, -0.05] → no meaningful edge; default -0.07R.",
   "signal": {
-   "fam": "mom126",
+   "fam": "swing",
    "thr": 70,
    "sides": "both"
   },
   "exit": {
-   "stopAtr": 3,
+   "stopAtr": 1.5,
    "tgtAtr": 2.25,
    "hold": 10
   },
-  "adopted": [
-   "fam",
-   "stopAtr"
-  ],
+  "adopted": [],
   "stats": {
    "train": {
-    "n": 9120,
-    "hit": 51.90789473684211,
-    "avgR": -0.0014362116648064754,
-    "expPct": 0.09683396575283787
+    "n": 8971,
+    "hit": 44.15338312339762,
+    "avgR": -0.003329615156696729,
+    "expPct": -0.10208011747616606
    },
    "test": {
-    "n": 6386,
-    "hit": 51.25274036955842,
-    "avgR": -0.00387562730906638,
-    "expPct": -0.08685055068757352,
-    "pf": 0.9663765104556052,
+    "n": 6202,
+    "hit": 42.45404708158658,
+    "avgR": -0.07171468477102219,
+    "expPct": -0.3251656636298686,
+    "pf": 0.8681351248383968,
     "ci95R": [
-     -0.020080113354094643,
-     0.013316606240673797
+     -0.09912076620900254,
+     -0.045547150414040685
     ],
-    "defaultAvgR": -0.06850371434513124,
-    "defaultN": 6195
+    "defaultAvgR": -0.07171468477102219,
+    "defaultN": 6202
    }
   },
   "famTable": [
@@ -164,224 +157,224 @@
     "fam": "swing",
     "sides": "both",
     "thr": 65,
-    "trainAvgR": 0.006077937828456255,
-    "testAvgR": -0.05474390684070238,
-    "testN": 7637
+    "trainAvgR": 0.01074098544426246,
+    "testAvgR": -0.05771052767044129,
+    "testN": 7644
    },
    {
     "fam": "swing",
     "sides": "long",
     "thr": 65,
-    "trainAvgR": 0.05979409613661499,
-    "testAvgR": -0.03856074641078555,
-    "testN": 4476
+    "trainAvgR": 0.06679398727162646,
+    "testAvgR": -0.04034445812463109,
+    "testN": 4494
    },
    {
     "fam": "swing",
     "sides": "short",
     "thr": 90,
-    "trainAvgR": -0.2144225624348168,
-    "testAvgR": -0.3011405325948837,
-    "testN": 120
+    "trainAvgR": -0.1995765063663342,
+    "testAvgR": -0.31133481264339424,
+    "testN": 119
    },
    {
     "fam": "short",
     "sides": "both",
     "thr": 60,
-    "trainAvgR": 0.0016045705404485375,
-    "testAvgR": -0.060835368475821425,
-    "testN": 7437
+    "trainAvgR": 0.006381722880226148,
+    "testAvgR": -0.06331483337545504,
+    "testN": 7432
    },
    {
     "fam": "short",
     "sides": "long",
     "thr": 60,
-    "trainAvgR": 0.05675308672373197,
-    "testAvgR": -0.048481185385848044,
-    "testN": 4024
+    "trainAvgR": 0.06368057639172556,
+    "testAvgR": -0.0516447992249384,
+    "testN": 4041
    },
    {
     "fam": "short",
     "sides": "short",
     "thr": 90,
-    "trainAvgR": -0.19725453484006802,
-    "testAvgR": -0.2669333847088713,
-    "testN": 378
+    "trainAvgR": -0.19724306447476248,
+    "testAvgR": -0.27096066550989756,
+    "testN": 377
    },
    {
     "fam": "medium",
     "sides": "both",
     "thr": 60,
-    "trainAvgR": 0.03944751482807263,
-    "testAvgR": -0.06456864872254184,
-    "testN": 6779
+    "trainAvgR": 0.04339387342645605,
+    "testAvgR": -0.06742218258572215,
+    "testN": 6778
    },
    {
     "fam": "medium",
     "sides": "long",
     "thr": 60,
-    "trainAvgR": 0.06581074974225211,
-    "testAvgR": -0.050248051879625895,
-    "testN": 4125
+    "trainAvgR": 0.07086014860332962,
+    "testAvgR": -0.05431421977255139,
+    "testN": 4118
    },
    {
     "fam": "medium",
     "sides": "short",
     "thr": 90,
-    "trainAvgR": -0.18772282502301255,
-    "testAvgR": -0.14466221960065817,
-    "testN": 323
+    "trainAvgR": -0.1877119608838173,
+    "testAvgR": -0.1537776759980439,
+    "testN": 324
    },
    {
     "fam": "blend",
     "sides": "both",
     "thr": 65,
-    "trainAvgR": 0.01423392021029598,
-    "testAvgR": -0.06962845427680275,
-    "testN": 6100
+    "trainAvgR": 0.018722967879198023,
+    "testAvgR": -0.07357317513963953,
+    "testN": 6113
    },
    {
     "fam": "blend",
     "sides": "long",
     "thr": 60,
-    "trainAvgR": 0.056266232698312504,
-    "testAvgR": -0.044068548555747676,
-    "testN": 4549
+    "trainAvgR": 0.06294821480928316,
+    "testAvgR": -0.046214958634499696,
+    "testN": 4566
    },
    {
     "fam": "blend",
     "sides": "short",
     "thr": 85,
-    "trainAvgR": -0.17821500067796417,
-    "testAvgR": -0.27803570328635085,
-    "testN": 249
+    "trainAvgR": -0.17820440984818128,
+    "testAvgR": -0.2802581208886238,
+    "testN": 251
    },
    {
     "fam": "mom63",
     "sides": "both",
     "thr": 90,
-    "trainAvgR": -0.006683723865787822,
-    "testAvgR": -0.006364290220494595,
-    "testN": 3115
+    "trainAvgR": -0.007318702693365419,
+    "testAvgR": -0.009515627118653593,
+    "testN": 3118
    },
    {
     "fam": "mom63",
     "sides": "long",
     "thr": 60,
-    "trainAvgR": 0.062090153704399416,
-    "testAvgR": -0.014224052571106162,
-    "testN": 5399
+    "trainAvgR": 0.06392786839837217,
+    "testAvgR": -0.01715329726962183,
+    "testN": 5403
    },
    {
     "fam": "mom63",
     "sides": "short",
     "thr": 90,
-    "trainAvgR": -0.07544511760563528,
-    "testAvgR": -0.05255459985143939,
-    "testN": 1554
+    "trainAvgR": -0.07712026183842736,
+    "testAvgR": -0.05627875669166694,
+    "testN": 1556
    },
    {
     "fam": "mom126",
     "sides": "both",
     "thr": 85,
-    "trainAvgR": 0.025845259116253176,
-    "testAvgR": -0.016998332854163932,
-    "testN": 4266
+    "trainAvgR": 0.025326322420002524,
+    "testAvgR": -0.02263300375089181,
+    "testN": 4272
    },
    {
     "fam": "mom126",
     "sides": "long",
     "thr": 60,
-    "trainAvgR": 0.07137874081488445,
-    "testAvgR": -0.006969799741137608,
-    "testN": 5198
+    "trainAvgR": 0.07303482938291748,
+    "testAvgR": -0.00991207246170269,
+    "testN": 5195
    },
    {
     "fam": "mom126",
     "sides": "short",
     "thr": 90,
-    "trainAvgR": -0.043347392234840854,
-    "testAvgR": -0.017896526232369554,
-    "testN": 1486
+    "trainAvgR": -0.04411103162995155,
+    "testAvgR": -0.022568726941918322,
+    "testN": 1489
    },
    {
     "fam": "brk55",
     "sides": "both",
     "thr": 60,
-    "trainAvgR": -0.061853917055682515,
-    "testAvgR": -0.1061997130903952,
-    "testN": 1953
+    "trainAvgR": -0.0574951627640668,
+    "testAvgR": -0.1084062459255234,
+    "testN": 1957
    },
    {
     "fam": "brk55",
     "sides": "long",
     "thr": 60,
-    "trainAvgR": -0.031181718714436507,
-    "testAvgR": -0.0607111313031682,
-    "testN": 1113
+    "trainAvgR": -0.02437427646290331,
+    "testAvgR": -0.06285934500484401,
+    "testN": 1115
    },
    {
     "fam": "brk55",
     "sides": "short",
     "thr": 60,
-    "trainAvgR": -0.160316432464252,
-    "testAvgR": -0.16647208395847177,
-    "testN": 840
+    "trainAvgR": -0.16282891102889346,
+    "testAvgR": -0.16872072873616256,
+    "testN": 842
    },
    {
     "fam": "rsi",
     "sides": "both",
     "thr": 70,
-    "trainAvgR": 0.17637466291585868,
-    "testAvgR": 0.042883789454218814,
-    "testN": 534
+    "trainAvgR": 0.178392754088455,
+    "testAvgR": 0.04951397585280197,
+    "testN": 528
    },
    {
     "fam": "rsi",
     "sides": "long",
     "thr": 70,
-    "trainAvgR": 0.24792976247109083,
-    "testAvgR": 0.00935427002437173,
-    "testN": 343
+    "trainAvgR": 0.2507332807119613,
+    "testAvgR": 0.01838689855891648,
+    "testN": 336
    },
    {
     "fam": "rsi",
     "sides": "short",
     "thr": 75,
-    "trainAvgR": 0.017056836135380844,
-    "testAvgR": -0.0440821896403289,
+    "trainAvgR": 0.017056836135380865,
+    "testAvgR": -0.04408218964032888,
     "testN": 46
    }
   ]
  },
  "oos": {
   "NIFTY": {
-   "n": 38,
-   "hit": 44.73684210526316,
-   "avgR": 0.2903056350168906,
-   "expPct": 14.515281750844531,
-   "pf": 1.4482278271356568,
+   "n": 37,
+   "hit": 45.94594594594595,
+   "avgR": 0.32568383636652,
+   "expPct": 16.284191818325997,
+   "pf": 1.524682722130615,
    "mdd": 8.646081743462211,
-   "t": 1.2786291997942054,
+   "t": 1.4134557596204949,
    "ci95R": [
-    -0.14104436739235757,
-    0.7283178483393712
+    -0.11838305991049762,
+    0.8038431464255477
    ],
-   "defaultAvgR": 0.13739634405151505,
-   "defaultExpPct": 6.869817202575749,
-   "defaultN": 59
+   "defaultAvgR": 0.15730473335901862,
+   "defaultExpPct": 7.865236667950936,
+   "defaultN": 58
   },
   "BANKNIFTY": {
-   "n": 77,
-   "hit": 31.16883116883117,
-   "avgR": -0.11636492531664516,
-   "expPct": -5.818246265832257,
-   "pf": 0.6996783378600877,
-   "mdd": 17.948525441069286,
-   "t": -0.8243435326463293,
+   "n": 60,
+   "hit": 30,
+   "avgR": -0.04224392135907721,
+   "expPct": -2.11219606795386,
+   "pf": 0.7706473753531891,
+   "mdd": 7.764985309067437,
+   "t": -0.322153067471329,
    "ci95R": [
-    -0.3627016877519821,
-    0.17333216309666458
+    -0.29695420418739776,
+    0.23656546700696926
    ],
    "defaultAvgR": -0.1812739526883854,
    "defaultExpPct": -9.063697634419267,
@@ -404,17 +397,17 @@
    "defaultN": 65
   },
   "stocks": {
-   "n": 6386,
-   "hit": 51.25274036955842,
-   "avgR": -0.00387562730906638,
-   "expPct": -0.08685055068757352,
-   "pf": 0.9663765104556052,
+   "n": 6202,
+   "hit": 42.45404708158658,
+   "avgR": -0.07171468477102219,
+   "expPct": -0.3251656636298686,
+   "pf": 0.8681351248383968,
    "ci95R": [
-    -0.020080113354094643,
-    0.013316606240673797
+    -0.09912076620900254,
+    -0.045547150414040685
    ],
-   "defaultAvgR": -0.06850371434513124,
-   "defaultN": 6195
+   "defaultAvgR": -0.07171468477102219,
+   "defaultN": 6202
   }
  }
 }
