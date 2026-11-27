@@ -1,5 +1,5 @@
 {
- "v": 30,
+ "v": 31,
  "date": "2026-11-27",
  "labels": {
   "swing: EMA # above EMA #": "EMA 9 above EMA 21",
@@ -12,7 +12,10 @@
   "short: ADX #: strong uptrend": "ADX 26: strong uptrend",
   "short: MACD above signal": "MACD above signal",
   "short: RSI supports trend": "RSI supports trend",
-  "short: # in # month": "+17.5% in 1 month"
+  "short: # in # month": "+17.5% in 1 month",
+  "short: +# in # month": "+-8.9% in 1 month",
+  "short: #-day breakout": "20-day breakout",
+  "short: Active bullish setup (SMC / VCP / trend)": "Active bullish setup (SMC / VCP / trend)"
  },
  "trainedOn": {
   "stocks": 80,
@@ -24,12 +27,15 @@
   "swing: Volume # average on an up day": 0.5,
   "swing: Closed above #-day high": 0.5,
   "swing: Above # EMA (trend support)": 0.5,
-  "short: # EMA above # EMA": 0.5,
-  "short: Price above # EMA": 0.5,
-  "short: ADX #: strong uptrend": 1.5,
-  "short: MACD above signal": 1.5,
-  "short: RSI supports trend": 0.5,
-  "short: # in # month": 0.5
+  "short: # EMA above # EMA": 0,
+  "short: Price above # EMA": 0,
+  "short: ADX #: strong uptrend": 1.75,
+  "short: MACD above signal": 2,
+  "short: RSI supports trend": 0,
+  "short: # in # month": 0,
+  "short: +# in # month": 0.5,
+  "short: #-day breakout": 0.5,
+  "short: Active bullish setup (SMC / VCP / trend)": 0.5
  },
  "calib": {
   "swing": [
@@ -102,66 +108,66 @@
    {
     "lo": 0,
     "hi": 30,
-    "n": 1592,
-    "p": 0.339,
-    "ret": 2.41,
-    "up": 0.589
+    "n": 2125,
+    "p": 0.341,
+    "ret": 2.08,
+    "up": 0.584
    },
    {
     "lo": 30,
     "hi": 42,
-    "n": 2000,
-    "p": 0.351,
-    "ret": 2.31,
-    "up": 0.584
+    "n": 1932,
+    "p": 0.345,
+    "ret": 2.29,
+    "up": 0.561
    },
    {
     "lo": 42,
     "hi": 50,
-    "n": 2933,
-    "p": 0.352,
-    "ret": 2.34,
-    "up": 0.569
+    "n": 2601,
+    "p": 0.355,
+    "ret": 2.41,
+    "up": 0.573
    },
    {
     "lo": 50,
     "hi": 58,
-    "n": 5141,
-    "p": 0.335,
-    "ret": 1.84,
-    "up": 0.554
+    "n": 5365,
+    "p": 0.32,
+    "ret": 1.82,
+    "up": 0.555
    },
    {
     "lo": 58,
     "hi": 64,
-    "n": 1603,
-    "p": 0.294,
-    "ret": 1.42,
-    "up": 0.548
+    "n": 1109,
+    "p": 0.332,
+    "ret": 2.08,
+    "up": 0.569
    },
    {
     "lo": 64,
     "hi": 70,
-    "n": 1515,
-    "p": 0.301,
-    "ret": 2.05,
-    "up": 0.562
+    "n": 1404,
+    "p": 0.335,
+    "ret": 2.45,
+    "up": 0.575
    },
    {
     "lo": 70,
     "hi": 80,
-    "n": 2446,
-    "p": 0.345,
-    "ret": 3.06,
-    "up": 0.598
+    "n": 2059,
+    "p": 0.324,
+    "ret": 2.56,
+    "up": 0.58
    },
    {
     "lo": 80,
     "hi": 101,
-    "n": 530,
-    "p": 0.36,
-    "ret": 3.1,
-    "up": 0.604
+    "n": 1165,
+    "p": 0.362,
+    "ret": 2.93,
+    "up": 0.607
    }
   ],
   "medium": [
@@ -393,10 +399,10 @@
    "n": 18157
   },
   "short": {
-   "train": -0.052,
-   "trainNew": -0.046,
-   "test": 0.0323,
-   "testNew": 0.0343,
+   "train": -0.046,
+   "trainNew": -0.0327,
+   "test": 0.0343,
+   "testNew": 0.0377,
    "adopted": true,
    "n": 17760
   },
@@ -410,37 +416,6 @@
   }
  },
  "history": [
-  {
-   "v": 2,
-   "date": "2026-11-24",
-   "samples": 51904,
-   "metrics": {
-    "swing": {
-     "train": -0.0187,
-     "trainNew": -0.0156,
-     "test": -0.0132,
-     "testNew": -0.0113,
-     "adopted": false,
-     "n": 18159
-    },
-    "short": {
-     "train": -0.0448,
-     "trainNew": -0.0382,
-     "test": 0.0331,
-     "testNew": 0.035,
-     "adopted": false,
-     "n": 17760
-    },
-    "medium": {
-     "train": 0.0274,
-     "trainNew": 0.0309,
-     "test": 0.0623,
-     "testNew": 0.0559,
-     "adopted": false,
-     "n": 15985
-    }
-   }
-  },
   {
    "v": 3,
    "date": "2026-11-24",
@@ -1203,6 +1178,37 @@
      "trainNew": -0.046,
      "test": 0.0323,
      "testNew": 0.0343,
+     "adopted": true,
+     "n": 17760
+    },
+    "medium": {
+     "train": 0.0281,
+     "trainNew": 0.0316,
+     "test": 0.0646,
+     "testNew": 0.0582,
+     "adopted": false,
+     "n": 15920
+    }
+   }
+  },
+  {
+   "v": 31,
+   "date": "2026-11-27",
+   "samples": 51837,
+   "metrics": {
+    "swing": {
+     "train": -0.0196,
+     "trainNew": -0.0168,
+     "test": -0.0143,
+     "testNew": -0.0124,
+     "adopted": false,
+     "n": 18157
+    },
+    "short": {
+     "train": -0.046,
+     "trainNew": -0.0327,
+     "test": 0.0343,
+     "testNew": 0.0377,
      "adopted": true,
      "n": 17760
     },
