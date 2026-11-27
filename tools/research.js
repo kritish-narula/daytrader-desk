@@ -832,4 +832,4 @@ function finish(model, H, btst, C) {
 function writeReport() { if (DRY) return; fs.mkdirSync(path.dirname(REPORT), { recursive: true }); fs.writeFileSync(REPORT, LOG.join('\n') + '\n'); }
 
 if (require.main === module) main().catch(e => { console.error(e); process.exitCode = 1; });
-module.exports = { cholSolve, ridge, gram, ridgeG, spearman, rankArr, pearson, icStats, pickThresholds, quantile, stab, convRec, convRowOk, convGrid, convDedup, hitLower, NB };
+module.exports = { cholSolve, ridge, gram, ridgeG, spearman, rankArr, pearson, icStats, pickThresholds, quantile, stab, convRec, convRowOk, convGrid, convDedup, hitLower, NB, universe, getDaily, pool }; // universe / getDaily / pool: shared with tools/candles_research.js (same universe + Yahoo cache)

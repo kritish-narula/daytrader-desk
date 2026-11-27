@@ -26,7 +26,8 @@
     for (const [hz, L] of Object.entries(m.lin || {})) if (E.linOk(L)) lin[hz] = L;
     for (const [hz, T] of Object.entries(m.thresholds || {})) if (lin[hz] && T && ok(T.buy) && ok(T.sell) && T.buy > T.sell + 4 && T.buy <= 100 && T.sell >= 0) thresholds[hz] = T;
     const btst = E.linOk(m.btst) ? m.btst : undefined;
-    E.MODEL = Object.assign({}, m, { w, calib, lin, thresholds, btst });
+    const candles = E.candlesOk ? E.candlesOk(m.candles) : undefined; // tools/candles_research.js: measured candle edges (absent = none proven)
+    E.MODEL = Object.assign({}, m, { w, calib, lin, thresholds, btst, candles });
     return true;
   };
   E.calibBins = [0, 30, 42, 50, 58, 64, 70, 80, 101];
@@ -622,6 +623,250 @@
     return { n: tot, wins, odds: tot >= 4 ? Math.round(100 * (wins + 1) / (tot + 2)) : null };
   }
 
+  // ---------- candlestick patterns: 38 detectors on daily OHLC (E.candles) + context (E.candleCtx) + measured edge → trade (E.candleCall) ----------
+  // Pattern list = the 38 of the Groww "38 Candlestick Patterns" article; definitions made precise and scale-free:
+  //  · candle parts are measured against the bar's own range and against A = ATR(14) of the bar BEFORE the signal bar (a huge signal
+  //    candle doesn't inflate its own yardstick); ticks only set minimum tolerances.
+  //  · "long" body ≥ 0.6·A and ≥ 50% of its range · "small" body ≤ 0.35·A · doji body ≤ 10% of range (or ≤ 0.03·A) · a coloured candle
+  //    (green/red) is not a doji.
+  //  · "equal" prices (tweezers) within max(1 tick, 0.05·A); "same level" (meeting/separating lines, opens inside a body) max(1 tick, 0.1·A);
+  //    a "gap" must clear max(1 tick, 0.03·A) — opening gaps are common on Indian stocks, so a body/shadow gap is measured against the
+  //    prior body / range, never just "open ≠ previous close".
+  //  · trend context is CHECKED, not assumed, on the bars BEFORE the pattern (its own first candle never counts as the trend):
+  //    down = the 10-bar close change up to the bar before the pattern ≤ −1·A AND that close < EMA20 (up mirrored);
+  //    "at the bottom/top" (single-candle shapes, tweezers) = pattern low/high within 0.25·A of the prior 10-bar low/high or beyond;
+  //    continuation patterns need the trend they continue (close above an EMA20 that rose ≥ 0.1·A in 5 bars / below a falling one).
+  //  · edge cases: missing/NaN/≤0 prices or a zero-range bar (no trade, circuit-locked, holiday filler) anywhere in the pattern → no
+  //    signal; a calendar hole > 7 days inside the pattern (suspension, missing data) → no signal (the "gap" would be fake); illiquid /
+  //    frozen names (ATR < 4 ticks or < 0.15% of price) → no signals at all; inconsistent bars (high below close etc.) are normalised.
+  E.CANDLE_CFG = { long: 0.6, longRng: 0.5, small: 0.35, doji: 0.1, dojiA: 0.03, shapeRng: 0.7, eq: 0.05, eqWide: 0.1, gap: 0.03,
+    trendN: 10, trendAtr: 1, extN: 10, extTol: 0.25, minAtrTicks: 4, minAtrPct: 0.15, holeDays: 7, tick: 0.05 };
+  // k, name, direction, bars, type, trend requirement ('dn' / 'up' = prior trend checked; 'upC' / 'dnC' = continuation context), note
+  const CD = (k, n, b, len, type, tr, note) => ({ k, n, b, len, type, tr, note });
+  E.CANDLE_DEFS = [
+    CD('bull_engulfing', 'Bullish engulfing', 1, 2, 'reversal', 'dn', 'A larger green body swallowed the prior red body after a decline.'),
+    CD('hammer', 'Hammer', 1, 1, 'reversal', 'dn', 'Small body on top, lower wick ≥ 2× the body, at the bottom of a decline: dip was bought.'),
+    CD('morning_star', 'Morning star', 1, 3, 'reversal', 'dn', 'Long red, small-bodied star below it, then a green close above the middle of the red body.'),
+    CD('piercing', 'Piercing line', 1, 2, 'reversal', 'dn', 'Opened below the prior red close and closed above the middle of its body.'),
+    CD('bull_harami', 'Bullish harami', 1, 2, 'reversal', 'dn', 'Small green body inside a long red body: selling pressure easing.'),
+    CD('three_white_soldiers', 'Three white soldiers', 1, 3, 'reversal', null, 'Three long green candles with small wicks, each opening inside the prior body and closing higher.'),
+    CD('inverted_hammer', 'Inverted hammer', 1, 1, 'reversal', 'dn', 'Small body, long upper wick, little lower wick, at the bottom of a decline.'),
+    CD('dragonfly_doji', 'Dragonfly doji', 1, 1, 'reversal', 'dn', 'Open, high and close together with a long lower wick, at the bottom of a decline.'),
+    CD('bull_abandoned_baby', 'Bullish abandoned baby', 1, 3, 'reversal', 'dn', 'Long red, a doji gapped fully below it, then a green candle gapped fully above the doji.'),
+    CD('three_inside_up', 'Three inside up', 1, 3, 'reversal', 'dn', 'Long red, a green inside it closing above its middle, then a close above the red open.'),
+    CD('three_outside_up', 'Three outside up', 1, 3, 'reversal', 'dn', 'Bullish engulfing confirmed by a higher close the next day.'),
+    CD('bull_kicker', 'Bullish kicker', 1, 2, 'reversal', null, 'Long red, then a longer green that opened at/above the red open: sudden sentiment flip.'),
+    CD('tweezer_bottom', 'Tweezer bottom', 1, 2, 'reversal', 'dn', 'Red then green candle of similar size with matching lows at the recent low: support.'),
+    CD('rising_three', 'Rising three methods', 1, 5, 'continuation', 'upC', 'Long green, three small mostly-red candles inside its range, then a green close above its high.'),
+    CD('concealing_baby_swallow', 'Concealing baby swallow', 1, 4, 'reversal', 'dn', 'Two red marubozu-like candles, a small gap-down candle, then a red candle engulfing it: selling exhausting.'),
+    CD('mat_hold', 'Mat hold', 1, 5, 'continuation', 'upC', 'Long green, a small candle holding above its close, a shallow drift lower in its upper half, then a green breakout.'),
+    CD('bull_separating_lines', 'Bullish separating lines', 1, 2, 'continuation', 'upC', 'In an uptrend: a red candle, then a long green opening at the same level and never looking back.'),
+    CD('bull_belt_hold', 'Bullish belt hold', 1, 1, 'reversal', 'dn', 'Opened at the low (no lower wick) and closed near the high, at the bottom of a decline.'),
+    CD('bull_three_line_strike', 'Three-line strike (bullish)', 1, 4, 'continuation', null, 'Three rising green candles, then one red candle erasing them: often resumes upward.'),
+    CD('ladder_bottom', 'Ladder bottom', 1, 5, 'reversal', 'dn', 'Three falling red candles, a small pause, then a long green close above the pause high.'),
+    CD('meeting_lines', 'Meeting lines (bullish)', 1, 2, 'reversal', 'dn', 'Long red, then a long green that opened lower but closed at the same level.'),
+    CD('bear_engulfing', 'Bearish engulfing', -1, 2, 'reversal', 'up', 'A larger red body swallowed the prior green body after a rise.'),
+    CD('bear_belt_hold', 'Bearish belt hold', -1, 1, 'reversal', 'up', 'Opened at the high (no upper wick) and closed near the low, at the top of a rise.'),
+    CD('three_black_crows', 'Three black crows', -1, 3, 'continuation', null, 'Three long red candles with small wicks, each opening inside the prior body and closing lower.'),
+    CD('bear_three_line_strike', 'Three-line strike (bearish)', -1, 4, 'continuation', null, 'Three falling red candles, then one green candle erasing them: often resumes downward.'),
+    CD('hanging_man', 'Hanging man', -1, 1, 'reversal', 'up', 'Hammer shape (long lower wick) at the top of a rise.'),
+    CD('upside_gap_two_crows', 'Upside gap two crows', -1, 3, 'reversal', 'up', 'Long green, a small red gapped above it, then a red engulfing that one but still above the green close.'),
+    CD('evening_star', 'Evening star', -1, 3, 'reversal', 'up', 'Long green, small-bodied star above it, then a red close below the middle of the green body.'),
+    CD('shooting_star', 'Shooting star', -1, 1, 'reversal', 'up', 'Small body, long upper wick, little lower wick, at the top of a rise.'),
+    CD('bear_harami', 'Bearish harami', -1, 2, 'reversal', 'up', 'Small red body inside a long green body: buying pressure easing.'),
+    CD('bear_doji_star', 'Bearish doji star', -1, 2, 'reversal', 'up', 'Long green, then a doji opening above its close: indecision at the top.'),
+    CD('bear_abandoned_baby', 'Bearish abandoned baby', -1, 3, 'reversal', 'up', 'Long green, a doji gapped fully above it, then a red candle gapped fully below the doji.'),
+    CD('tweezer_top', 'Tweezer top', -1, 2, 'reversal', 'up', 'Green then red candle of similar size with matching highs at the recent high: resistance.'),
+    CD('bear_kicker', 'Bearish kicker', -1, 2, 'reversal', null, 'Long green, then a longer red that opened at/below the green open: sudden sentiment flip.'),
+    CD('three_inside_down', 'Three inside down', -1, 3, 'reversal', 'up', 'Long green, a red inside it closing below its middle, then a close below the green open.'),
+    CD('three_outside_down', 'Three outside down', -1, 3, 'reversal', 'up', 'Bearish engulfing confirmed by a lower close the next day.'),
+    CD('bear_mat_hold', 'Bearish mat hold', -1, 5, 'continuation', 'dnC', 'Long red, three small mostly-green candles inside its range, then a red close below its low.'),
+    CD('dark_cloud', 'Dark cloud cover', -1, 2, 'reversal', 'up', 'Opened above the prior green high and closed below the middle of its body.'),
+  ];
+  E.CANDLE_BY = Object.fromEntries(E.CANDLE_DEFS.map(d => [d.k, d]));
+  // detectors: x[0] = signal bar (i), x[1] = i−1, …; h = helpers (A, tolerances, trend/extreme checks, s = first pattern bar)
+  const CT = {
+    bull_engulfing: (x, h) => h.cR(x[1]) && h.cG(x[0]) && x[0].o <= x[1].c && x[0].c >= x[1].o && x[0].body > x[1].body && x[0].body >= 0.4 * h.A && h.DN(h.s - 1),
+    hammer: (x, h) => h.hammerShape(x[0]) && h.DN(h.s - 1) && h.atLow(),
+    morning_star: (x, h) => { const [c, b, a] = x; return h.cR(a) && h.long(a) && h.small(b) && b.body <= 0.5 * a.body && b.bot < a.c && b.top <= a.c + h.eqW && h.cG(c) && c.body >= 0.5 * h.A && c.c > a.mid && h.DN(h.s - 1); },
+    piercing: (x, h) => { const [c, p] = x; return h.cR(p) && h.long(p) && h.cG(c) && c.o <= p.c - h.tick + 1e-9 && c.c > p.mid && c.c < p.o && h.DN(h.s - 1); },
+    bull_harami: (x, h) => { const [c, p] = x; return h.cR(p) && h.long(p) && h.cG(c) && c.o >= p.c && c.c <= p.o && c.body <= 0.5 * p.body && h.DN(h.s - 1); },
+    three_white_soldiers: (x, h) => { const s = k => h.cG(k) && k.body >= 0.5 * h.A && k.body >= 0.6 * k.rng && k.up <= 0.25 * k.rng; const [c, b, a] = x;
+      return s(a) && s(b) && s(c) && b.c > a.c && c.c > b.c && b.o >= a.o && b.o <= a.c + h.eqW && c.o >= b.o && c.o <= b.c + h.eqW; },
+    inverted_hammer: (x, h) => h.invShape(x[0]) && h.DN(h.s - 1) && h.atLow(),
+    dragonfly_doji: (x, h) => { const k = x[0]; return h.doji(k) && k.rng >= h.K.shapeRng * h.A && k.up <= 0.1 * k.rng && k.lw >= 0.7 * k.rng && h.DN(h.s - 1) && h.atLow(); },
+    bull_abandoned_baby: (x, h) => { const [c, b, a] = x; return h.cR(a) && h.long(a) && h.doji(b) && b.h <= a.l - h.gT && h.cG(c) && c.body >= 0.5 * h.A && c.l >= b.h + h.gT && h.DN(h.s - 1); },
+    three_inside_up: (x, h) => { const [c, b, a] = x; return h.cR(a) && h.long(a) && h.cG(b) && b.o >= a.c && b.c <= a.o && b.c >= a.mid && h.cG(c) && c.c > a.o && h.DN(h.s - 1); },
+    three_outside_up: (x, h) => { const [c, b, a] = x; return h.cR(a) && h.cG(b) && b.o <= a.c && b.c >= a.o && b.body > a.body && h.cG(c) && c.c > b.c && h.DN(h.s - 1); },
+    bull_kicker: (x, h) => { const [c, p] = x; return h.cR(p) && h.long(p) && h.cG(c) && h.long(c) && c.o >= p.o && c.body >= p.body; },
+    tweezer_bottom: (x, h) => { const [c, p] = x; return h.cR(p) && h.cG(c) && Math.abs(c.l - p.l) <= h.eq && p.body >= 0.25 * h.A && c.body >= 0.25 * h.A && c.body <= 2 * p.body && p.body <= 2 * c.body && h.DN(h.s - 1) && h.atLow(); },
+    rising_three: (x, h) => { const [e, m3, m2, m1, a] = x, M = [m1, m2, m3];
+      return h.cG(a) && h.long(a) && M.every(k => k.body <= 0.5 * a.body && k.h <= a.h + h.eq && k.l >= a.l - h.eq) && M.filter(h.cR).length >= 2 && h.cG(e) && h.long(e) && e.c > a.h && h.upC(h.s - 1); },
+    concealing_baby_swallow: (x, h) => { const [d, c, b, a] = x, mz = k => h.cR(k) && h.long(k) && k.body >= 0.8 * k.rng;
+      return mz(a) && mz(b) && h.small(c) && c.o <= b.c - h.gT && h.cR(d) && h.long(d) && d.o >= c.h - h.eq && d.c <= c.l && h.DN(h.s - 1); },
+    mat_hold: (x, h) => { const [e, m3, m2, m1, a] = x, M = [m1, m2, m3];
+      return h.cG(a) && h.long(a) && m1.bot >= a.c - h.eq && m1.top > a.c && M.every(k => k.body <= 0.5 * a.body && k.l >= a.mid) && m2.c <= m1.c && m3.c <= m2.c &&
+        M.filter(h.cR).length >= 2 && h.cG(e) && h.long(e) && e.c > Math.max(m1.h, m2.h, m3.h, a.h) && h.upC(h.s - 1); },
+    bull_separating_lines: (x, h) => { const [c, p] = x; return h.cR(p) && p.body >= 0.4 * h.A && h.cG(c) && h.long(c) && Math.abs(c.o - p.o) <= h.eqW && c.lw <= Math.max(h.tick, 0.1 * c.rng) && h.upC(h.s - 1); },
+    bull_belt_hold: (x, h) => { const k = x[0], p = h.bar(h.i - 1); return !!p && h.cG(k) && h.long(k) && k.lw <= Math.max(h.tick, 0.05 * k.rng) && k.up <= 0.25 * k.rng && k.o <= p.c && h.DN(h.s - 1) && h.atLow(); },
+    bull_three_line_strike: (x, h) => { const [d, c, b, a] = x, g = k => h.cG(k) && k.body >= 0.3 * h.A; return g(a) && g(b) && g(c) && b.c > a.c && c.c > b.c && h.cR(d) && d.o >= c.c - h.eqW && d.c < a.o; },
+    ladder_bottom: (x, h) => { const [e, d, c, b, a] = x, r = k => h.cR(k) && k.body >= 0.5 * h.A;
+      return r(a) && r(b) && r(c) && b.o < a.o && b.c < a.c && c.o < b.o && c.c < b.c && h.small(d) && h.cG(e) && h.long(e) && e.o >= d.bot && e.c > d.h && h.DN(h.s - 1); },
+    meeting_lines: (x, h) => { const [c, p] = x; return h.cR(p) && h.long(p) && h.cG(c) && h.long(c) && c.o <= p.c - h.tick + 1e-9 && Math.abs(c.c - p.c) <= h.eqW && h.DN(h.s - 1); },
+    bear_engulfing: (x, h) => h.cG(x[1]) && h.cR(x[0]) && x[0].o >= x[1].c && x[0].c <= x[1].o && x[0].body > x[1].body && x[0].body >= 0.4 * h.A && h.UP(h.s - 1),
+    bear_belt_hold: (x, h) => { const k = x[0], p = h.bar(h.i - 1); return !!p && h.cR(k) && h.long(k) && k.up <= Math.max(h.tick, 0.05 * k.rng) && k.lw <= 0.25 * k.rng && k.o >= p.c && h.UP(h.s - 1) && h.atHigh(); },
+    three_black_crows: (x, h) => { const s = k => h.cR(k) && k.body >= 0.5 * h.A && k.body >= 0.6 * k.rng && k.lw <= 0.25 * k.rng; const [c, b, a] = x;
+      return s(a) && s(b) && s(c) && b.c < a.c && c.c < b.c && b.o <= a.o && b.o >= a.c - h.eqW && c.o <= b.o && c.o >= b.c - h.eqW; },
+    bear_three_line_strike: (x, h) => { const [d, c, b, a] = x, r = k => h.cR(k) && k.body >= 0.3 * h.A; return r(a) && r(b) && r(c) && b.c < a.c && c.c < b.c && h.cG(d) && d.o <= c.c + h.eqW && d.c > a.o; },
+    hanging_man: (x, h) => h.hammerShape(x[0]) && h.UP(h.s - 1) && h.atHigh(),
+    upside_gap_two_crows: (x, h) => { const [c, b, a] = x; return h.cG(a) && h.long(a) && h.cR(b) && h.small(b) && b.bot >= a.c + h.tick - 1e-9 && h.cR(c) && c.o >= b.o && c.c < b.c && c.c > a.c && h.UP(h.s - 1); },
+    evening_star: (x, h) => { const [c, b, a] = x; return h.cG(a) && h.long(a) && h.small(b) && b.body <= 0.5 * a.body && b.top > a.c && b.bot >= a.c - h.eqW && h.cR(c) && c.body >= 0.5 * h.A && c.c < a.mid && h.UP(h.s - 1); },
+    shooting_star: (x, h) => h.invShape(x[0]) && h.UP(h.s - 1) && h.atHigh(),
+    bear_harami: (x, h) => { const [c, p] = x; return h.cG(p) && h.long(p) && h.cR(c) && c.o <= p.c && c.c >= p.o && c.body <= 0.5 * p.body && h.UP(h.s - 1); },
+    bear_doji_star: (x, h) => { const [c, p] = x; return h.cG(p) && h.long(p) && h.doji(c) && c.bot >= p.c + h.tick - 1e-9 && h.UP(h.s - 1); },
+    bear_abandoned_baby: (x, h) => { const [c, b, a] = x; return h.cG(a) && h.long(a) && h.doji(b) && b.l >= a.h + h.gT && h.cR(c) && c.body >= 0.5 * h.A && c.h <= b.l - h.gT && h.UP(h.s - 1); },
+    tweezer_top: (x, h) => { const [c, p] = x; return h.cG(p) && h.cR(c) && Math.abs(c.h - p.h) <= h.eq && p.body >= 0.25 * h.A && c.body >= 0.25 * h.A && c.body <= 2 * p.body && p.body <= 2 * c.body && h.UP(h.s - 1) && h.atHigh(); },
+    bear_kicker: (x, h) => { const [c, p] = x; return h.cG(p) && h.long(p) && h.cR(c) && h.long(c) && c.o <= p.o && c.body >= p.body; },
+    three_inside_down: (x, h) => { const [c, b, a] = x; return h.cG(a) && h.long(a) && h.cR(b) && b.o <= a.c && b.c >= a.o && b.c <= a.mid && h.cR(c) && c.c < a.o && h.UP(h.s - 1); },
+    three_outside_down: (x, h) => { const [c, b, a] = x; return h.cG(a) && h.cR(b) && b.o >= a.c && b.c <= a.o && b.body > a.body && h.cR(c) && c.c < b.c && h.UP(h.s - 1); },
+    bear_mat_hold: (x, h) => { const [e, m3, m2, m1, a] = x, M = [m1, m2, m3];
+      return h.cR(a) && h.long(a) && M.every(k => k.body <= 0.5 * a.body && k.h <= a.h + h.eq && k.l >= a.l - h.eq) && M.filter(h.cG).length >= 2 && h.cR(e) && h.long(e) && e.c < a.l && h.dnC(h.s - 1); },
+    dark_cloud: (x, h) => { const [c, p] = x; return h.cG(p) && h.long(p) && h.cR(c) && c.o >= p.h + h.tick - 1e-9 && c.c < p.mid && c.c > p.o && h.UP(h.s - 1); },
+  };
+  // minimal indicator set the detectors / context need (when the caller has no E.indicators output)
+  function candleInd(D) { return { atr: atr(D.h, D.l, D.c), e20: ema(D.c, 20), e50: ema(D.c, 50), e200: ema(D.c, 200) }; }
+  E._candleInd = candleInd;
+  // E.candles(D, i, I?, opts?) → [{k, n, b, len, type, tr, note, s, lo, hi}] for the pattern(s) COMPLETED at bar i (uses bars ≤ i only).
+  // opts.tick (default 0.05). The returned array carries .skip = 'illiquid' | 'bad bar' | 'no atr' when nothing could be evaluated.
+  E.candles = function (D, i, I, opts) {
+    opts = opts || {}; const out = [];
+    if (!D || !D.c || !D.o || !D.h || !D.l) return out;
+    const n = D.c.length; if (i == null) i = n - 1; if (!(i >= 1 && i < n)) return out;
+    if (!(I && I.atr && I.e20)) I = candleInd(D);
+    const K = E.CANDLE_CFG, tick = ok(opts.tick) && opts.tick > 0 ? opts.tick : K.tick, T = D.t, memo = {};
+    const bar = k => {
+      if (k < 0 || k > i) return null; if (k in memo) return memo[k];
+      let o = D.o[k], h = D.h[k], l = D.l[k], c = D.c[k], r = null;
+      if (ok(o) && ok(h) && ok(l) && ok(c) && o > 0 && h > 0 && l > 0 && c > 0) {
+        h = Math.max(h, o, c); l = Math.min(l, o, c); // normalise inconsistent bars (high below close etc.)
+        const rng = h - l;
+        if (rng >= tick - 1e-9) { const top = Math.max(o, c), bot = Math.min(o, c); r = { o, h, l, c, rng, body: top - bot, top, bot, up: h - top, lw: bot - l, mid: (o + c) / 2 }; }
+      }
+      return (memo[k] = r);
+    };
+    // A = ATR before the signal bar; fallback = mean range of the last ≤ 14 valid bars (≥ 5 needed)
+    let A = I.atr[i - 1];
+    if (!ok(A) || A <= 0) { let s = 0, m = 0; for (let k = i - 1; k >= Math.max(0, i - 14); k--) { const b = bar(k); if (b) { s += b.rng; m++; } } A = m >= 5 ? s / m : NaN; }
+    const x0 = bar(i), pv = bar(i - 1);
+    if (!ok(A) || A <= 0) { out.skip = 'no atr'; return out; }
+    if (!x0) { out.skip = 'bad bar'; return out; }
+    const ref = pv ? pv.c : x0.c;
+    if (A < K.minAtrTicks * tick || A / ref * 100 < K.minAtrPct) { out.skip = 'illiquid'; return out; }
+    const e20 = I.e20, tv = e => { const a = bar(e), b = bar(e - K.trendN); return a && b ? (a.c - b.c) / A : NaN; };
+    const H = {
+      A, K, tick, i, bar,
+      eq: Math.max(tick, K.eq * A), eqW: Math.max(tick, K.eqWide * A), gT: Math.max(tick, K.gap * A),
+      doji: x => x.body <= K.doji * x.rng || x.body <= K.dojiA * A,
+      long: x => x.body >= K.long * A && x.body >= K.longRng * x.rng,
+      small: x => x.body <= K.small * A,
+      DN: e => { const v = tv(e); return v <= -K.trendAtr && (!ok(e20[e]) || bar(e).c < e20[e]); },
+      UP: e => { const v = tv(e); return v >= K.trendAtr && (!ok(e20[e]) || bar(e).c > e20[e]); },
+      // continuation context: close on the trend side of an EMA20 that moved ≥ 0.1·A over 5 bars (a flat, wobbling EMA is no trend)
+      upC: e => { const b = bar(e); if (!b) return false; return ok(e20[e]) && ok(e20[e - 5]) ? b.c > e20[e] && e20[e] - e20[e - 5] >= 0.1 * A : tv(e) >= 0.5 * K.trendAtr; },
+      dnC: e => { const b = bar(e); if (!b) return false; return ok(e20[e]) && ok(e20[e - 5]) ? b.c < e20[e] && e20[e - 5] - e20[e] >= 0.1 * A : tv(e) <= -0.5 * K.trendAtr; },
+    };
+    H.cG = x => x.c > x.o && !H.doji(x); H.cR = x => x.c < x.o && !H.doji(x);
+    H.hammerShape = x => !H.doji(x) && x.rng >= K.shapeRng * A && x.lw >= 2 * x.body && x.lw >= 0.6 * x.rng && x.up <= 0.15 * x.rng;
+    H.invShape = x => !H.doji(x) && x.rng >= K.shapeRng * A && x.up >= 2 * x.body && x.up >= 0.6 * x.rng && x.lw <= 0.15 * x.rng;
+    const prior = (s, f) => { let v = f > 0 ? -Infinity : Infinity, m = 0; for (let k = s - K.extN; k < s; k++) { const b = bar(k); if (b) { v = f > 0 ? Math.max(v, b.h) : Math.min(v, b.l); m++; } } return m >= K.extN / 2 ? v : NaN; };
+    for (const d of E.CANDLE_DEFS) {
+      const s = i - d.len + 1; if (s < 1) continue;
+      const x = []; let good = true, lo = Infinity, hi = -Infinity;
+      for (let k = i; k >= s; k--) { const b = bar(k); if (!b) { good = false; break; } x.push(b); lo = Math.min(lo, b.l); hi = Math.max(hi, b.h); }
+      if (!good) continue;
+      if (T) { for (let k = s + 1; k <= i; k++) if (ok(T[k]) && ok(T[k - 1]) && T[k] - T[k - 1] > K.holeDays * 86400) { good = false; break; } if (!good) continue; }
+      H.s = s; H.atLow = () => { const v = prior(s, -1); return ok(v) && lo <= v + K.extTol * A; }; H.atHigh = () => { const v = prior(s, 1); return ok(v) && hi >= v - K.extTol * A; };
+      let hit = false; try { hit = !!CT[d.k](x, H); } catch (e) { hit = false; }
+      if (hit) out.push({ k: d.k, n: d.n, b: d.b, len: d.len, type: d.type, tr: d.tr, note: d.note, s, lo, hi });
+    }
+    return out;
+  };
+  // context of a detected pattern at bar i (same in research and on the phone). mktAbove = Nifty above its 200 EMA (bool) or undefined.
+  E.CANDLE_CTX = ['all', 'up', 'dn', 'a200', 'b200', 'lo20', 'hi20', 'vol', 'mktUp', 'mktDn'];
+  E.CANDLE_CTX_LBL = { all: 'any context', up: 'uptrend (close > 50 EMA > 200 EMA)', dn: 'downtrend (close < 50 EMA < 200 EMA)', a200: 'above the 200 EMA', b200: 'below the 200 EMA',
+    lo20: 'at a 20-day low', hi20: 'at a 20-day high', vol: 'volume ≥ 1.5× 20-day average', mktUp: 'Nifty above its 200 EMA', mktDn: 'Nifty below its 200 EMA' };
+  E.candleCtx = function (D, I, i, p, mktAbove) {
+    const c = D.c[i], e50 = I.e50 ? I.e50[i] : NaN, e200 = I.e200 ? I.e200[i] : NaN, s = p && p.s != null ? p.s : i, plo = p ? p.lo : D.l[i], phi = p ? p.hi : D.h[i];
+    let lo = Infinity, hi = -Infinity, m = 0; for (let k = Math.max(0, s - 20); k < s; k++) if (ok(D.l[k]) && ok(D.h[k]) && D.l[k] > 0) { lo = Math.min(lo, D.l[k]); hi = Math.max(hi, D.h[k]); m++; }
+    let vs = 0, vn = 0; if (D.v) for (let k = Math.max(0, i - 20); k < i; k++) if (ok(D.v[k])) { vs += D.v[k]; vn++; }
+    const vol = !!D.v && vn >= 10 && vs > 0 && ok(D.v[i]) && D.v[i] >= 1.5 * vs / vn;
+    const e = ok(e50) && ok(e200) && ok(c);
+    return { all: true, up: e && c > e50 && e50 > e200, dn: e && c < e50 && e50 < e200, a200: ok(e200) && c > e200, b200: ok(e200) && c < e200,
+      lo20: m >= 15 && plo <= lo, hi20: m >= 15 && phi >= hi, vol, mktUp: mktAbove === true, mktDn: mktAbove === false };
+  };
+  E.candleCtxBits = cx => E.CANDLE_CTX.reduce((a, k, j) => a | (cx[k] ? 1 << j : 0), 0);
+  // stop / target of a measured rule (shared by tools/candles_research.js simulation and the phone).
+  // spec.stop {type: 'pat' (pattern low/high ∓ k·A) | 'atr' (entry ∓ k·A) | 'none'}; spec.target {type: 'R' (k × risk) | 'atr' (k·A, k = a train
+  // percentile of the move reached) | 'none'}. b = direction, entry = entry price, p = {lo, hi}, A = ATR at the signal bar (atrAt).
+  E.candleLevels = function (spec, b, entry, p, A) {
+    const st = (spec && spec.stop) || {}, tg = (spec && spec.target) || {}; let stop = null, target = null;
+    if (st.type === 'pat') stop = b > 0 ? p.lo - st.k * A : p.hi + st.k * A; else if (st.type === 'atr') stop = entry - b * st.k * A;
+    const risk = stop != null ? b * (entry - stop) : NaN;
+    if (tg.type === 'R') target = risk > 0 ? entry + b * tg.k * risk : null; else if (tg.type === 'atr') target = entry + b * tg.k * A;
+    return { stop, target, risk };
+  };
+  const CANDLE_ST = ['none', 'pat', 'atr'], CANDLE_TG = ['none', 'R', 'atr'], CANDLE_EX = ['close', 'open'];
+  // model.json `candles` (tools/candles_research.js) — keep only well-formed entries
+  E.candlesOk = function (C) {
+    if (!C || typeof C !== 'object' || !C.pats || typeof C.pats !== 'object') return undefined;
+    const pats = {}, num = x => x == null || ok(x);
+    for (const [k, P] of Object.entries(C.pats)) {
+      if (!E.CANDLE_BY[k] || !P || typeof P !== 'object') continue;
+      const edges = (Array.isArray(P.edges) ? P.edges : []).filter(e => e && E.CANDLE_CTX.includes(e.ctx) && e.trade && typeof e.trade === 'object' && (() => {
+        const t = e.trade; return ['close', 'nextOpen'].includes(t.entry) && (t.hold === 1 || t.hold === 5) && CANDLE_EX.includes(t.exit || 'close') &&
+          t.stop && CANDLE_ST.includes(t.stop.type) && num(t.stop.k) && (t.stop.type === 'none' || ok(t.stop.k)) && t.target && CANDLE_TG.includes(t.target.type) && (t.target.type === 'none' || ok(t.target.k)) &&
+          ok(t.avgTest) && ok(t.winTest) && ok(t.n) && num(t.avgF1);
+      })());
+      pats[k] = Object.assign({}, P, { edges, edge: edges.some(e => e.trade.avgTest > 0 && (e.trade.avgF1 == null || e.trade.avgF1 > 0)) }); // = what E.candleCall trades
+    }
+    return Object.assign({}, C, { pats });
+  };
+  // E.candleCall(D, i?, I?, ctx?) — the candle(s) completed at bar i (default: the latest COMPLETED bar: last bar, or the one before it with
+  // ctx.live) with their measured stats and, only for patterns whose measured rule (model.json candles, edge in BOTH test folds) matches
+  // today's context, a concrete trade. ctx: {live, tick, niftyAbove200}. Returns {i, t, items: [...], skip}; items sorted: trade first.
+  E.candleCall = function (D, i, I, ctx) {
+    ctx = ctx || {}; if (!D || !D.c || !D.c.length) return { i: -1, t: null, items: [] };
+    const n = D.c.length; if (i == null) i = ctx.live && n > 2 ? n - 2 : n - 1;
+    if (!(I && I.atr && I.e20 && I.e50 && I.e200)) I = candleInd(D);
+    const tick = ok(ctx.tick) && ctx.tick > 0 ? ctx.tick : E.CANDLE_CFG.tick, R = x => roundTick(x, tick);
+    const pats = E.candles(D, i, I, { tick }), M = E.MODEL && E.MODEL.candles, P = (M && M.pats) || {};
+    const mk = typeof ctx.niftyAbove200 === 'boolean' ? ctx.niftyAbove200 : undefined, px = D.c[i], A = atrAt(I, i, px), f2 = x => (x >= 0 ? '+' : '') + x.toFixed(2);
+    const items = pats.map(p => {
+      const cx = E.candleCtx(D, I, i, p, mk), m = P[p.k];
+      const it = { k: p.k, n: p.n, b: p.b, len: p.len, type: p.type, note: p.note, lo: R(p.lo), hi: R(p.hi), ctx: E.CANDLE_CTX.filter(c => c !== 'all' && cx[c]),
+        measured: !!m, edge: false, seen: m && m.seen ? m.seen : null, rule: null, trade: null };
+      const r = m && (m.edges || []).find(e => cx[e.ctx] && e.trade.avgTest > 0 && (e.trade.avgF1 == null || e.trade.avgF1 > 0));
+      if (r) {
+        const t = r.trade, e0 = px, lv = E.candleLevels(t, p.b, e0, p, A);
+        if (!(lv.stop != null && !(p.b * (e0 - lv.stop) > 0)) && !(lv.target != null && !(p.b * (lv.target - e0) > 0))) {
+          const side = p.b > 0 ? 'Buy' : 'Short', when = t.entry === 'close' ? 'at the close' : "at tomorrow's open", exit = t.exit === 'open' ? 'next open' : t.hold === 1 ? 'next close' : `close of day ${t.hold}`;
+          it.edge = true; it.rule = { ctx: r.ctx, ctxLbl: E.CANDLE_CTX_LBL[r.ctx], m: r.m };
+          it.trade = { side: p.b > 0 ? 'long' : 'short', entryAt: t.entry, entry: R(e0), stop: lv.stop != null ? R(lv.stop) : null, target: lv.target != null ? R(lv.target) : null, hold: t.hold, exit: t.exit || 'close',
+            winTest: t.winTest, avgTest: t.avgTest, n: t.n, avgF1: t.avgF1 == null ? null : t.avgF1, shortOnly: p.b < 0 || undefined,
+            text: `${side} ${when}${t.entry === 'close' ? ' ~' + R(e0) : ' (~' + R(e0) + ' est.)'}${lv.stop != null ? ', stop ' + R(lv.stop) : ''}${lv.target != null ? ', target ' + R(lv.target) : ''}, exit by ${exit}` +
+              `${p.b < 0 ? ' (short: F&O / intraday only)' : ''}. Tested out of sample: avg ${f2(t.avgTest)}% per trade after costs, win ${Math.round(t.winTest * 100)}% (n ${t.n}) when ${E.CANDLE_CTX_LBL[r.ctx]}.` };
+        }
+      }
+      it.label = it.trade ? 'proven edge' : m ? 'seen, no proven edge' : 'not measured yet';
+      return it;
+    }).sort((a, b) => (b.trade ? 1 : 0) - (a.trade ? 1 : 0) || (b.trade && a.trade ? b.trade.avgTest - a.trade.avgTest : 0) || b.len - a.len);
+    return { i, t: D.t ? D.t[i] : null, items, skip: pats.skip };
+  };
+  // compact form for scan rows / Tomorrow (≤ 3 items)
+  E.candleSlim = c => Object.assign({ k: c.k, n: c.n, b: c.b, edge: c.edge, label: c.label },
+    c.trade ? { win: c.trade.winTest, avg: c.trade.avgTest, nT: c.trade.n, entry: c.trade.entry, entryAt: c.trade.entryAt, stop: c.trade.stop, target: c.trade.target, hold: c.trade.hold, exit: c.trade.exit, ctx: c.rule.ctx }
+      : c.seen ? { win: c.seen.win, avg: c.seen.avg, nT: c.seen.n } : {});
+
   // ---------- patterns ----------
   function pivots(D, i0, i1, k = 3) {
     const hi = [], lo = [];
@@ -636,12 +881,13 @@
     const D = I.D, i = I.n - 1, o = D.o, h = D.h, l = D.l, c = D.c, P = [];
     const R = x => roundTick(x, tick);
     const body = k => Math.abs(c[k] - o[k]), rng = k => h[k] - l[k];
-    // candles
-    if (c[i] > o[i] && c[i - 1] < o[i - 1] && c[i] >= o[i - 1] && o[i] <= c[i - 1]) P.push({ n: 'Bullish engulfing', b: 1, note: 'Buyers overwhelmed the prior red candle.', stop: R(Math.min(l[i], l[i - 1])) });
-    if (c[i] < o[i] && c[i - 1] > o[i - 1] && o[i] >= c[i - 1] && c[i] <= o[i - 1]) P.push({ n: 'Bearish engulfing', b: -1, note: 'Sellers overwhelmed the prior green candle.', stop: R(Math.max(h[i], h[i - 1])) });
-    const lw = Math.min(o[i], c[i]) - l[i], uw = h[i] - Math.max(o[i], c[i]);
-    if (rng(i) > 0 && lw > 2 * body(i) && uw < body(i) && c[i] < I.e20[i]) P.push({ n: 'Hammer', b: 1, note: 'Long lower wick after a pullback — dip buying.', stop: R(l[i]) });
-    if (rng(i) > 0 && uw > 2 * body(i) && lw < body(i) && c[i] > I.e20[i]) P.push({ n: 'Shooting star', b: -1, note: 'Long upper wick after a rally — rejection.', stop: R(h[i]) });
+    // candles: the four classic ones, now from the precise detectors in E.candles (trend checked, scale-free, edge cases handled);
+    // same names / notes / stops as before. All 38 patterns + measured stats are in analyze().candles (E.candleCall).
+    const CK = new Set(E.candles(D, i, I, { tick }).map(p => p.k));
+    if (CK.has('bull_engulfing')) P.push({ n: 'Bullish engulfing', b: 1, note: 'Buyers overwhelmed the prior red candle.', stop: R(Math.min(l[i], l[i - 1])) });
+    if (CK.has('bear_engulfing')) P.push({ n: 'Bearish engulfing', b: -1, note: 'Sellers overwhelmed the prior green candle.', stop: R(Math.max(h[i], h[i - 1])) });
+    if (CK.has('hammer')) P.push({ n: 'Hammer', b: 1, note: 'Long lower wick after a pullback — dip buying.', stop: R(l[i]) });
+    if (CK.has('shooting_star')) P.push({ n: 'Shooting star', b: -1, note: 'Long upper wick after a rally — rejection.', stop: R(h[i]) });
     if (h[i] < h[i - 1] && l[i] > l[i - 1]) P.push({ n: 'Inside bar', b: 0, note: `Coiling. Buy above ${R(h[i - 1])}, sell below ${R(l[i - 1])}.` });
     let nr7 = true; for (let k = 1; k < 7; k++) if (rng(i - k) <= rng(i)) nr7 = false;
     if (nr7) P.push({ n: 'NR7 (narrowest range in 7 days)', b: 0, note: 'Volatility contraction — a sharp move often follows.' });
@@ -914,10 +1160,14 @@
     let s = 0, w = 0; for (const k in wts) if (!hz[k].na) { s += wts[k] * hz[k].score; w += wts[k]; }
     const overall = Math.round(s / w);
     const pats = E.patterns(I, tick), cross = E.emaCross(I), sets = E.setups(I, i, tick);
+    // candlestick patterns of the last COMPLETED bar with their measured stats; a trade only for proven (model.json candles) ones.
+    // Informational: no horizon score reads it.
+    let n200 = typeof opts.niftyAbove200 === 'boolean' ? opts.niftyAbove200 : undefined; if (n200 === undefined && E.CTX.idx) try { n200 = E.above200(E.CTX.idx, live); } catch (e) {}
+    let cdl = []; try { cdl = E.candleCall(D, i, I, { tick, niftyAbove200: n200 }).items; } catch (e) {}
     const hi52 = maxIn(D.h, i - 251, i), lo52 = minIn(D.l, i - 251, i);
     const res = {
       price, prev: prevC, chg: (price / prevC - 1) * 100, live, barT: D.t[i], overall, overallAction: action(overall, 'overall', opts.canShort).a,
-      horizons: hz, patterns: pats, cross, setups: sets, chartPats: E.chartPatterns(I, tick), srLevels: E.levels(I),
+      horizons: hz, patterns: pats, cross, setups: sets, chartPats: E.chartPatterns(I, tick), srLevels: E.levels(I), candles: cdl,
       stats: { ret63: I.n > 63 ? (D.c[i] / D.c[i - 63] - 1) * 100 : NaN, ret126: I.n > 126 ? (D.c[i] / D.c[i - 126] - 1) * 100 : NaN, turnover: (() => { let s = 0, m = 0; for (let j = Math.max(0, i - 19); j <= i; j++) { s += D.c[j] * (D.v[j] || 0); m++; } return s / m; })(), rsi: I.rsi[i], adx: I.adx[i], atr: I.atr[i], atrPct: I.atr[i] / price * 100, volx: I.v20[i - 1] ? D.v[i] / I.v20[i - 1] : NaN, hi52, lo52, e20: I.e20[i], e50: I.e50[i], e200: I.e200[i], st: I.st.dir[i] },
       I,
     };
@@ -1074,6 +1324,14 @@
     const tick = 0.05, rt = x => +(Math.round(x / tick) * tick).toFixed(2);
     const stop = rt(Math.max(l - 0.1 * at, c - 1.2 * at)), risk = Math.max(c - stop, c * 0.004);
     const out = { score, why, entry: rt(c), stop, t1: rt(c + Math.max(risk, c * 0.015)), t2: rt(c + Math.max(2 * risk, c * 0.03)), clv: +clv.toFixed(2), vr: +vr.toFixed(2), chg: +chg.toFixed(2) };
+    // proven bullish candle patterns on today's candle (model.json candles; only once the candle is ~complete): explanation only —
+    // the Tomorrow score is NOT changed. out.candles = ≤ 3 compact items with the measured next-day stats and trade levels.
+    if (E.MODEL.candles && (ctx.frac == null || ctx.frac >= 0.85)) {
+      try {
+        const pr = E.candleCall(D, n, I, { niftyAbove200: ctx.niftyAbove200 }).items.filter(x => x.trade && x.b > 0);
+        if (pr.length) { out.candles = pr.slice(0, 3).map(E.candleSlim); pr.slice(0, 2).forEach(x => why.push(`candle: ${x.n} — ${x.trade.text}`)); }
+      } catch (e) {}
+    }
     const L = E.MODEL.btst; // learned next-day model (tools/research.js), only when it beat the rule score out of sample
     if (L) {
       const F = E.btstFeatures(D, I, n, intra, ctx), rule = score;
@@ -1110,7 +1368,7 @@
     if (r.err) return r;
     const H2 = r.horizons; delete r.I;
     const slim = h => h && !h.na ? Object.assign({ score: h.score, action: h.action, dir: h.dir, bt: h.bt, fv: h.fv, calib: h.calib, lvL: h.lvL }, h.rule != null ? { rule: h.rule } : {}) : h;
-    return { t: D.t[D.t.length - 1], barT: r.barT, live: r.live, mv: E.MODEL.v || 0, price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, volx: r.stats.volx, rsi: r.stats.rsi, e20: r.stats.e20, e50: r.stats.e50, e200: r.stats.e200, atr: r.stats.atr, hi52: r.stats.hi52, lo52: r.stats.lo52 };
+    return { t: D.t[D.t.length - 1], barT: r.barT, live: r.live, mv: E.MODEL.v || 0, price: r.price, chg: r.chg, overall: r.overall, act: r.overallAction, swing: slim(H2.swing), short: slim(H2.short), intraday: slim(H2.intraday), long: slim(H2.long), medium: slim(H2.medium), horizons: { swing: slim(H2.swing), short: slim(H2.short), medium: slim(H2.medium), long: slim(H2.long) }, turnover: r.stats.turnover, ret63: r.stats.ret63, patterns: r.patterns.map(p => ({ n: p.n, b: p.b })), setups: r.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (r.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: r.cross, candles: (r.candles || []).slice(0, 3).map(E.candleSlim), volx: r.stats.volx, rsi: r.stats.rsi, e20: r.stats.e20, e50: r.stats.e50, e200: r.stats.e200, atr: r.stats.atr, hi52: r.stats.hi52, lo52: r.stats.lo52 };
   };
 
   E._factors = (I, i, hz) => factors(I, i, hz, {});

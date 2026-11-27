@@ -1,0 +1,58 @@
+name: Candlestick research (38 patterns, next-day / 5-day edge)
+# Manual: Nifty 500 × 5 years of Yahoo daily bars (same universe + cache as research.yml) → every candle pattern of E.candles (www/engine.js,
+# the detector the phone runs), its next-day and 5-day outcome after costs vs the same-day baseline of all stocks, by context, walk-forward
+# with two disjoint test folds. Patterns that beat the baseline in BOTH test folds get data-derived stop / target rules.
+# Commits data/candles_report.txt and MERGES the `candles` section into www/model.json (every other section kept, v + 1).
+# The app picks the new model up from raw.githubusercontent (newer `v`) — no APK rebuild needed. No broker credentials.
+on:
+  workflow_dispatch:
+    inputs:
+      max:
+        description: 'Cap the universe (e.g. 100 for a quick run). Empty = full Nifty 500.'
+        required: false
+        default: ''
+permissions:
+  contents: write
+concurrency:
+  group: candles-research
+  cancel-in-progress: false
+jobs:
+  candles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Unit tests (38 detectors, edge cases, engine hooks)
+        run: node tools/candles.test.js
+      - name: NSE lists (Nifty 500 universe)
+        run: python3 tools/nse_symbols.py || true
+      - name: Candle research
+        timeout-minutes: 30
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          UNIVERSE_MAX: ${{ github.event.inputs.max }}
+          BUDGET_MIN: '20'
+          CANDLES_SECTION: /tmp/candles_section.json
+        run: node tools/candles_research.js && cp data/candles_report.txt /tmp/candles_report.txt
+      - name: Publish results (re-merge onto the latest main if another job pushed model.json meanwhile)
+        run: |
+          [ -f /tmp/candles_section.json ] || { echo 'no section written (not enough data) — nothing to publish'; exit 0; }
+          git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
+          for i in 1 2 3; do
+            git fetch origin main && git reset --hard origin/main
+            cp /tmp/candles_report.txt data/candles_report.txt
+            node tools/candles_research.js --merge /tmp/candles_section.json
+            git add www/model.json data/candles_report.txt
+            git diff --cached --quiet && exit 0
+            git commit -m "Candle research: model v$(node -e "console.log(require('./www/model.json').v)") $(date -u +%F) [skip ci]"
+            git push && exit 0
+            sleep $((i*5))
+          done; exit 1
+      - name: Decision in the job summary
+        if: always()
+        run: |
+          [ -f /tmp/candles_report.txt ] && { echo '```'; sed -n '/^==================== DECISION/,$p' /tmp/candles_report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
