@@ -31,6 +31,7 @@ async function pool(items, n, fn) { let i = 0; const out = []; await Promise.all
   const fo = new Set(Object.keys(nse.fo || {})), cat = nse.cat || {};
   const idx = await yahoo('^NSEI'); if (!idx) throw new Error('Nifty data unavailable');
   const session = hm >= '09:15' && hm < '15:30', liveOf = D => session && D.day[D.day.length - 1] === today; // forming candle → score the last completed bar (same rule as the app)
+  E.CTX.idx = idx.D; // Nifty bars: candle 'market up/down' context, same as the phone
   const iq = E.quick(idx.D, { tick: 0.05, live: liveOf(idx.D) }), regime = E.rating(iq).signal;
   const phase = hm < '09:15' ? 'pre-open' : 'after open';
   console.log(`Morning scan ${today} ${hm} IST (${phase}) · ${eq.length} NSE stocks · Nifty regime ${regime}`);

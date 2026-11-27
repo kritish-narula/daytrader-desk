@@ -261,6 +261,19 @@ function listStrip(row) {
   const why = !moved ? 'same number as the list' : `list showed ${ctx.shown}${intra ? ' — a newer 5-minute candle has closed since; the list now shows this too' : ' — re-scored on the latest completed candle; the list now shows this too'}`;
   return `<div class="card lstrip"><div class="ls-n ${vcls(one.rating)}">${one.rating}</div><div style="flex:1;min-width:0"><div class="sub">From your list · ${esc(names)}${one.label ? ' · ' + esc(one.label) : ''}</div><div class="note">${esc(one.sub || '')} — ${esc(why)}</div></div></div>`;
 }
+// 🕯 every candlestick pattern on the last completed day, with what it measurably did next (5y Nifty 500, after costs)
+function candleCardHTML(A) {
+  const L = A.candles || [], pc = x => x == null ? '–' : Math.round(Math.abs(x) <= 1 ? x * 100 : x) + '%', sg = x => x == null ? '–' : (x > 0 ? '+' : '') + (+x).toFixed(2) + '%';
+  if (!L.length) return `<h3>🕯 Today's candle <span class="note">38 patterns checked</span></h3><div class="card"><div class="note">No textbook candlestick pattern on the last completed day${A.live ? ' (today\'s candle is still forming)' : ''}.</div></div>`;
+  return `<h3>🕯 Today's candle <span class="note">38 patterns checked · measured on 5y</span></h3><div class="card">${L.map(c => {
+    const t = c.trade, ic = c.b > 0 ? '🟢' : c.b < 0 ? '🔴' : '⚪';
+    const body = t ? `<div class="sub up">Proven edge${c.rule && c.rule.ctxLbl ? ' when ' + esc(c.rule.ctxLbl) : ''} · past test: won ${pc(t.winTest)}, avg ${sg(t.avgTest)} per trade after costs (${t.n} cases)</div>
+        <div class="kv" style="margin-top:6px"><div><div class="l">${t.side === 'short' ? 'Sell' : 'Buy'} ${t.entryAt === 'nextOpen' ? 'at next open' : 'at close'}</div><div class="v">${fmt(t.entry)}</div></div><div><div class="l">Stop</div><div class="v dn">${t.stop ? fmt(t.stop) : '–'}</div></div><div><div class="l">Target</div><div class="v up">${t.target ? fmt(t.target) : '–'}</div></div><div><div class="l">Hold</div><div class="v">${t.hold === 1 ? '1 day' : t.hold + ' days'}</div></div></div>
+        ${t.shortOnly ? '<div class="note">Short side: only via F&O or intraday in India.</div>' : ''}`
+      : `<div class="note">${esc(c.label || '')}${c.seen && c.seen.n ? ` · past: next day ${sg(c.seen.avg)} avg vs market ${sg(c.seen.base)} (${c.seen.n} cases) — not enough to trade on` : ''}</div>`;
+    return `<div class="pat"><div class="ic">${ic}</div><div style="flex:1;min-width:0"><b>${esc(c.n)}</b><div class="note">${esc(c.note || '')}</div>${body}</div></div>`;
+  }).join('')}</div>`;
+}
 // ---------- the page ----------
 function drawDetail(isRefresh) {
   const { A, R, sym } = S.detail, c = cur();
@@ -310,6 +323,7 @@ function drawDetail(isRefresh) {
      ${s.entry ? `<div class="lv3"><span>Entry <b>${fmt(s.entry)}</b></span><span>SL <b class="dn">${fmt(s.stop)}</b></span><span>Target <b class="up">${fmt(s.target)}</b></span></div>` : ''}</div>`).join('') : '<div class="note">No SMC, VCP or trend setup active on the daily chart today.</div>'}</div>
   <h3>Chart patterns <span class="note">drawn on the chart</span></h3><div class="card">${(A.chartPats || []).length ? A.chartPats.map(p => `<div class="pat"><div class="ic">${p.b > 0 ? '🟢' : p.b < 0 ? '🔴' : '🟡'}</div><div style="flex:1"><div class="n">${esc(p.n)} <span class="tag ${p.status === 'forming' ? '' : p.b > 0 ? 'p' : 'n'}">${esc(p.status)}</span> <span class="mu" style="font-size:12px">quality ${p.q}</span></div><div class="x">${esc(p.note)}</div>
      <div class="x">Target <b>${fmt(p.target)}</b> · invalid beyond <b>${fmt(p.stop)}</b></div>${evidence(p.n)}</div></div>`).join('') + '' : '<div class="note">No head & shoulders, double top/bottom, flag or triangle that meets the rules right now.</div>'}</div>
+  ${candleCardHTML(A)}
   <h3>Candles & breakouts</h3><div class="card">${A.patterns.length ? A.patterns.map(p => `<div class="pat"><div class="ic">${p.b > 0 ? '🟢' : p.b < 0 ? '🔴' : '🟡'}</div><div><div class="n">${esc(p.n)}</div><div class="x">${esc(p.note)}</div>${p.target || p.stop ? `<div class="x">${p.target ? 'Pattern target <b>' + fmt(p.target) + '</b>' : ''}${p.target && p.stop ? ' · ' : ''}${p.stop ? 'Invalid below/above <b>' + fmt(p.stop) + '</b>' : ''}</div>` : ''}</div></div>`).join('') : '<div class="note">No clear pattern on the daily chart right now.</div>'}</div>
   <h3>EMA crossovers</h3><div class="card">${A.cross.length ? A.cross.map(x => `<div class="pat"><div class="ic">${x.dir > 0 ? '⬆️' : '⬇️'}</div><div><div class="n">${esc(x.name)}</div><div class="x">${esc(x.status)}${x.gap != null ? ` · gap ${x.gap.toFixed(2)}%` : ''} · matters for ${x.hz}</div></div></div>`).join('') : '<div class="note">No EMA cross recent or expected soon.</div>'}</div>
   ${riskCard(A, mkt)}

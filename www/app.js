@@ -160,7 +160,7 @@ function newsOf(mkt, sym) { const n = S.news[nkey(mkt, sym)]; return n && Date.n
 function putNews(mkt, sym, N) { S.news[nkey(mkt, sym)] = { s: +(N.score * Math.min(1, N.n / 3)).toFixed(2), n: N.n, top: (N.items.find(i => i.s) || {}).title || '', at: Date.now() }; store.set('news', S.news); }
 async function regime(mkt) { // market trend from the index: nudges ratings ±5
   const r = S.regime[mkt]; if (r && S.idxD[mkt] && Date.now() - r.at < 15 * 60e3) return r.v;
-  try { const { D } = await chart(mkt === 'IN' ? '^NSEI' : '^GSPC', '2y', '1d'); const q = Engine.quick(D, { tick: 0.05, live: formingBar(D, mkt) }); const v = Engine.rating(q).signal; S.regime[mkt] = { v, at: Date.now(), ret63: q.ret63 }; S.idxD[mkt] = D; return v; }
+  try { const { D } = await chart(mkt === 'IN' ? '^NSEI' : '^GSPC', '2y', '1d'); const q = Engine.quick(D, { tick: 0.05, live: formingBar(D, mkt) }); const v = Engine.rating(q).signal; S.regime[mkt] = { v, at: Date.now(), ret63: q.ret63 }; S.idxD[mkt] = D; if (mkt === 'IN') Engine.CTX.idx = D; return v; }
   catch (e) { return 50; }
 }
 function rateRow(r, mkt = S.mkt) {
@@ -219,7 +219,7 @@ async function dailyQuick(sym, mkt, Q) {
   return q;
 }
 // ---------- scanner ----------
-const FILTERS = [['top', '⭐ Overall'], ['conv', '🎯 High conviction'], ['btst', '🌙 Tomorrow'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
+const FILTERS = [['top', '⭐ Overall'], ['conv', '🎯 High conviction'], ['btst', '🌙 Tomorrow'], ['candle', '🕯 Candles'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
 const HZ = ['intraday', 'swing', 'short', 'medium', 'long'], HZL = { intraday: 'INTRA', swing: 'SWING', short: 'SHORT', medium: 'MEDIUM', long: 'LONG' };
 // Overall lists show the overall rating; a horizon list (Swing, Intraday…) shows only stocks rated BUY on that
 // horizon, ranked by that horizon's rating, high → low. The stock page opens on the same horizon with the same number.
@@ -248,6 +248,11 @@ function rated(rows, f, mkt = S.mkt) {
       const c = best.c, P = x => Math.round(x * 100) + '%', cand = c.tier === 'candidate';
       const sub = c.measured ? `${cand ? '🧪 candidate' : '🎯 confirmed'} · past tests: hit target before stop ${P(c.hit)} vs ${P(c.baseHit)} for plain BUY 58+ · avg ${c.avg > 0 ? '+' : ''}${c.avg}% per trade after costs (${c.n} cases)` : '🎯 swing high-conviction + intraday 75+ — agreement only, not backtested';
       out.push({ r, rating: best.Rh.rating, label: (cand ? '🧪 ' : '🎯 ') + HZL[best.hz], R: best.Rh, sub, hz: best.hz, conv: c }); continue;
+    }
+    if (f === 'candle') { // 🕯 a candlestick pattern with a proven next-day/5-day edge on the last completed candle (long side only)
+      const c = (r.candles || []).find(x => x.edge && x.b > 0 && x.entry); if (!c) continue;
+      const Rh = hzRate(r, 'swing', mkt), pc = x => Math.round(Math.abs(x) <= 1 ? x * 100 : x) + '%';
+      out.push({ r, rating: Rh ? Rh.rating : (rateRow(r, mkt) || {}).rating || 50, label: '🕯 ' + (c.hold === 1 ? '1 DAY' : c.hold + ' DAYS'), sub: `${c.n} · won ${pc(c.win)} in tests, avg ${c.avg > 0 ? '+' : ''}${(+c.avg).toFixed(2)}% · buy ${c.entryAt === 'nextOpen' ? 'next open' : 'at close'} ${fmt(c.entry)} · SL ${c.stop ? fmt(c.stop) : '–'} · T ${c.target ? fmt(c.target) : '–'}`, hz: 'swing', candle: c }); continue;
     }
     if (f === 'btst') { // Tomorrow: set up for a gain next session (judged on today's candle; final after ~3 PM)
       const t = r.btst; if (!t || t.score < 65) continue;
@@ -776,7 +781,7 @@ async function watchTick() {
 function openDetail(sym, hz, ctx) { S.detail = { sym, mkt: S.mkt, ctx: ctx || null }; S.hz = hz || 'overall'; go('detail'); }
 function rowFromA(A) { // same shape as a scan row, so the list shows the same rating
   const slim = h => h && !h.na ? Object.assign({ score: h.score, action: h.action, dir: h.dir, bt: h.bt }, h.rule != null ? { rule: h.rule } : {}) : h, H = A.horizons;
-  return { mv: Engine.MODEL.v || 0, barT: A.barT, live: A.live, e20: A.stats.e20, e50: A.stats.e50, e200: A.stats.e200, atr: A.stats.atr, price: A.price, chg: A.chg, overall: A.overall, act: A.overallAction, swing: slim(H.swing), short: slim(H.short), intraday: slim(H.intraday), medium: slim(H.medium), long: slim(H.long),
+  return { mv: Engine.MODEL.v || 0, barT: A.barT, live: A.live, candles: (A.candles || []).slice(0, 3).map(Engine.candleSlim), e20: A.stats.e20, e50: A.stats.e50, e200: A.stats.e200, atr: A.stats.atr, price: A.price, chg: A.chg, overall: A.overall, act: A.overallAction, swing: slim(H.swing), short: slim(H.short), intraday: slim(H.intraday), medium: slim(H.medium), long: slim(H.long),
     horizons: { swing: slim(H.swing), short: slim(H.short), medium: slim(H.medium), long: slim(H.long) }, turnover: A.stats.turnover, ret63: A.stats.ret63, risk: A.risk || null, patterns: A.patterns.map(p => ({ n: p.n, b: p.b })), setups: A.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (A.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: A.cross, volx: A.stats.volx, rsi: A.stats.rsi };
 }
 async function loadDetail() {
