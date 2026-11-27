@@ -311,3 +311,44 @@ html.theme-anim,html.theme-anim *{transition:background-color .25s ease,border-c
   .sc{width:44px;min-width:44px;height:44px}
   .chips button{font-size:12px;padding:6px 10px}
 }
+
+/* ======== UI polish pass (round 5) ======== */
+html{-webkit-tap-highlight-color:transparent;scroll-behavior:auto}
+button,a,.row,.card[data-sym]{touch-action:manipulation}
+#view{font-variant-numeric:tabular-nums;overflow-anchor:none}
+/* tap targets >= 40px */
+.chips button,.chip,.btn.sm,.mr-p,.dc-ov button,.dpage .back,.dq-ic{min-height:40px}
+.chips button,.chip{display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.seg button{min-height:40px}
+.dc-tabs button{min-height:40px;padding:0}
+.dc-type button{height:36px}.dc-fs{width:40px;height:40px}
+.dc-ov button{padding:6px 12px}
+h3 a,h3 .help{padding:9px 13px;margin:-9px 0}
+/* list header: stays visible while scrolling long lists, no awkward wrapping */
+.lhd{position:sticky;top:var(--topH,108px);z-index:6;background:var(--bg);flex-wrap:wrap;gap:2px 10px;padding:8px 2px 6px;margin:6px -2px 4px;border-bottom:1px solid var(--line)}
+.lhd>div{display:flex;align-items:baseline;gap:8px;white-space:nowrap}.lhd .lcnt{margin-left:0}
+.lhd .note{flex:1 1 150px;text-align:right;font-size:11.5px;line-height:1.35}
+/* option cards: equal action buttons */
+.oc-btns{align-items:stretch}.oc-btns .btn{display:inline-flex;align-items:center;justify-content:center;min-height:42px;margin:0;text-align:center}
+.oc-btns .optOpen{margin-top:0}
+/* empty / loading states: clear hierarchy */
+.empty{display:flex;flex-direction:column;align-items:center;gap:8px}
+.empty b,.empty h4{color:var(--text);font-size:16px}
+.empty .spin{margin-right:6px}
+.empty .btn{margin-top:6px}
+/* stock page: verdict first, right under the price */
+#dverd:not(:empty){margin-top:10px}
+#dverd .warn{margin:0 0 10px}
+#dverd h3{margin:14px 2px 8px}
+#dverd .card.dr{border-color:var(--line2);box-shadow:0 0 0 1px var(--line) inset}
+#dverd .dr .verdict{font-size:24px}
+#dverd .dr .ring{flex:none}
+.dq{min-height:112px}.dq-st,.dq-src{min-height:16px}
+.dc{margin-top:14px}
+.dc-wrap{min-height:300px}
+/* never let a long number or label blow the layout */
+.row .px,.row .px *{white-space:nowrap}
+.card,.row{min-width:0}
+@media (max-width:370px){.chips button,.chip{font-size:12px;padding:6px 10px}.dq-big{font-size:32px}.lhd .note{text-align:left;flex-basis:100%}}
+.dpage .dc-type button{height:36px;min-width:38px}.dpage .dc-fs{width:40px;height:40px}.dpage .dc-meta{padding-top:6px}
+.ocb{min-height:40px}

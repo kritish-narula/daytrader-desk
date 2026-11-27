@@ -1031,7 +1031,7 @@
     if (ok(R.maxRsi)) { if (!(ok(rsi) && rsi < R.maxRsi)) return null; }
     if (ok(R.maxAtrE20) || ok(R.maxRsi)) why.push(`Not stretched${ok(R.maxAtrE20) ? `: ${(Math.abs(px - e20) / atr).toFixed(1)} ATR from 20 EMA` : ''}${ok(R.maxRsi) ? `, RSI ${Math.round(rsi)}` : ''}`);
     const T = c.test;
-    return { hz, measured: true, hit: T.hit, hitLo: T.hitLo, up: T.up, avg: T.avg, med: T.med, p5: T.p5, n: T.n, perMonth: T.perMonth, baseHit: T.baseHit, baseAvg: T.baseAvg, fold: T.fold, days: c.days, why };
+    return { hz, measured: true, tier: c.tier || 'confirmed', hit: T.hit, hitLo: T.hitLo, up: T.up, avg: T.avg, med: T.med, p5: T.p5, n: T.n, perMonth: T.perMonth, baseHit: T.baseHit, baseAvg: T.baseAvg, fold: T.fold, days: c.days, why };
   };
   // E.conviction(row, hz, ctx, rating) — hz: swing | short | medium | long | intraday. rating (optional) is only used for 'intraday':
   // the list's intraday E.hzRating rating (computed from row.intraday + ctx when omitted). Intraday has no historical intraday data, so

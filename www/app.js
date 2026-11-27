@@ -126,7 +126,7 @@ function render() {
   } catch (e) { if (e instanceof ReferenceError && !render._retry) { render._retry = 1; setTimeout(() => { render._retry = 0; render(); }, 60); return; } throw e; } // view scripts still loading
   const gb = $('#gear'); if (gb) gb.classList.toggle('on', !!(window.MS && MS.ok()));
 }
-function bindRows(el, hz) { el.querySelectorAll('.row[data-sym]').forEach(r => r.onclick = () => openDetail(r.dataset.sym, hz)); }
+function bindRows(el, hz, ctx) { el.querySelectorAll('.row[data-sym]').forEach(r => r.onclick = () => { const sc = r.querySelector('.sc'), shown = sc ? parseInt(sc.textContent, 10) : NaN; openDetail(r.dataset.sym, hz, ctx ? Object.assign({}, ctx, { shown: isFinite(shown) ? shown : null, at: Date.now() }) : null); }); }
 function upsertRow(mkt, row) { const sc = S.scan[mkt]; if (!sc) return; const i = sc.rows.findIndex(r => r.sym === row.sym); if (i >= 0) sc.rows[i] = Object.assign(sc.rows[i], row); }
 
 function setupSearch() {
@@ -191,7 +191,13 @@ async function intraBars(sym, mkt) {
   if (!marketOpen(mkt)) return null;
   let it = mkt === 'IN' && window.MS && MS.ok() ? await MS.candles(sym, '5minute', 6).then(D => ({ D })).catch(() => null) : null;
   if (!it) it = await chart(ySym(sym, mkt), '5d', '5m').catch(() => null);
-  return it && it.D && it.D.c && it.D.c.length > 5 ? it.D : null;
+  return it && it.D && it.D.c && it.D.c.length > 5 ? doneIntra(it.D) : null;
+}
+// drop the 5-minute candle that is still forming → the intraday rating moves once per completed candle, not on every tick
+function doneIntra(D, sec = 300) {
+  if (!D || !D.t || D.t.length < 7) return D; const n = D.t.length - 1;
+  if (D.t[n] + sec <= Date.now() / 1000) return D;
+  return Object.fromEntries(Object.entries(D).map(([k, v]) => [k, Array.isArray(v) ? v.slice(0, -1) : v]));
 }
 // share of today's session elapsed (volume projection for the Tomorrow score); 1 when closed
 function sessionFrac(mkt) { if (!marketOpen(mkt)) return 1; const p = new Intl.DateTimeFormat('en-US', { timeZone: MK[mkt].tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()); const m = +p.find(x => x.type === 'hour').value * 60 + +p.find(x => x.type === 'minute').value; return Math.max(0.05, Math.min(1, (m - MK[mkt].open) / (MK[mkt].close - MK[mkt].open))); }
@@ -213,10 +219,11 @@ async function dailyQuick(sym, mkt, Q) {
   return q;
 }
 // ---------- scanner ----------
-const FILTERS = [['top', '⭐ Overall'], ['btst', '🌙 Tomorrow'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
+const FILTERS = [['top', '⭐ Overall'], ['conv', '🎯 High conviction'], ['btst', '🌙 Tomorrow'], ['leaders', '🏆 Leaders'], ['breakout', '🚀 Breakouts'], ['near', '⏳ Near breakout'], ['patterns', '📐 Patterns'], ['intraday', '⚡ Intraday'], ['swing', 'Swing'], ['short', 'Short term'], ['medium', 'Medium term'], ['long', 'Long term'], ['setups', '🧭 SMC / VCP'], ['cross', '✂️ EMA cross'], ['news', '📰 News'], ['sell', '🔻 Sells']];
 const HZ = ['intraday', 'swing', 'short', 'medium', 'long'], HZL = { intraday: 'INTRA', swing: 'SWING', short: 'SHORT', medium: 'MEDIUM', long: 'LONG' };
 // Overall lists show the overall rating; a horizon list (Swing, Intraday…) shows only stocks rated BUY on that
 // horizon, ranked by that horizon's rating, high → low. The stock page opens on the same horizon with the same number.
+function convCtx(mkt = S.mkt) { const D = S.idxD[mkt], r = S.regime[mkt]; return { regime: r ? r.v : undefined, niftyAbove200: D && Engine.above200 ? Engine.above200(D, formingBar(D, mkt)) : undefined }; }
 function rated(rows, f, mkt = S.mkt) {
   const out = [], minT = S.minTurnover[mkt] || 0;
   for (const r of rows) {
@@ -227,6 +234,20 @@ function rated(rows, f, mkt = S.mkt) {
       const Rh = hzRate(r, f, mkt); if (!Rh || Rh.rating < 58) continue;
       out.push({ r, rating: Rh.rating, label: HZL[f], R: Rh, sub: `${actLabel(Rh.action)} · signal ${Rh.signal}${Rh.edge != null ? ' · edge ' + Rh.edge : ''}`, hz: f });
       continue;
+    }
+    if (f === 'conv') { // 🎯 high conviction: the research-measured rule for each selected horizon (all daily horizons if none picked)
+      const sel = (S.scanFilters || []).filter(k => HZ.includes(k)), hzs = sel.length ? sel : ['swing', 'short', 'medium', 'long'], ctx = convCtx(mkt);
+      let best = null;
+      for (const hz of hzs) {
+        const Rh = hzRate(r, hz, mkt); if (!Rh) continue;
+        if (hz === 'intraday' && marketOpen(mkt) && !freshIntra(r)) continue;
+        const c = Engine.conviction ? Engine.conviction(r, hz, ctx, Rh.rating) : null; if (!c) continue;
+        if (!best || (c.hitLo || 0) > (best.c.hitLo || 0)) best = { c, Rh, hz };
+      }
+      if (!best) continue;
+      const c = best.c, P = x => Math.round(x * 100) + '%', cand = c.tier === 'candidate';
+      const sub = c.measured ? `${cand ? '🧪 candidate' : '🎯 confirmed'} · past tests: hit target before stop ${P(c.hit)} vs ${P(c.baseHit)} for plain BUY 58+ · avg ${c.avg > 0 ? '+' : ''}${c.avg}% per trade after costs (${c.n} cases)` : '🎯 swing high-conviction + intraday 75+ — agreement only, not backtested';
+      out.push({ r, rating: best.Rh.rating, label: (cand ? '🧪 ' : '🎯 ') + HZL[best.hz], R: best.Rh, sub, hz: best.hz, conv: c }); continue;
     }
     if (f === 'btst') { // Tomorrow: set up for a gain next session (judged on today's candle; final after ~3 PM)
       const t = r.btst; if (!t || t.score < 65) continue;
@@ -752,10 +773,10 @@ async function watchTick() {
 }
 
 // ---------- detail ----------
-function openDetail(sym, hz) { S.detail = { sym, mkt: S.mkt }; S.hz = hz || 'overall'; go('detail'); }
+function openDetail(sym, hz, ctx) { S.detail = { sym, mkt: S.mkt, ctx: ctx || null }; S.hz = hz || 'overall'; go('detail'); }
 function rowFromA(A) { // same shape as a scan row, so the list shows the same rating
   const slim = h => h && !h.na ? Object.assign({ score: h.score, action: h.action, dir: h.dir, bt: h.bt }, h.rule != null ? { rule: h.rule } : {}) : h, H = A.horizons;
-  return { mv: Engine.MODEL.v || 0, barT: A.barT, live: A.live, price: A.price, chg: A.chg, overall: A.overall, act: A.overallAction, swing: slim(H.swing), short: slim(H.short), intraday: slim(H.intraday), medium: slim(H.medium), long: slim(H.long),
+  return { mv: Engine.MODEL.v || 0, barT: A.barT, live: A.live, e20: A.stats.e20, e50: A.stats.e50, e200: A.stats.e200, atr: A.stats.atr, price: A.price, chg: A.chg, overall: A.overall, act: A.overallAction, swing: slim(H.swing), short: slim(H.short), intraday: slim(H.intraday), medium: slim(H.medium), long: slim(H.long),
     horizons: { swing: slim(H.swing), short: slim(H.short), medium: slim(H.medium), long: slim(H.long) }, turnover: A.stats.turnover, ret63: A.stats.ret63, risk: A.risk || null, patterns: A.patterns.map(p => ({ n: p.n, b: p.b })), setups: A.setups.map(s => ({ n: s.n, k: s.k, b: s.b, q: s.q })), chartPats: (A.chartPats || []).map(p => ({ n: p.n, b: p.b, q: p.q, status: p.status, target: p.target })), cross: A.cross, volx: A.stats.volx, rsi: A.stats.rsi };
 }
 async function loadDetail() {
@@ -784,7 +805,7 @@ async function loadDetail() {
   let news = S.detail.news;
   if (!news || Date.now() - news.at > 5 * 60e3) { try { news = Object.assign(await News.get(ys, nameOf(sym, mkt), mkt === 'IN'), { at: Date.now() }); putNews(mkt, sym, news); } catch (e) { news = { items: [], score: 0, n: 0, err: e.message, at: Date.now() }; } }
   await regime(mkt);
-  const A = Engine.analyze(d.D, { intra: it && marketOpen(mkt) ? it.D : null, live: formingBar(d.D, mkt), tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
+  const A = Engine.analyze(d.D, { intra: it && marketOpen(mkt) ? doneIntra(it.D) : null, live: formingBar(d.D, mkt), tick: MK[mkt].tick, canShort: mkt === 'US' || fno, backtest: true, price, fnoSym: fno ? sym : null, lot: foLot(sym) });
   if (prev && !A.err) { A.chg = (A.price / prev - 1) * 100; A.prev = prev; }
   if (!A.err) A.risk = riskOf(d.D, mkt, sym);
   if (!A.err && window.Learn) { Learn.resolve(sym, mkt, d.D); Learn.log(sym, mkt, A.horizons, d.D.t[d.D.t.length - 1], A.price); }

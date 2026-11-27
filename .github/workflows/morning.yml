@@ -58,6 +58,12 @@ jobs:
           now=$(TZ=Asia/Kolkata date +%H%M); dow=$(TZ=Asia/Kolkata date +%u)
           if [ "$dow" -le 5 ] && [ "$now" -ge 0900 ] && [ "$now" -lt 1540 ]; then gh workflow run flows.yml --ref main || true; fi
           if [ "$dow" -le 5 ] && [ "$now" -ge 1530 ] && [ "$now" -lt 1700 ]; then gh workflow run flows.yml --ref main || true; gh workflow run paper.yml --ref main || true; fi
+          # weekend: re-test the models on fresh data once a week (stock research → model.json the phone downloads; F&O tuning)
+          if [ "$dow" -ge 6 ]; then
+            age() { d=$(gh api "repos/${{ github.repository }}/commits?path=$1&per_page=1" --jq '.[0].commit.committer.date' 2>/dev/null); [ -n "$d" ] && echo $(( $(date +%s) - $(date -d "$d" +%s) )) || echo 0; }
+            [ "$(age data/research_report.txt)" -gt 345600 ] && { gh workflow run research.yml --ref main || true; }
+            [ "$(age data/fno_report.txt)" -gt 345600 ] && { gh workflow run fno.yml --ref main || true; }
+          fi
           if [ "$dow" -le 5 ] && [ "$now" -ge 0745 ] && [ "$now" -lt 1530 ]; then wait=1500   # live session: every ~30 min
           else
             # sleep (max 5h40m per run) towards 07:50 IST of the next weekday, then hand over to a fresh run

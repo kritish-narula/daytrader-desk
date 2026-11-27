@@ -696,16 +696,17 @@ function conviction(DS, CV, C) {
     L0.push(`\n-- ${hz.toUpperCase()} · ${h} trading days · score source: ${cv ? (cv.adopted ? 'learned model adopted this run (fold models / production model)' : 'current app score (model.json as loaded)') : 'n/a'} --`);
     L0.push(`   ${pad('fold', 5)} ${pad('set', 13)} ${lpad('n', 5)} ${lpad('/mo', 5)} ${lpad('hit', 4)} ${lpad('lo', 4)} ${lpad('G', 3)} ${lpad('up', 4)} ${lpad('avg', 7)} ${lpad('med', 7)} ${lpad('worst5%', 8)}   rule (picked on train)`);
     if (!cv) { lines[hz] = `${pad(hz, 7)} 🎯 OFF · folds incomplete`; out[hz] = { off: true, why: 'folds incomplete' }; L0.push('   folds incomplete'); continue; }
-    const why = [], foldsOut = {}; let on = true;
+    const why = [], foldsOut = {}; let cand = true, on = true;
     for (const f of ['F1', 'F2']) {
       const x = R.folds[f];
-      if (!x || x.err) { on = false; why.push(`${f}: ${x ? x.err : 'missing'}`); L0.push(`   ${pad(f, 5)} ${x ? x.err : 'missing'}`); if (x && x.base) { L0.push(`   ${pad(f, 5)} ${pad('BUY≥' + BUY_MIN, 13)} ${sl(x.base)}`); L0.push(`   ${pad(f, 5)} ${pad('all stocks', 13)} ${sl(x.all)}`); } continue; }
+      if (!x || x.err) { on = false; cand = false; why.push(`${f}: ${x ? x.err : 'missing'}`); L0.push(`   ${pad(f, 5)} ${x ? x.err : 'missing'}`); if (x && x.base) { L0.push(`   ${pad(f, 5)} ${pad('BUY≥' + BUY_MIN, 13)} ${sl(x.base)}`); L0.push(`   ${pad(f, 5)} ${pad('all stocks', 13)} ${sl(x.all)}`); } continue; }
       L0.push(`   ${pad(f, 5)} ${pad('train (pick)', 13)} ${sl(x.train)}   ${convDesc(x.sp, hz)}  [${x.nOk}/${x.nGrid} rules feasible]`);
       L0.push(`   ${pad(f, 5)} ${pad('TEST rule', 13)} ${sl(x.test)}`);
       L0.push(`   ${pad(f, 5)} ${pad('TEST BUY≥' + BUY_MIN, 13)} ${sl(x.base)}`);
       L0.push(`   ${pad(f, 5)} ${pad('TEST all', 13)} ${sl(x.all)}`);
       const bH = x.test.n && x.base.n && x.test.hit > x.base.hit, bA = x.test.n && x.base.n && x.test.avg > x.base.avg, bN = x.test.n >= CONV_MIN_TEST;
       if (!(bH && bA && bN)) on = false;
+      if (!(bH && bA && x.test.n >= 15)) cand = false;
       why.push(`${f}: hit ${pc(x.test.hit)} vs BUY ${pc(x.base.hit)} ${bH ? '✓' : '✗'}, avg ${f2(x.test.avg)}% vs ${f2(x.base.avg)}% ${bA ? '✓' : '✗'}, n ${x.test.n || 0}${bN ? '' : ` < ${CONV_MIN_TEST} ✗`}`);
       foldsOut[f] = { rule: ruleOut(x.sp), train: pub(x.train), test: pub(x.test), base: pub(x.base), all: pub(x.all) };
     }
@@ -715,13 +716,14 @@ function conviction(DS, CV, C) {
     else { on = false; why.push(`production pick: no rule met n ≥ ${CONV_MIN_N} and avg > 0 on all rows`); }
     const stable = P.best && ['F1', 'F2'].every(f => R.folds[f] && R.folds[f].sp && convKey(R.folds[f].sp) === convKey(P.best.sp));
     const forced = !on && FORCE && P.best && ['F1', 'F2'].every(f => R.folds[f] && R.folds[f].test && R.folds[f].test.n); // testing only
-    if (on || forced) {
+    const tier = on || forced ? 'confirmed' : cand && P.best && FORCE !== 'off' ? 'candidate' : null; // candidate: beat BUY≥58 on hit AND avg in BOTH test folds, but < 30 test cases
+    if (tier) {
       const worst = ['F1', 'F2'].map(f => [f, R.folds[f]]).sort((a, b) => a[1].test.hit - b[1].test.hit)[0], wt = worst[1];
       const test = Object.assign(pub(wt.test), { baseHit: r3(wt.base.hit), baseAvg: r2(wt.base.avg), baseN: wt.base.n, allHit: r3(wt.all.hit), allAvg: r2(wt.all.avg), fold: worst[0] });
       out[hz] = { rule: ruleOut(P.best.sp), desc: convDesc(P.best.sp, hz), test, folds: foldsOut, stable, days: h, date: new Date().toISOString().slice(0, 10),
-        note: 'test = the walk-forward fold with the lower out-of-sample hit rate; backtest on daily bars, not live results' };
+        tier, note: 'test = the walk-forward fold with the lower out-of-sample hit rate; backtest on daily bars, not live results' + (tier === 'candidate' ? '; CANDIDATE: both test folds beat BUY≥58 but too few cases to confirm' : '') };
       if (forced) out[hz].forced = true;
-      lines[hz] = `${pad(hz, 7)} 🎯 ${forced ? 'FORCED (gate FAILED; RESEARCH_FORCE testing only) · ' + why.join(' · ') + ' ·' : 'ON  ·'} ${convDesc(P.best.sp, hz)} · OOS (worst fold ${worst[0]}) hit ${pc(wt.test.hit)} (lo ${pc(wt.test.hitLo)}) vs BUY≥${BUY_MIN} ${pc(wt.base.hit)} · avg ${f2(wt.test.avg)}% vs ${f2(wt.base.avg)}% · n ${wt.test.n} (${ok(wt.test.perMonth) ? wt.test.perMonth.toFixed(1) : '?'}/mo) · rule ${stable ? 'same in F1, F2 and production' : 'differs between folds/production (procedure validated, exact rule not)'}`;
+      lines[hz] = `${pad(hz, 7)} 🎯 ${forced ? 'FORCED (gate FAILED; RESEARCH_FORCE testing only) · ' + why.join(' · ') + ' ·' : tier === 'candidate' ? 'CANDIDATE (both folds beat BUY≥58, n < 30) · ' + why.join(' · ') + ' ·' : 'ON  ·'} ${convDesc(P.best.sp, hz)} · OOS (worst fold ${worst[0]}) hit ${pc(wt.test.hit)} (lo ${pc(wt.test.hitLo)}) vs BUY≥${BUY_MIN} ${pc(wt.base.hit)} · avg ${f2(wt.test.avg)}% vs ${f2(wt.base.avg)}% · n ${wt.test.n} (${ok(wt.test.perMonth) ? wt.test.perMonth.toFixed(1) : '?'}/mo) · rule ${stable ? 'same in F1, F2 and production' : 'differs between folds/production (procedure validated, exact rule not)'}`;
     } else {
       out[hz] = { off: true, why: why.join(' · '), folds: foldsOut };
       lines[hz] = `${pad(hz, 7)} 🎯 OFF · ${why.join(' · ')}`;

@@ -148,7 +148,7 @@ function ratedMulti(rows, fs, mode) {
     const r = (items.find(Boolean)).r;
     const hr = hz.map(k => { const x = items[fs.indexOf(k)]; if (x) return x.rating; const Rh = hzRate(r, k); return Rh ? Rh.rating : null; });
     const ok = hr.filter(x => x != null), sellOnly = fs.every(k => k === 'sell');
-    const score = ok.length ? Math.round(ok.reduce((a, b) => a + b, 0) / ok.length) : (rateRow(r) || {}).rating;
+    const first = items.find(Boolean), score = ok.length ? Math.round(ok.reduce((a, b) => a + b, 0) / ok.length) : first && first.rating != null ? first.rating : (rateRow(r) || {}).rating;
     if (score == null) continue;
     const parts = fs.map((k, i) => HZ.includes(k) ? `${SH[k]} ${hr[hz.indexOf(k)] ?? '–'}` : `${items[i] ? '✓' : '✗'} ${(FILTERS.find(z => z[0] === k) || [k, k])[1].replace(/^[^A-Za-z]+/, '')}`);
     out.push({ r, rating: score, label: hz.length > 1 ? 'AVG' : hz.length ? HZL[hz[0]] : 'COMBINED', sub: parts.join(' · '), hz: hz[0] || 'overall', match: items.filter(Boolean).length });
@@ -183,6 +183,16 @@ async function startVerify(need, fkey) {
   if (S.tab === 'scan' && S.mkt === mkt) drawScan();
 }
 // Tomorrow filter: when to act + the measured track record (data/btst_stats.json from GitHub)
+// 🎯 what the High-conviction filter is, and what the weekly 5-year test found for each horizon
+function convNoteHTML() {
+  const C = ((Engine.MODEL || {}).research || {}).conviction || {}, sel = (S.scanFilters || []).filter(k => HZ.includes(k)), hzs = sel.length ? sel : ['swing', 'short', 'medium', 'long'];
+  const P = x => Math.round(x * 100) + '%';
+  const line = hz => { const c = C[hz]; if (hz === 'intraday') return `<div><b>${HZL[hz]}</b>: no intraday history to test — shown only when Swing qualifies and the intraday rating is 75+ (agreement, not measured).</div>`;
+    if (!c) return `<div><b>${HZL[hz]}</b>: not tested yet.</div>`;
+    if (c.off) return `<div><b>${HZL[hz]}</b>: <span class="mu">off</span> — no rule beat plain BUY 58+ reliably in both test periods.</div>`;
+    return `<div><b>${HZL[hz]}</b>: ${c.tier === 'candidate' ? '🧪 candidate' : '🎯 confirmed'} — ${esc(c.desc || '')}. Past tests: target hit before stop ${P(c.test.hit)} (plain BUY 58+: ${P(c.test.baseHit)}), avg ${c.test.avg > 0 ? '+' : ''}${c.test.avg}% per trade after costs, worst 5% ${c.test.p5}%.</div>`; };
+  return `<div class="card btst-note"><div>🎯 <b>Highest-odds picks</b> — the strictest rule that beat plain BUY 58+ out of sample on 5 years of Nifty 500 data. Nothing is certain: even these miss often, so always use the stop.</div><div class="note" style="margin-top:6px;display:grid;gap:4px">${hzs.map(line).join('')}</div><div class="note" style="margin-top:6px">🧪 candidate = better in both test periods but too few past cases to confirm. Re-tested on GitHub with fresh data; rules switch on/off by themselves.</div></div>`;
+}
 function btstNoteHTML() {
   const t = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()), open = marketOpen('IN');
   const when = open ? (t < '14:45' ? '⏳ Provisional — today\'s candle is still forming. The list firms up after 3:00 PM.' : '🌙 Near the close: buy 3:15–3:25 PM near the price shown. Next day: sell in the first 15 minutes after the open — on 5 years of data the edge is the opening gap and it fades by the close.')
@@ -216,8 +226,9 @@ function drawScan() {
   const desc = f === 'sell' ? 'Lowest rating first.' : f === 'patterns' ? 'Only patterns with a proven edge. Open a stock to see the lines.' : f === 'leaders' ? 'Positive alpha, rises more than it falls with the market. <a class="help" data-help="leader">What is this?</a>' : f === 'near' ? 'Just under resistance; buy only on a breakout close.' : '';
   el.innerHTML = rows.length ? `<div class="lhd"><div><b>${esc(fl)}</b><span class="lcnt">${rows.length}${rows.length >= 150 ? '+' : ''} stocks</span></div><span class="note">${(() => { const ag = rows.map(x => Date.now() - (x.r.at || sc.at)).sort((p, q) => p - q), m = v => v < 60e3 ? 'just now' : v < 3600e3 ? Math.round(v / 60e3) + ' min' : Math.round(v / 3600e3) + ' h'; return ag.length ? `Ratings ${m(ag[0])}–${m(ag[ag.length - 1])} old${marketOpen() ? ' · refreshing ~25/min' : ''}` : 'Scan ' + new Date(sc.at).toLocaleTimeString(); })()}${fz ? ` · <a href="#" id="rerank">↻ Re-rank${fresh ? ` (+${fresh} new)` : ''}</a>` : ''}</span></div>${desc ? `<p class="note ldesc">${desc}</p>` : ''}<div class="list">${rows.map((x, k) => rowHTML(x.r.sym, x.sub || nameOf(x.r.sym), x.r.price, x.r.chg, x.rating, x.label, tagsOf(x.r), k + 1)).join('')}</div>`
     : `<div class="empty">Nothing in "${esc(fl)}" for ${esc(uniLabel())}.${f === 'news' ? '<br>News loads for the top-rated stocks after each scan.' : ''}</div>`;
+  if (fs.includes('conv')) { const hd = el.querySelector('.lhd'); if (hd) hd.insertAdjacentHTML('afterend', convNoteHTML()); else el.insertAdjacentHTML('afterbegin', convNoteHTML()); }
   if (fs.includes('btst')) { const hd = el.querySelector('.lhd'); if (hd) hd.insertAdjacentHTML('afterend', btstNoteHTML()); else el.insertAdjacentHTML('afterbegin', btstNoteHTML()); }
-  bindRows(el, fs.find(k => HZ.includes(k)) || 'overall');
+  bindRows(el, fs.find(k => HZ.includes(k)) || 'overall', { fs: fs.slice(), mode: S.scanMode || 'all' });
   const rr = $('#rerank'); if (rr) rr.onclick = e => { e.preventDefault(); delete S.frozen[fkey]; drawScan(); };
   hydrateRows(el, 12);
 }

@@ -23,6 +23,9 @@
       ? { bg: '#ffffff', text: '#5d6672', grid: '#eef1f5', border: '#e1e5eb', up: '#0f8a46', down: '#d32f2f' }
       : { bg: '#141920', text: '#8a97a6', grid: '#1a2028', border: '#232c37', up: '#22c56c', down: '#f25c5c' } };
   apply(get());
+  // expose the sticky header height so list headers can stick just under it
+  function topH() { const t = document.querySelector('.top'); if (t) root.style.setProperty('--topH', t.offsetHeight + 'px'); }
+  window.addEventListener('resize', topH); window.addEventListener('load', topH); setTimeout(topH, 400); setTimeout(topH, 1500);
   function addBtn() {
     if (document.getElementById('themeBtn')) return;
     const bell = document.getElementById('bell'); if (!bell || !bell.parentNode) return;

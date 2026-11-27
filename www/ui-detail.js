@@ -252,6 +252,15 @@ function dcStats() {
    <div class="dk-foot note">EMA in green = price above it, red = below.</div></div>`;
 }
 
+// the exact number the scanner list showed for this stock (same function, same row) — so list and page always agree
+function listStrip(row) {
+  const ctx = S.detail && S.detail.ctx; if (!ctx || !ctx.fs || !ctx.fs.length || typeof ratedMulti !== 'function') return '';
+  const vcls = sc => sc >= 58 ? "up" : sc <= 42 ? "dn" : "wa", one = ratedMulti([row], ctx.fs, "any")[0], names = ctx.fs.map(k => ((FILTERS.find(z => z[0] === k) || [k, k])[1])).join(' + ');
+  if (!one) return `<div class="card lstrip"><div class="sub">From your list · ${esc(names)}</div><div class="note">No longer qualifies on the latest candle — it will drop off at the next ↻ Re-rank.</div></div>`;
+  const moved = ctx.shown != null && ctx.shown !== one.rating, intra = ctx.fs.includes('intraday');
+  const why = !moved ? 'same number as the list' : `list showed ${ctx.shown}${intra ? ' — a newer 5-minute candle has closed since; the list now shows this too' : ' — re-scored on the latest completed candle; the list now shows this too'}`;
+  return `<div class="card lstrip"><div class="ls-n ${vcls(one.rating)}">${one.rating}</div><div style="flex:1;min-width:0"><div class="sub">From your list · ${esc(names)}${one.label ? ' · ' + esc(one.label) : ''}</div><div class="note">${esc(one.sub || '')} — ${esc(why)}</div></div></div>`;
+}
 // ---------- the page ----------
 function drawDetail(isRefresh) {
   const { A, R, sym } = S.detail, c = cur();
@@ -272,7 +281,7 @@ function drawDetail(isRefresh) {
 
   const rest = `
   ${A.stats.turnover < (S.minTurnover[mkt] || 0) ? `<div class="warn">⚠ Thinly traded: about ${c}${fmt(A.stats.turnover / (mkt === 'IN' ? 1e7 : 1e6), 2)} ${mkt === 'IN' ? 'Cr' : 'M'} a day. Wide spreads and slippage can wipe out the edge.</div>` : ''}
-  ${dcStats()}
+  ${listStrip(row)}
   <h3>Rating <span class="note">tap a horizon</span></h3>
   <div class="card dr">
    <div class="hero">${ring(top.rating)}<div style="flex:1;min-width:0"><div class="sub">${esc(top.label)}</div><div class="verdict ${vcls(top.rating)}">${top.action}</div>
@@ -295,6 +304,7 @@ function drawDetail(isRefresh) {
    ${A.fno && Rk.dir && (k === 'intraday' || k === 'swing') ? `<div class="sub dw-fut">Futures: ${Rk.dir > 0 ? 'BUY' : 'SELL'} 1 lot${A.fno.lot ? ` (${A.fno.lot} qty) · risk ≈ ${c}${fmt(Math.abs(L.entry - L.stop) * A.fno.lot, 0)}` : ''}</div>` : ''}`
      : `<div class="sub">${Rk.dir ? 'Signal and backtest disagree on direction, so there are no levels. Stand aside.' : `No trade: ${Rk.rating} is in the wait zone (43–57). Wait for 58+ to buy or 42- to sell.`} Raw signal ${h.score}.</div>`}
    <div class="dw-why">Why</div><ul class="why">${h.why.map(w => `<li>${w.w > 0 ? '<span class="up">✓</span>' : '<span class="dn">✗</span>'} ${esc(w.t)}</li>`).join('')}</ul>`}</div>
+  ${dcStats()}
   <h3>Setups <span class="note">SMC · VCP · trend</span></h3><div class="card">${A.setups.length ? A.setups.map(s => `<div class="setup"><div class="sh"><span class="tag ${s.b > 0 ? 'p' : 'n'}">${esc(s.k)}</span><b>${esc(s.n.replace(/^SMC: /, ''))}</b><span class="q ${s.q >= 70 ? 'up' : s.q >= 55 ? 'wa' : 'mu'}">${s.q}</span></div>
      <div class="qbar"><i style="width:${s.q}%;background:${s.b > 0 ? 'var(--up)' : 'var(--dn)'}"></i></div><div class="x">${esc(s.note)}</div>${evidence(s.n)}
      ${s.entry ? `<div class="lv3"><span>Entry <b>${fmt(s.entry)}</b></span><span>SL <b class="dn">${fmt(s.stop)}</b></span><span>Target <b class="up">${fmt(s.target)}</b></span></div>` : ''}</div>`).join('') : '<div class="note">No SMC, VCP or trend setup active on the daily chart today.</div>'}</div>
@@ -311,10 +321,13 @@ function drawDetail(isRefresh) {
 
   // build the shell once per stock; later redraws keep the chart (and the user's zoom)
   const body = $('#dbody'), fresh = !$('#dcCard') || body.dataset.sym !== sym;
-  if (fresh) { body.dataset.sym = sym; body.innerHTML = `<div id="dqp" class="dq"></div>${dcChartShell()}<div id="drest"></div>`; dcBind(); }
+  if (fresh) { body.dataset.sym = sym; body.innerHTML = `<div id="dqp" class="dq"></div><div id="dverd"></div>${dcChartShell()}<div id="drest"></div>`; dcBind(); }
   $('#dqp').innerHTML = dcQuote(isRefresh);
-  $('#drest').innerHTML = rest;
-  document.querySelectorAll('#drest [data-h]').forEach(b => b.onclick = () => { S.hz = b.dataset.h; drawDetail(); });
+  // verdict (warning + rating + horizons) sits right under the price, above the chart; the rest follows the chart
+  const cut = rest.indexOf('<h3>What to do');
+  $('#dverd').innerHTML = cut > 0 ? rest.slice(0, cut) : '';
+  $('#drest').innerHTML = cut > 0 ? rest.slice(cut) : rest;
+  document.querySelectorAll('#dverd [data-h], #drest [data-h]').forEach(b => b.onclick = () => { S.hz = b.dataset.h; drawDetail(); });
   if (fresh) dcLoad(false);
   else if (isRefresh) { const cv = S.detail.cv; for (const r in cv.cache) if (DC_RANGES.find(x => x[0] === r)[1] === 'D') delete cv.cache[r]; dcLoad(true, cv.range === '1D' || cv.range === '5D'); }
   else drawPreview(true); // horizon change → new E/SL/T1/T2 lines
