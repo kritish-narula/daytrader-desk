@@ -1,357 +1,491 @@
-DayTrader Desk — stock research report · 2026-11-25T10:31Z · model.json v23
+DayTrader Desk — stock research report · 2026-11-27T14:17Z · model.json v27
 Honest-numbers note: everything below is a BACKTEST on historical daily bars (walk-forward, out-of-sample where marked), not live results.
 Universe: Nifty 500 (nse.json cat L/M/S) · 467/501 stocks used (34 skipped: <400 bars or fetch failed) · Nifty ok
-Rows: 144021 stock-days (every 3 trading days) · 215588 BTST stock-days (every 2) · collection 9s
+Rows: 144063 stock-days (every 3 trading days) · 215648 BTST stock-days (every 2) · collection 34s
 Costs: 0.3% round trip (multi-day) · 0.25% BTST · baseline = current app horizon score (learned model where model.json has one, else the rule score; E.hzRating's regime/news/backtest nudges excluded) · adoptable scopes: stock
-Folds (embargo = horizon): F1 train < 2025-04-22 → test ≥ 2025-04-22 · F2 train < 2026-02-05 → test ≥ 2026-02-05 · stock split: F1 years, train on one half of the stocks, test on the other half
+Folds (embargo = horizon): F1 train < 2025-04-24 → test ≥ 2025-04-24 · F2 train < 2026-02-09 → test ≥ 2026-02-09 · stock split: F1 years, train on one half of the stocks, test on the other half
+Stability variants for swing, short: base, S3, S5, FS, FS+S3, shrink, S3+shrink · previous bars recorded per row: 5
 
-==================== SWING · 10 trading days · 142620 rows ====================
+==================== SWING · 10 trading days · 142662 rows ====================
 
-F1: train 81994 rows → test 59297 rows · 16 features · lambda 0.03 · blend model/rule 1/0.00 (inner IC +0.062)
-  model (OOS)            IC +0.034 (t   2.2, 64% days>0)  top10% +0.92% → after cost +0.62%  hit 28%  trade +0.23%  vs universe +0.37  | bottom10% +0.24%  | buy-top-10 +0.67% after cost, beat universe 53% of days
-  current app score      IC +0.002 (t   0.1, 48% days>0)  top10% +0.51% → after cost +0.21%  hit 27%  trade -0.14%  vs universe -0.03  | bottom10% +0.68%  | buy-top-10 -0.13% after cost, beat universe 47% of days
+F1: train 82021 rows → test 59312 rows · 26 features · lambda 0.03 · blend model/rule 1/0.00 (inner IC +0.056)
+  model (OOS)            IC +0.038 (t   2.8, 69% days>0)  top10% +1.02% → after cost +0.72%  hit 29%  trade +0.26%  vs universe +0.54  | bottom10% +0.17%  | buy-top-10 +0.47% after cost, beat universe 58% of days
+  current app score      IC +0.045 (t   2.3, 70% days>0)  top10% +0.90% → after cost +0.60%  hit 27%  trade +0.16%  vs universe +0.42  | bottom10% +0.31%  | buy-top-10 +0.79% after cost, beat universe 59% of days
+  rule score only        IC +0.002 (t   0.1, 53% days>0)  top10% +0.44% → after cost +0.14%  hit 26%  trade -0.10%  vs universe -0.05  | bottom10% +0.56%  | buy-top-10 -0.21% after cost, beat universe 43% of days
 
-F2: train 111814 rows → test 29413 rows · 30 features · lambda 3 · blend model/rule 1/0.00 (inner IC +0.033)
-  model (OOS)            IC +0.050 (t   1.7, 62% days>0)  top10% +0.95% → after cost +0.65%  hit 28%  trade +0.29%  vs universe +0.46  | bottom10% +0.29%  | buy-top-10 +0.74% after cost, beat universe 59% of days
-  current app score      IC -0.000 (t  -0.0, 44% days>0)  top10% +0.14% → after cost -0.16%  hit 24%  trade -0.52%  vs universe -0.35  | bottom10% +0.57%  | buy-top-10 -0.40% after cost, beat universe 38% of days
+F2: train 111854 rows → test 29414 rows · 32 features · lambda 1 · blend model/rule 1/0.00 (inner IC +0.041)
+  model (OOS)            IC +0.055 (t   1.9, 67% days>0)  top10% +0.80% → after cost +0.50%  hit 28%  trade +0.17%  vs universe +0.37  | bottom10% +0.25%  | buy-top-10 +0.45% after cost, beat universe 54% of days
+  current app score      IC +0.041 (t   1.6, 62% days>0)  top10% +0.74% → after cost +0.44%  hit 27%  trade +0.02%  vs universe +0.30  | bottom10% +0.38%  | buy-top-10 +0.54% after cost, beat universe 59% of days
+  rule score only        IC +0.002 (t   0.1, 54% days>0)  top10% +0.10% → after cost -0.20%  hit 25%  trade -0.31%  vs universe -0.33  | bottom10% +0.50%  | buy-top-10 -0.65% after cost, beat universe 41% of days
 
-stock-split: train 40795 rows → test 29771 rows · 22 features · lambda 0.3 · blend model/rule 1/0.00 (inner IC +0.059)
-  model (OOS)            IC +0.047 (t   2.7, 72% days>0)  top10% +1.08% → after cost +0.78%  hit 28%  trade +0.25%  vs universe +0.54  | bottom10% +0.08%  | buy-top-10 +0.82% after cost, beat universe 50% of days
-  current app score      IC +0.004 (t   0.2, 48% days>0)  top10% +0.55% → after cost +0.25%  hit 27%  trade -0.11%  vs universe +0.01  | bottom10% +0.74%  | buy-top-10 -0.17% after cost, beat universe 44% of days
+stock-split: train 40813 rows → test 29779 rows · 26 features · lambda 1 · blend model/rule 1/0.00 (inner IC +0.047)
+  model (OOS)            IC +0.051 (t   2.7, 70% days>0)  top10% +1.19% → after cost +0.89%  hit 29%  trade +0.41%  vs universe +0.70  | bottom10% -0.02%  | buy-top-10 +1.10% after cost, beat universe 64% of days
+  current app score      IC +0.038 (t   1.7, 67% days>0)  top10% +0.85% → after cost +0.55%  hit 27%  trade +0.10%  vs universe +0.36  | bottom10% +0.32%  | buy-top-10 +0.60% after cost, beat universe 55% of days
+  rule score only        IC +0.005 (t   0.2, 50% days>0)  top10% +0.49% → after cost +0.19%  hit 27%  trade -0.03%  vs universe +0.00  | bottom10% +0.51%  | buy-top-10 -0.11% after cost, beat universe 47% of days
 
-GATE swing: F1 IC beats baseline, top-decile after cost beats · F2 IC beats baseline, top-decile after cost beats · F1 OOS t 2.2 ≥ 1.5 → PASS
+-- variant S3: score = mean of model output over last 3 bars --
+  F1 26f b1              IC +0.038 (t   2.8, 70% days>0)  top10% +1.03% → after cost +0.73%  hit 28%  trade +0.29%  vs universe +0.55  | bottom10% +0.11%  | buy-top-10 +0.63% after cost, beat universe 59% of days
+  F2 32f b1              IC +0.054 (t   1.8, 67% days>0)  top10% +0.76% → after cost +0.46%  hit 28%  trade +0.13%  vs universe +0.33  | bottom10% +0.32%  | buy-top-10 +0.54% after cost, beat universe 56% of days
+  stock-split 26f b1     IC +0.050 (t   2.6, 67% days>0)  top10% +1.13% → after cost +0.83%  hit 29%  trade +0.41%  vs universe +0.64  | bottom10% -0.10%  | buy-top-10 +0.91% after cost, beat universe 58% of days
 
-Production weights (swing; refit on all rows; effect of +1 sd of the feature on the model, in model sd; + = bullish):
-   +0.350  adx                                           ADX 14
-   +0.280  hi52                                          Distance from 52-week high
-   +0.265  dd52                                          Drawdown from 52-week closing high
-   -0.219  clv                                           Close location in the day range
-   +0.216  volTr                                         Volume trend (20d / 60d)
-   -0.200  turn                                          Liquidity (log10 ₹ turnover, 20d)
-   +0.173  f.long: Near #-week high                      
-   -0.166  ret1                                          Today's return
-   -0.166  ret5                                          5-day return
-   -0.096  f.swing: Volume # average on an up day        
-   -0.096  f.swing: Closed above #-day high              
-   -0.096  f.short: #-day breakout                       
-   -0.090  f.swing: MACD momentum rising                 
-   +0.040  f.medium: +# in # months                      
+-- variant S5: score = mean of model output over last 5 bars --
+  F1 26f b1              IC +0.037 (t   2.5, 67% days>0)  top10% +1.02% → after cost +0.72%  hit 28%  trade +0.29%  vs universe +0.54  | bottom10% +0.19%  | buy-top-10 +0.75% after cost, beat universe 55% of days
+  F2 32f b1              IC +0.052 (t   1.8, 67% days>0)  top10% +0.81% → after cost +0.51%  hit 29%  trade +0.23%  vs universe +0.38  | bottom10% +0.28%  | buy-top-10 +0.30% after cost, beat universe 52% of days
+  stock-split 26f b1     IC +0.049 (t   2.6, 69% days>0)  top10% +1.14% → after cost +0.84%  hit 29%  trade +0.35%  vs universe +0.66  | bottom10% -0.10%  | buy-top-10 +1.06% after cost, beat universe 60% of days
+
+-- variant FS: single-bar features dropped (ret1/clv/gap1/volx) --
+  F1 24f b1              IC +0.037 (t   2.8, 70% days>0)  top10% +1.08% → after cost +0.78%  hit 29%  trade +0.31%  vs universe +0.59  | bottom10% +0.19%  | buy-top-10 +0.59% after cost, beat universe 56% of days
+  F2 30f b1              IC +0.056 (t   1.9, 67% days>0)  top10% +0.80% → after cost +0.50%  hit 28%  trade +0.11%  vs universe +0.36  | bottom10% +0.29%  | buy-top-10 +0.52% after cost, beat universe 56% of days
+  stock-split 25f b1     IC +0.051 (t   2.7, 71% days>0)  top10% +1.22% → after cost +0.92%  hit 29%  trade +0.41%  vs universe +0.73  | bottom10% -0.04%  | buy-top-10 +1.07% after cost, beat universe 63% of days
+
+-- variant FS+S3: FS + 3-bar score smoothing --
+  F1 24f b1              IC +0.037 (t   2.5, 67% days>0)  top10% +0.99% → after cost +0.69%  hit 29%  trade +0.29%  vs universe +0.50  | bottom10% +0.19%  | buy-top-10 +0.70% after cost, beat universe 57% of days
+  F2 30f b1              IC +0.054 (t   1.8, 67% days>0)  top10% +0.83% → after cost +0.53%  hit 28%  trade +0.15%  vs universe +0.40  | bottom10% +0.33%  | buy-top-10 +0.47% after cost, beat universe 52% of days
+  stock-split 25f b1     IC +0.050 (t   2.6, 68% days>0)  top10% +1.26% → after cost +0.96%  hit 30%  trade +0.43%  vs universe +0.78  | bottom10% -0.07%  | buy-top-10 +0.89% after cost, beat universe 58% of days
+
+-- variant shrink: blend toward rule: most stable blend with inner IC ≥ 0.9×best --
+  F1 26f b0.75           IC +0.035 (t   2.3, 65% days>0)  top10% +0.88% → after cost +0.58%  hit 28%  trade +0.15%  vs universe +0.40  | bottom10% +0.22%  | buy-top-10 +0.59% after cost, beat universe 59% of days
+  F2 32f b1              IC +0.055 (t   1.9, 67% days>0)  top10% +0.80% → after cost +0.50%  hit 28%  trade +0.17%  vs universe +0.37  | bottom10% +0.25%  | buy-top-10 +0.45% after cost, beat universe 54% of days
+  stock-split 26f b0.75  IC +0.046 (t   2.2, 67% days>0)  top10% +1.13% → after cost +0.83%  hit 28%  trade +0.22%  vs universe +0.65  | bottom10% +0.08%  | buy-top-10 +1.10% after cost, beat universe 67% of days
+
+-- variant S3+shrink: S3 + shrink toward rule --
+  F1 26f b0.75           IC +0.036 (t   2.3, 64% days>0)  top10% +0.91% → after cost +0.61%  hit 28%  trade +0.22%  vs universe +0.43  | bottom10% +0.30%  | buy-top-10 +0.47% after cost, beat universe 54% of days
+  F2 32f b1              IC +0.054 (t   1.8, 67% days>0)  top10% +0.76% → after cost +0.46%  hit 28%  trade +0.13%  vs universe +0.33  | bottom10% +0.32%  | buy-top-10 +0.54% after cost, beat universe 56% of days
+  stock-split 26f b0.75  IC +0.045 (t   2.2, 67% days>0)  top10% +1.15% → after cost +0.85%  hit 29%  trade +0.28%  vs universe +0.67  | bottom10% +0.03%  | buy-top-10 +1.25% after cost, beat universe 67% of days
+STABILITY swing — |score(bar n) − score(bar n−1)|, same stock, OOS test rows (= the drop-last-bar test): mean med p90 %>10pts · F1 test | F2 test · OOS IC and top-decile after cost F1 / F2
+   variant     k  F1: mean med p90 >10  | F2: mean med p90 >10  | IC F1 / F2       | top10% a.c. F1 / F2 | verdict
+   rule score  -    5.2   3  13  16% |   5.4   4  13  17% | +0.002 / +0.002 | +0.14% / -0.20% | reference
+   current app 1   10.6   8  24  39% |  11.0   8  25  41% | +0.045 / +0.041 | +0.60% / +0.44% | learned champion: fitted on ALL rows last run, so in-sample on these test years — shown, not gated on
+   base        1    5.9   4  14  18% |   5.3   4  13  14% | +0.038 / +0.055 | +0.72% / +0.50% | eligible
+   S3          3    4.0   3  10   8% |   2.9   2   7   3% | +0.038 / +0.054 | +0.73% / +0.46% | eligible
+   S5          5    3.1   2   7   4% |   1.8   1   4   0% | +0.037 / +0.052 | +0.72% / +0.51% | ADOPT
+   FS          1    5.1   3  12  14% |   3.6   2  10  10% | +0.037 / +0.056 | +0.78% / +0.50% | eligible
+   FS+S3       3    3.5   2   8   5% |   2.1   1   5   1% | +0.037 / +0.054 | +0.69% / +0.53% | eligible
+   shrink      1    5.4   4  13  15% |   5.3   4  13  14% | +0.035 / +0.055 | +0.58% / +0.50% | no: F1 top < base−0.1
+   S3+shrink   3    3.7   3   9   6% |   2.9   2   7   3% | +0.036 / +0.054 | +0.61% / +0.46% | no: F1 top < base−0.1
+   tolerance: IC ≥ 0.9× base and top-decile after cost ≥ base − 0.1%-pts in both folds, and beat the rule score in both folds (F1 t ≥ 1.5); pick = lowest mean day-over-day change (F1+F2)
+   engine parity (E.linScore vs research, every variant's F2 model, bar n and bar n−1): 2114 rows, all match
+   → S5 (score = mean of model output over last 5 bars)
+
+GATE swing: PASS with variant S5
+
+Production weights (swing · variant S5, score = mean over 5 bars; refit on all rows; effect of +1 sd of the feature on the model, in model sd; + = bullish):
+   +0.185  f.medium: Upper part of #-week range          
+   +0.163  hi52                                          Distance from 52-week high
+   +0.161  dd52                                          Drawdown from 52-week closing high
+   +0.150  f.swing: Active bullish setup (SMC / VCP / trend)  
+   +0.150  f.short: Active bullish setup (SMC / VCP / trend)  
+   +0.150  f.medium: Active bullish setup (SMC / VCP / trend)  
+   -0.136  turn                                          Liquidity (log10 ₹ turnover, 20d)
+   +0.110  f.long: Near #-week high                      
+   +0.099  volTr                                         Volume trend (20d / 60d)
+   +0.089  bbw                                           Bollinger band width
+   -0.062  ret5                                          5-day return
+   +0.057  f.short: # EMA above # EMA                    
+   +0.054  e50slope                                      50 EMA slope over 20d (ATRs)
+   -0.050  ret1                                          Today's return
+   -0.028  clv                                           Close location in the day range
+   +0.025  f.short: # in # month                         
+   +0.017  f.medium: +# in # months                      
    intercept -0.000 · blend 1 model / 0.00 rule score · lambda 10
 
 OOS score bands (swing) — F1 test | F2 test: n, avg 10d return after 0.3% cost, excess vs universe, hit T1 first
-     0–19    2661 +0.61% -0.24 29% |   1621 +1.14% +0.03 32%
-    20–24    3857 +0.30% -0.23 27% |   2223 +0.66% -0.20 30%
-    25–29    5113 +0.27% -0.22 27% |   2899 +0.68% +0.03 28%
-    30–34    3500 +0.20% -0.23 27% |   2132 +0.09% -0.30 27%
-    35–37    2016 +0.40% +0.07 26% |   1153 +0.05% -0.25 24%
-    38–41    4695 +0.32% -0.06 27% |   2544 +0.06% -0.35 26%
-    42–45    3525 +0.19% -0.14 27% |   1835 -0.04% -0.21 25%
-    46–49    3857 +0.20% -0.05 28% |   2144 +0.29% +0.02 26%
-    50–53    6313 +0.22% -0.03 27% |   3127 -0.15% -0.27 24%
-    54–57    2811 +0.20% +0.08 27% |    832 -0.06% +0.04 24%
-    58–61    2064 +0.13% +0.03 26% |    742 +0.13% +0.29 25%
-    62–65    2824 +0.09% +0.01 27% |   1327 -0.17% +0.15 25%
-    66–69    4018 +0.16% +0.18 25% |   1779 -0.50% -0.20 24%
-    70–74    5610 +0.17% +0.20 26% |   1980 +0.34% +0.72 27%
-    75–79    4727 +0.06% +0.29 26% |   2075 +0.15% +0.60 26%
-    80–84    1578 +0.42% +0.49 26% |    891 -0.23% +0.39 25%
-    85–100    128 +2.11% +1.71 39% |    109 +0.80% +1.54 32%
-Recommended cut-offs (swing, model score): BUY ≥ 70 · SELL ≤ none qualifies   [same rule on the current score: BUY ≥ 66, SELL ≤ none; app uses 58/42]
-What "BUY" means today (current horizon score ≥ 58, before the app's regime/news/backtest nudges): F1 n=25227 +0.15% after cost, +0.05 vs universe, hit 26% | F2 n=11834 +0.08%, +0.08, hit 27%
-Regime (F1 test, model top decile after cost): Nifty above 200 EMA +0.50% (77 days, universe -0.04%) · below +0.78% (52 days, universe +0.66%)
-Engine parity check (E.linScore vs research scoring, 301 rows): all match
+     0–19    2679 +0.08% -0.27 26% |   1491 -0.03% -0.27 28%
+    20–24    4773 +0.02% -0.27 25% |   2460 +0.53% -0.00 30%
+    25–29    5084 +0.13% -0.12 25% |   3020 -0.29% -0.48 26%
+    30–34    3185 +0.27% +0.00 27% |   2281 +0.06% -0.12 27%
+    35–37    1971 -0.02% -0.25 27% |   1423 +0.07% -0.24 25%
+    38–41    4737 +0.18% -0.20 28% |   2643 +0.34% -0.03 26%
+    42–45    2966 -0.08% -0.35 27% |   2272 +0.23% +0.00 26%
+    46–49    3543 +0.15% -0.13 27% |   1491 +0.10% -0.22 26%
+    50–53    6385 +0.31% +0.09 27% |   3048 +0.12% -0.26 27%
+    54–57    2623 +0.15% -0.01 26% |    972 +0.55% +0.17 29%
+    58–61    1879 +0.26% +0.08 27% |    847 +0.29% +0.14 28%
+    62–65    3302 +0.15% +0.05 26% |   1126 -0.12% -0.10 25%
+    66–69    4017 +0.21% +0.15 27% |   1538 +0.34% +0.53 26%
+    70–74    5454 +0.15% +0.09 26% |   2172 +0.32% +0.71 26%
+    75–79    4466 +0.38% +0.47 27% |   1909 -0.16% +0.44 26%
+    80–84    2032 +0.41% +0.59 28% |    700 -0.23% +0.33 27%
+    85–100    216 +1.12% +1.14 31% |     21 +0.72% +1.46 38%
+Recommended cut-offs (swing, model score): BUY ≥ 58 · SELL ≤ none qualifies   [same rule on the current score: BUY ≥ 54, SELL ≤ none; app uses 58/42]
+What "BUY" means today (current horizon score ≥ 58, before the app's regime/news/backtest nudges): F1 n=22654 +0.20% after cost, +0.18 vs universe, hit 26% | F2 n=11252 +0.05%, +0.14, hit 25%
+Regime (F1 test, model top decile after cost): Nifty above 200 EMA +0.51% (75 days, universe -0.12%) · below +1.04% (54 days, universe +0.61%)
+Engine parity check (E.linScore vs research scoring, 301 rows at bar n + 301 at bar n−1, 5-bar smoothing): all match
 
-==================== SHORT · 30 trading days · 139353 rows ====================
+==================== SHORT · 30 trading days · 139395 rows ====================
 
-F1: train 78893 rows → test 56030 rows · 12 features · lambda 0.3 · blend model/rule 1/0.00 (inner IC +0.064)
-  model (OOS)            IC +0.064 (t   2.1, 70% days>0)  top10% +2.65% → after cost +2.35%  hit 33%  trade +1.18%  vs universe +1.60  | bottom10% -0.03%  | buy-top-10 +2.93% after cost, beat universe 61% of days
-  current app score      IC +0.021 (t   0.7, 58% days>0)  top10% +2.39% → after cost +2.09%  hit 30%  trade +0.63%  vs universe +1.34  | bottom10% +1.12%  | buy-top-10 +3.25% after cost, beat universe 70% of days
+F1: train 78920 rows → test 56045 rows · 13 features · lambda 0.3 · blend model/rule 1/0.00 (inner IC +0.061)
+  model (OOS)            IC +0.064 (t   2.1, 69% days>0)  top10% +2.46% → after cost +2.16%  hit 33%  trade +1.10%  vs universe +1.49  | bottom10% -0.30%  | buy-top-10 +2.40% after cost, beat universe 66% of days
+  current app score      IC +0.068 (t   2.1, 73% days>0)  top10% +2.51% → after cost +2.21%  hit 31%  trade +0.93%  vs universe +1.54  | bottom10% -0.12%  | buy-top-10 +2.19% after cost, beat universe 58% of days
+  rule score only        IC +0.021 (t   0.7, 61% days>0)  top10% +2.28% → after cost +1.98%  hit 30%  trade +0.55%  vs universe +1.30  | bottom10% +1.13%  | buy-top-10 +3.30% after cost, beat universe 73% of days
 
-F2: train 108572 rows → test 26146 rows · 17 features · lambda 3 · blend model/rule 1/0.00 (inner IC +0.044)
-  model (OOS)            IC +0.068 (t   1.6, 71% days>0)  top10% +2.99% → after cost +2.69%  hit 32%  trade +1.33%  vs universe +1.76  | bottom10% +0.63%  | buy-top-10 +1.31% after cost, beat universe 61% of days
-  current app score      IC +0.021 (t   0.6, 63% days>0)  top10% +2.77% → after cost +2.47%  hit 29%  trade +0.40%  vs universe +1.54  | bottom10% +1.51%  | buy-top-10 +4.55% after cost, beat universe 73% of days
+F2: train 108609 rows → test 26147 rows · 20 features · lambda 1 · blend model/rule 1/0.00 (inner IC +0.046)
+  model (OOS)            IC +0.073 (t   1.6, 73% days>0)  top10% +3.13% → after cost +2.83%  hit 34%  trade +1.24%  vs universe +1.77  | bottom10% +0.56%  | buy-top-10 +2.69% after cost, beat universe 63% of days
+  current app score      IC +0.043 (t   1.0, 66% days>0)  top10% +2.88% → after cost +2.58%  hit 32%  trade +0.94%  vs universe +1.51  | bottom10% +1.46%  | buy-top-10 +1.45% after cost, beat universe 52% of days
+  rule score only        IC +0.021 (t   0.6, 66% days>0)  top10% +2.68% → after cost +2.38%  hit 30%  trade +0.34%  vs universe +1.31  | bottom10% +1.64%  | buy-top-10 +4.12% after cost, beat universe 73% of days
 
-stock-split: train 39248 rows → test 28126 rows · 13 features · lambda 1 · blend model/rule 1/0.00 (inner IC +0.095)
-  model (OOS)            IC +0.082 (t   2.5, 73% days>0)  top10% +3.06% → after cost +2.76%  hit 34%  trade +1.21%  vs universe +2.00  | bottom10% -0.79%  | buy-top-10 +3.81% after cost, beat universe 77% of days
-  current app score      IC +0.025 (t   0.7, 61% days>0)  top10% +2.54% → after cost +2.24%  hit 29%  trade +0.57%  vs universe +1.49  | bottom10% +0.86%  | buy-top-10 +3.37% after cost, beat universe 66% of days
+stock-split: train 39266 rows → test 28134 rows · 10 features · lambda 1 · blend model/rule 1/0.00 (inner IC +0.103)
+  model (OOS)            IC +0.077 (t   2.3, 72% days>0)  top10% +2.85% → after cost +2.55%  hit 33%  trade +1.13%  vs universe +1.88  | bottom10% -0.88%  | buy-top-10 +3.12% after cost, beat universe 65% of days
+  current app score      IC +0.062 (t   1.6, 69% days>0)  top10% +2.79% → after cost +2.49%  hit 32%  trade +1.20%  vs universe +1.82  | bottom10% -0.25%  | buy-top-10 +3.10% after cost, beat universe 68% of days
+  rule score only        IC +0.027 (t   0.8, 61% days>0)  top10% +2.40% → after cost +2.10%  hit 30%  trade +0.44%  vs universe +1.43  | bottom10% +0.82%  | buy-top-10 +3.00% after cost, beat universe 70% of days
 
-GATE short: F1 IC beats baseline, top-decile after cost beats · F2 IC beats baseline, top-decile after cost beats · F1 OOS t 2.1 ≥ 1.5 → PASS
+-- variant S3: score = mean of model output over last 3 bars --
+  F1 13f b1              IC +0.067 (t   2.2, 69% days>0)  top10% +2.42% → after cost +2.12%  hit 33%  trade +1.04%  vs universe +1.45  | bottom10% -0.20%  | buy-top-10 +2.94% after cost, beat universe 69% of days
+  F2 20f b1              IC +0.065 (t   1.3, 68% days>0)  top10% +3.40% → after cost +3.10%  hit 33%  trade +1.34%  vs universe +2.03  | bottom10% +0.75%  | buy-top-10 +2.42% after cost, beat universe 61% of days
+  stock-split 10f b1     IC +0.078 (t   2.3, 72% days>0)  top10% +2.87% → after cost +2.57%  hit 33%  trade +1.12%  vs universe +1.90  | bottom10% -0.86%  | buy-top-10 +2.83% after cost, beat universe 65% of days
 
-Production weights (short; refit on all rows; effect of +1 sd of the feature on the model, in model sd; + = bullish):
-   -0.359  turn                                          Liquidity (log10 ₹ turnover, 20d)
-   +0.211  hi52                                          Distance from 52-week high
-   +0.208  dd52                                          Drawdown from 52-week closing high
-   +0.165  f.swing: Active bullish setup (SMC / VCP / trend)  
-   +0.165  f.short: Active bullish setup (SMC / VCP / trend)  
-   +0.165  f.medium: Active bullish setup (SMC / VCP / trend)  
-   +0.165  f.long: Near #-week high                      
-   -0.128  clv                                           Close location in the day range
-   -0.109  ret1                                          Today's return
-   +0.058  mom1                                          1-month return
-   +0.046  f.medium: +# in # months                      
+-- variant S5: score = mean of model output over last 5 bars --
+  F1 13f b1              IC +0.068 (t   2.2, 69% days>0)  top10% +2.57% → after cost +2.27%  hit 33%  trade +1.14%  vs universe +1.59  | bottom10% -0.27%  | buy-top-10 +2.97% after cost, beat universe 69% of days
+  F2 20f b1              IC +0.075 (t   1.6, 71% days>0)  top10% +3.06% → after cost +2.76%  hit 34%  trade +1.28%  vs universe +1.69  | bottom10% +0.67%  | buy-top-10 +2.22% after cost, beat universe 57% of days
+  stock-split 10f b1     IC +0.079 (t   2.3, 72% days>0)  top10% +2.79% → after cost +2.49%  hit 33%  trade +1.08%  vs universe +1.81  | bottom10% -0.87%  | buy-top-10 +2.95% after cost, beat universe 70% of days
+
+-- variant FS: single-bar features dropped (ret1/clv/gap1/volx) --
+  F1 11f b1              IC +0.064 (t   2.0, 69% days>0)  top10% +2.48% → after cost +2.18%  hit 33%  trade +1.09%  vs universe +1.51  | bottom10% -0.24%  | buy-top-10 +2.51% after cost, beat universe 61% of days
+  F2 19f b1              IC +0.073 (t   1.6, 71% days>0)  top10% +3.06% → after cost +2.76%  hit 34%  trade +1.26%  vs universe +1.69  | bottom10% +0.70%  | buy-top-10 +2.15% after cost, beat universe 55% of days
+  stock-split 10f b1     IC +0.077 (t   2.3, 72% days>0)  top10% +2.85% → after cost +2.55%  hit 33%  trade +1.13%  vs universe +1.88  | bottom10% -0.88%  | buy-top-10 +3.12% after cost, beat universe 65% of days
+
+-- variant FS+S3: FS + 3-bar score smoothing --
+  F1 11f b1              IC +0.066 (t   2.1, 69% days>0)  top10% +2.52% → after cost +2.22%  hit 33%  trade +1.04%  vs universe +1.55  | bottom10% -0.28%  | buy-top-10 +2.65% after cost, beat universe 63% of days
+  F2 19f b1              IC +0.066 (t   1.3, 68% days>0)  top10% +3.68% → after cost +3.38%  hit 34%  trade +1.48%  vs universe +2.31  | bottom10% +0.84%  | buy-top-10 +1.82% after cost, beat universe 59% of days
+  stock-split 10f b1     IC +0.078 (t   2.3, 72% days>0)  top10% +2.87% → after cost +2.57%  hit 33%  trade +1.12%  vs universe +1.90  | bottom10% -0.86%  | buy-top-10 +2.83% after cost, beat universe 65% of days
+
+-- variant shrink: blend toward rule: most stable blend with inner IC ≥ 0.9×best --
+  F1 13f b1              IC +0.064 (t   2.1, 69% days>0)  top10% +2.46% → after cost +2.16%  hit 33%  trade +1.10%  vs universe +1.49  | bottom10% -0.30%  | buy-top-10 +2.40% after cost, beat universe 66% of days
+  F2 20f b1              IC +0.073 (t   1.6, 73% days>0)  top10% +3.13% → after cost +2.83%  hit 34%  trade +1.24%  vs universe +1.77  | bottom10% +0.56%  | buy-top-10 +2.69% after cost, beat universe 63% of days
+  stock-split 10f b1     IC +0.077 (t   2.3, 72% days>0)  top10% +2.85% → after cost +2.55%  hit 33%  trade +1.13%  vs universe +1.88  | bottom10% -0.88%  | buy-top-10 +3.12% after cost, beat universe 65% of days
+
+-- variant S3+shrink: S3 + shrink toward rule --
+  F1 13f b1              IC +0.067 (t   2.2, 69% days>0)  top10% +2.42% → after cost +2.12%  hit 33%  trade +1.04%  vs universe +1.45  | bottom10% -0.20%  | buy-top-10 +2.94% after cost, beat universe 69% of days
+  F2 20f b1              IC +0.065 (t   1.3, 68% days>0)  top10% +3.40% → after cost +3.10%  hit 33%  trade +1.34%  vs universe +2.03  | bottom10% +0.75%  | buy-top-10 +2.42% after cost, beat universe 61% of days
+  stock-split 10f b1     IC +0.078 (t   2.3, 72% days>0)  top10% +2.87% → after cost +2.57%  hit 33%  trade +1.12%  vs universe +1.90  | bottom10% -0.86%  | buy-top-10 +2.83% after cost, beat universe 65% of days
+STABILITY short — |score(bar n) − score(bar n−1)|, same stock, OOS test rows (= the drop-last-bar test): mean med p90 %>10pts · F1 test | F2 test · OOS IC and top-decile after cost F1 / F2
+   variant     k  F1: mean med p90 >10  | F2: mean med p90 >10  | IC F1 / F2       | top10% a.c. F1 / F2 | verdict
+   rule score  -    3.6   2   9   6% |   3.8   2   9   7% | +0.021 / +0.021 | +1.98% / +2.38% | reference
+   current app 1    5.1   3  12  13% |   5.2   4  12  13% | +0.068 / +0.043 | +2.21% / +2.58% | learned champion: fitted on ALL rows last run, so in-sample on these test years — shown, not gated on
+   base        1    3.5   3   8   5% |   2.8   2   7   3% | +0.064 / +0.073 | +2.16% / +2.83% | eligible
+   S3          3    1.8   1   4   0% |   1.5   1   4   0% | +0.067 / +0.065 | +2.12% / +3.10% | no: F2 IC < 0.9×base
+   S5          5    1.3   1   3   0% |   1.2   1   3   0% | +0.068 / +0.075 | +2.27% / +2.76% | ADOPT
+   FS          1    2.6   2   7   4% |   2.4   1   6   2% | +0.064 / +0.073 | +2.18% / +2.76% | eligible
+   FS+S3       3    1.4   1   4   0% |   1.3   1   3   0% | +0.066 / +0.066 | +2.22% / +3.38% | no: F2 IC < 0.9×base
+   shrink      1    3.5   3   8   5% |   2.8   2   7   3% | +0.064 / +0.073 | +2.16% / +2.83% | eligible
+   S3+shrink   3    1.8   1   4   0% |   1.5   1   4   0% | +0.067 / +0.065 | +2.12% / +3.10% | no: F2 IC < 0.9×base
+   tolerance: IC ≥ 0.9× base and top-decile after cost ≥ base − 0.1%-pts in both folds, and beat the rule score in both folds (F1 t ≥ 1.5); pick = lowest mean day-over-day change (F1+F2)
+   engine parity (E.linScore vs research, every variant's F2 model, bar n and bar n−1): 2114 rows, all match
+   → S5 (score = mean of model output over last 5 bars)
+
+GATE short: PASS with variant S5
+
+Production weights (short · variant S5, score = mean over 5 bars; refit on all rows; effect of +1 sd of the feature on the model, in model sd; + = bullish):
+   -0.353  turn                                          Liquidity (log10 ₹ turnover, 20d)
+   +0.219  hi52                                          Distance from 52-week high
+   +0.218  dd52                                          Drawdown from 52-week closing high
+   +0.183  f.swing: Active bullish setup (SMC / VCP / trend)  
+   +0.183  f.short: Active bullish setup (SMC / VCP / trend)  
+   +0.183  f.medium: Active bullish setup (SMC / VCP / trend)  
+   +0.182  f.long: Near #-week high                      
+   +0.092  volx5                                         Volume vs 20d average, 5-day mean
+   +0.090  volx                                          Today's volume vs 20d average
+   -0.075  upr20                                         Share of up days, 20d
+   +0.053  f.medium: +# in # months                      
    intercept -0.000 · blend 1 model / 0.00 rule score · lambda 10
 
 OOS score bands (short) — F1 test | F2 test: n, avg 30d return after 0.3% cost, excess vs universe, hit T1 first
-     0–19    3136 +1.15% -1.44 30% |   1523 +1.79% -0.18 32%
-    20–24    1933 +1.24% -0.63 31% |    918 +1.28% -1.10 33%
-    25–29    2241 +0.65% -1.20 26% |   1116 +1.75% -0.21 31%
-    30–34    3466 +0.38% -1.04 27% |   1832 +1.62% -0.24 27%
-    35–37    2059 +0.70% -0.64 28% |    967 +0.31% -1.26 24%
-    38–41    3937 +0.82% -0.35 27% |   1971 +0.89% -0.35 26%
-    42–45    4605 +0.46% -0.38 26% |   2462 +0.29% -0.84 25%
-    46–49    7014 +0.40% -0.26 28% |   3378 +0.61% -0.49 26%
-    50–53    8916 +0.45% +0.11 27% |   4509 +0.49% -0.21 26%
-    54–57    4410 +0.64% +0.46 27% |   1639 +0.48% -0.01 26%
-    58–61    3803 +0.90% +0.69 29% |   1562 +0.63% +0.62 28%
-    62–65    2967 +1.28% +0.97 29% |   1049 +1.08% +1.21 28%
-    66–69    2326 +0.98% +0.94 31% |   1053 +1.73% +1.93 31%
-    70–74    2943 +0.86% +1.04 29% |   1075 +2.16% +2.24 32%
-    75–79    1941 +1.52% +1.80 30% |    869 +1.29% +1.69 29%
-    80–84     300 +2.92% +3.28 32% |    216 +1.27% +1.64 31%
-    85–100     33 +4.69% +3.19 27% |      7 +4.75% +5.27 57%
-Recommended cut-offs (short, model score): BUY ≥ 58 · SELL ≤ 46   [same rule on the current score: BUY ≥ 66, SELL ≤ none; app uses 58/42]
-What "BUY" means today (current horizon score ≥ 58, before the app's regime/news/backtest nudges): F1 n=17478 +0.90% after cost, +0.35 vs universe, hit 26% | F2 n=7833 +0.49%, +0.30, hit 25%
-Regime (F1 test, model top decile after cost): Nifty above 200 EMA +1.97% (75 days, universe -0.00%) · below +2.96% (47 days, universe +1.95%)
-Engine parity check (E.linScore vs research scoring, 301 rows): all match
+     0–19    2452 +0.57% -1.64 27% |   1586 +0.86% -0.58 29%
+    20–24    2049 +1.38% -0.39 29% |    898 +1.33% -0.78 30%
+    25–29    1981 +0.62% -1.23 26% |   1173 +1.26% -0.66 28%
+    30–34    2817 +0.40% -1.13 27% |   1508 +0.62% -0.82 28%
+    35–37    1653 +0.78% -0.90 28% |   1473 +1.10% -0.32 27%
+    38–41    3449 +0.34% -0.71 26% |   1564 +0.98% -0.66 27%
+    42–45    3213 +0.14% -0.77 26% |   2045 +1.19% -0.48 28%
+    46–49    8231 +0.42% -0.28 28% |   3787 +0.63% -0.75 27%
+    50–53    9027 +0.47% -0.00 28% |   4662 +1.07% -0.10 29%
+    54–57    5580 +0.90% +0.61 29% |   1686 +1.69% +1.00 30%
+    58–61    3678 +1.01% +0.78 29% |   1423 +1.31% +0.86 27%
+    62–65    3397 +0.62% +0.58 29% |   1175 +1.33% +0.96 27%
+    66–69    2591 +1.03% +0.94 30% |   1062 +1.25% +1.42 32%
+    70–74    3274 +0.91% +1.12 30% |   1130 +0.82% +1.53 31%
+    75–79    2038 +0.75% +1.32 30% |    819 +1.53% +2.23 30%
+    80–84     586 +2.86% +3.27 31% |    155 +0.58% +1.97 25%
+    85–100     29 +8.73% +8.44 28% |      1 +31.03% +26.79 100%
+Recommended cut-offs (short, model score): BUY ≥ 54 · SELL ≤ 46   [same rule on the current score: BUY ≥ 62, SELL ≤ none; app uses 58/42]
+What "BUY" means today (current horizon score ≥ 58, before the app's regime/news/backtest nudges): F1 n=14518 +1.15% after cost, +1.18 vs universe, hit 29% | F2 n=6401 +1.00%, +1.02, hit 29%
+Regime (F1 test, model top decile after cost): Nifty above 200 EMA +1.67% (73 days, universe -0.30%) · below +3.15% (49 days, universe +2.13%)
+Engine parity check (E.linScore vs research scoring, 301 rows at bar n + 301 at bar n−1, 5-bar smoothing): all match
 
-==================== MEDIUM · 60 trading days · 134683 rows ====================
+==================== MEDIUM · 60 trading days · 134725 rows ====================
 
-F1: train 74467 rows → test 51360 rows · 9 features · lambda 1 · blend model/rule 1/0.00 (inner IC +0.116)
-  model (OOS)            IC +0.087 (t   2.3, 81% days>0)  top10% +4.42% → after cost +4.12%  hit 30%  trade +2.57%  vs universe +2.52  | bottom10% -0.50%  | buy-top-10 +5.39% after cost, beat universe 66% of days
-  current app score      IC +0.081 (t   1.9, 79% days>0)  top10% +5.46% → after cost +5.16%  hit 33%  trade +3.13%  vs universe +3.57  | bottom10% -0.02%  | buy-top-10 +9.54% after cost, beat universe 83% of days
+F1: train 74491 rows → test 51375 rows · 6 features · lambda 0.1 · blend model/rule 1/0.00 (inner IC +0.117)
+  model (OOS)            IC +0.084 (t   2.0, 75% days>0)  top10% +4.37% → after cost +4.07%  hit 30%  trade +2.56%  vs universe +2.55  | bottom10% -0.55%  | buy-top-10 +5.27% after cost, beat universe 63% of days
+  current app score      IC +0.082 (t   1.9, 81% days>0)  top10% +5.38% → after cost +5.08%  hit 33%  trade +2.95%  vs universe +3.57  | bottom10% +0.02%  | buy-top-10 +9.58% after cost, beat universe 81% of days
 
-F2: train 103988 rows → test 21476 rows · 13 features · lambda 0.01 · blend model/rule 1/0.00 (inner IC +0.044)
-  model (OOS)            IC +0.102 (t   2.2, 87% days>0)  top10% +6.41% → after cost +6.11%  hit 32%  trade +4.16%  vs universe +2.84  | bottom10% +1.06%  | buy-top-10 +6.76% after cost, beat universe 70% of days
-  current app score      IC +0.069 (t   1.4, 83% days>0)  top10% +8.21% → after cost +7.91%  hit 35%  trade +4.20%  vs universe +4.65  | bottom10% +1.94%  | buy-top-10 +16.43% after cost, beat universe 87% of days
+F2: train 104020 rows → test 21477 rows · 11 features · lambda 0.01 · blend model/rule 1/0.00 (inner IC +0.045)
+  model (OOS)            IC +0.106 (t   2.1, 87% days>0)  top10% +6.65% → after cost +6.35%  hit 33%  trade +4.29%  vs universe +3.12  | bottom10% +0.98%  | buy-top-10 +7.04% after cost, beat universe 65% of days
+  current app score      IC +0.069 (t   1.4, 85% days>0)  top10% +8.12% → after cost +7.82%  hit 34%  trade +4.12%  vs universe +4.59  | bottom10% +2.16%  | buy-top-10 +17.04% after cost, beat universe 87% of days
 
-stock-split: train 37039 rows → test 25776 rows · 10 features · lambda 0.03 · blend model/rule 1/0.00 (inner IC +0.102)
-  model (OOS)            IC +0.092 (t   1.9, 73% days>0)  top10% +6.34% → after cost +6.04%  hit 32%  trade +3.56%  vs universe +4.50  | bottom10% -0.30%  | buy-top-10 +6.08% after cost, beat universe 71% of days
-  current app score      IC +0.066 (t   1.3, 69% days>0)  top10% +4.88% → after cost +4.58%  hit 31%  trade +1.98%  vs universe +3.04  | bottom10% +0.07%  | buy-top-10 +7.72% after cost, beat universe 78% of days
+stock-split: train 37056 rows → test 25784 rows · 10 features · lambda 0.03 · blend model/rule 1/0.00 (inner IC +0.099)
+  model (OOS)            IC +0.090 (t   1.7, 72% days>0)  top10% +6.31% → after cost +6.01%  hit 32%  trade +3.45%  vs universe +4.53  | bottom10% -0.25%  | buy-top-10 +5.82% after cost, beat universe 70% of days
+  current app score      IC +0.067 (t   1.3, 71% days>0)  top10% +4.98% → after cost +4.68%  hit 31%  trade +2.08%  vs universe +3.20  | bottom10% -0.04%  | buy-top-10 +7.57% after cost, beat universe 79% of days
 
-GATE medium: F1 IC beats baseline, top-decile after cost does NOT beat · F2 IC beats baseline, top-decile after cost does NOT beat · F1 OOS t 2.3 ≥ 1.5 → FAIL
+GATE medium: F1 IC does NOT beat baseline, top-decile after cost does NOT beat · F2 IC beats baseline, top-decile after cost does NOT beat · F1 OOS t 2.0 ≥ 1.5 → FAIL
 
 Production weights (medium, NOT adopted; refit on all rows; effect of +1 sd of the feature on the model, in model sd; + = bullish):
-   -0.848  turn                                          Liquidity (log10 ₹ turnover, 20d)
-   +0.462  hi52                                          Distance from 52-week high
-   -0.218  upr20                                         Share of up days, 20d
-   +0.144  dd52                                          Drawdown from 52-week closing high
-   -0.124  clv                                           Close location in the day range
-   +0.082  f.long: Near #-week high                      
-   intercept -0.000 · blend 1 model / 0.00 rule score · lambda 0.03
+   -0.597  turn                                          Liquidity (log10 ₹ turnover, 20d)
+   +0.312  dd52                                          Drawdown from 52-week closing high
+   +0.311  hi52                                          Distance from 52-week high
+   +0.302  f.long: Near #-week high                      
+   -0.081  upr20                                         Share of up days, 20d
+   intercept +0.000 · blend 1 model / 0.00 rule score · lambda 10
 
 OOS score bands (medium) — F1 test | F2 test: n, avg 60d return after 0.3% cost, excess vs universe, hit T1 first
-     0–19    3529 +0.84% -2.73 23% |   1070 -1.19% -4.29 18%
-    20–24    1073 +0.69% -2.78 21% |    472 +2.47% -1.70 22%
-    25–29    1317 +1.02% -1.93 21% |    586 +2.15% -1.44 23%
-    30–34    1367 +0.43% -1.91 20% |    939 +1.92% -1.71 22%
-    35–37    1176 +0.18% -2.21 22% |    575 +2.01% -1.44 21%
-    38–41    2359 +0.68% -1.72 23% |   1019 +2.17% -1.66 23%
-    42–45    2664 +1.24% -1.03 24% |   1379 +2.45% -0.88 23%
-    46–49    4862 +0.91% -1.01 23% |   2392 +2.39% -0.73 24%
-    50–53    7932 +1.61% +0.03 24% |   3796 +3.16% -0.19 24%
-    54–57    4453 +1.79% +0.41 24% |   1756 +3.06% +0.01 25%
-    58–61    3319 +1.92% +0.74 25% |   1289 +3.67% +0.45 25%
-    62–65    3295 +1.65% +0.74 25% |   1340 +3.96% +0.94 28%
-    66–69    3190 +2.44% +1.56 27% |   1209 +4.95% +1.79 30%
-    70–74    3831 +2.35% +1.49 27% |   1274 +5.57% +2.82 33%
-    75–79    3243 +2.86% +2.06 29% |   1133 +6.06% +3.13 33%
-    80–84    2258 +1.54% +1.33 26% |    683 +4.53% +1.12 28%
-    85–100   1492 +3.10% +3.22 29% |    564 +7.41% +3.74 34%
-Recommended cut-offs (medium, model score): BUY ≥ 54 · SELL ≤ 46   [same rule on the current score: BUY ≥ 62, SELL ≤ 46; app uses 58/42]
-What "BUY" means today (current horizon score ≥ 58, before the app's regime/news/backtest nudges): F1 n=16537 +2.03% after cost, +1.72 vs universe, hit 26% | F2 n=6439 +3.22%, +1.82, hit 26%
-Regime (F1 test, model top decile after cost): Nifty above 200 EMA +3.04% (75 days, universe +0.23%) · below +6.29% (37 days, universe +4.37%)
-Engine parity check (E.linScore vs research scoring, 301 rows): all match
+     0–19    3213 +0.53% -2.89 23% |    974 -0.59% -3.85 19%
+    20–24     976 +1.35% -1.83 23% |    478 +1.40% -2.57 20%
+    25–29    1147 +0.72% -2.19 20% |    630 +2.60% -0.46 26%
+    30–34    1585 +0.48% -2.00 21% |    730 +1.16% -2.52 21%
+    35–37    1104 +0.13% -2.05 20% |    684 +2.95% -1.01 25%
+    38–41    2022 +0.09% -2.10 22% |   1001 +2.21% -1.67 24%
+    42–45    2577 +1.03% -1.14 24% |   1379 +1.59% -1.53 22%
+    46–49    4781 +1.29% -0.67 23% |   2323 +1.75% -1.35 23%
+    50–53    7994 +1.41% -0.23 24% |   3924 +3.52% +0.04 26%
+    54–57    4694 +1.44% +0.15 24% |   1817 +2.84% -0.07 25%
+    58–61    3428 +1.99% +0.85 25% |   1380 +3.25% +0.20 25%
+    62–65    3305 +1.81% +1.00 25% |   1414 +3.89% +1.13 27%
+    66–69    3186 +1.90% +1.16 27% |   1087 +5.09% +2.04 30%
+    70–74    4353 +2.62% +1.68 28% |   1304 +5.62% +2.80 33%
+    75–79    3139 +2.18% +1.36 27% |   1011 +6.69% +3.59 34%
+    80–84    2353 +2.02% +1.84 28% |    784 +5.38% +2.34 31%
+    85–100   1518 +2.99% +3.09 28% |    557 +6.35% +2.62 32%
+Recommended cut-offs (medium, model score): BUY ≥ 58 · SELL ≤ 46   [same rule on the current score: BUY ≥ 62, SELL ≤ 46; app uses 58/42]
+What "BUY" means today (current horizon score ≥ 58, before the app's regime/news/backtest nudges): F1 n=16583 +1.97% after cost, +1.72 vs universe, hit 26% | F2 n=6454 +3.04%, +1.80, hit 25%
+Regime (F1 test, model top decile after cost): Nifty above 200 EMA +3.16% (73 days, universe +0.08%) · below +5.74% (39 days, universe +4.19%)
+Engine parity check (E.linScore vs research scoring, 301 rows at bar n + 301 at bar n−1): all match
 
-==================== LONG · 120 trading days · 125343 rows ====================
+==================== LONG · 120 trading days · 125385 rows ====================
 
-F1: train 65702 rows → test 42020 rows · 33 features · lambda 0.1 · blend model/rule 1/0.00 (inner IC +0.162)
-  model (OOS)            IC +0.120 (t   2.1, 89% days>0)  top10% +11.48% → after cost +11.18%  hit 22%  trade +7.76%  vs universe +6.99  | bottom10% +0.86%  | buy-top-10 +14.79% after cost, beat universe 89% of days
-  current app score      IC +0.104 (t   2.5, 91% days>0)  top10% +10.01% → after cost +9.71%  hit 19%  trade +5.75%  vs universe +5.52  | bottom10% -0.20%  | buy-top-10 +13.12% after cost, beat universe 77% of days
+F1: train 65722 rows → test 42035 rows · 36 features · lambda 0.1 · blend model/rule 1/0.00 (inner IC +0.155)
+  model (OOS)            IC +0.120 (t   2.1, 87% days>0)  top10% +11.93% → after cost +11.63%  hit 22%  trade +7.93%  vs universe +7.40  | bottom10% +0.54%  | buy-top-10 +13.84% after cost, beat universe 87% of days
+  current app score      IC +0.104 (t   2.5, 91% days>0)  top10% +9.98% → after cost +9.68%  hit 19%  trade +5.70%  vs universe +5.44  | bottom10% -0.27%  | buy-top-10 +13.43% after cost, beat universe 76% of days
 
-F2: train 94943 rows → test 12136 rows · 11 features · lambda 1 · blend model/rule 1/0.00 (inner IC +0.055)
-  model (OOS)            IC +0.153 (t   2.1, 100% days>0)  top10% +14.36% → after cost +14.06%  hit 30%  trade +12.52%  vs universe +6.30  | bottom10% +2.32%  | buy-top-10 +14.63% after cost, beat universe 81% of days
-  current app score      IC +0.086 (t   1.7, 100% days>0)  top10% +17.63% → after cost +17.33%  hit 22%  trade +10.98%  vs universe +9.57  | bottom10% +3.19%  | buy-top-10 +29.46% after cost, beat universe 85% of days
+F2: train 94971 rows → test 12137 rows · 13 features · lambda 1 · blend model/rule 1/0.00 (inner IC +0.053)
+  model (OOS)            IC +0.152 (t   2.0, 100% days>0)  top10% +14.06% → after cost +13.76%  hit 29%  trade +12.25%  vs universe +5.96  | bottom10% +2.48%  | buy-top-10 +15.49% after cost, beat universe 92% of days
+  current app score      IC +0.082 (t   1.5, 100% days>0)  top10% +17.94% → after cost +17.64%  hit 22%  trade +11.12%  vs universe +9.84  | bottom10% +3.18%  | buy-top-10 +29.56% after cost, beat universe 88% of days
 
-stock-split: train 32653 rows → test 21076 rows · 51 features · lambda 0.3 · blend model/rule 1/0.00 (inner IC +0.219)
-  model (OOS)            IC +0.099 (t   1.5, 84% days>0)  top10% +15.03% → after cost +14.73%  hit 25%  trade +8.65%  vs universe +10.67  | bottom10% +1.55%  | buy-top-10 +16.86% after cost, beat universe 83% of days
-  current app score      IC +0.045 (t   1.0, 74% days>0)  top10% +6.95% → after cost +6.65%  hit 16%  trade +2.23%  vs universe +2.59  | bottom10% +2.37%  | buy-top-10 +11.20% after cost, beat universe 66% of days
+stock-split: train 32667 rows → test 21084 rows · 52 features · lambda 0.3 · blend model/rule 1/0.00 (inner IC +0.216)
+  model (OOS)            IC +0.101 (t   1.5, 84% days>0)  top10% +16.04% → after cost +15.74%  hit 24%  trade +8.56%  vs universe +11.63  | bottom10% +1.57%  | buy-top-10 +16.99% after cost, beat universe 85% of days
+  current app score      IC +0.045 (t   1.0, 75% days>0)  top10% +6.82% → after cost +6.52%  hit 16%  trade +2.01%  vs universe +2.40  | bottom10% +2.14%  | buy-top-10 +11.97% after cost, beat universe 67% of days
 
 GATE long: F1 IC beats baseline, top-decile after cost beats · F2 IC beats baseline, top-decile after cost does NOT beat · F1 OOS t 2.1 ≥ 1.5 → FAIL
 
 Production weights (long, NOT adopted; refit on all rows; effect of +1 sd of the feature on the model, in model sd; + = bullish):
-   -1.090  dd52                                          Drawdown from 52-week closing high
-   +0.918  f.medium: Upper part of #-week range          
-   -0.863  turn                                          Liquidity (log10 ₹ turnover, 20d)
-   +0.557  f.long: Near #-week high                      
-   +0.538  hi52                                          Distance from 52-week high
-   -0.311  f.medium: +# in # months                      
-   -0.243  upr20                                         Share of up days, 20d
-   +0.008  f.swing: Active bullish setup (SMC / VCP / trend)  
-   +0.008  f.short: Active bullish setup (SMC / VCP / trend)  
-   +0.008  f.medium: Active bullish setup (SMC / VCP / trend)  
-   intercept -0.000 · blend 1 model / 0.00 rule score · lambda 0.003
+   +0.995  f.medium: Upper part of #-week range          
+   -0.991  dd52                                          Drawdown from 52-week closing high
+   -0.852  turn                                          Liquidity (log10 ₹ turnover, 20d)
+   +0.523  hi52                                          Distance from 52-week high
+   +0.489  f.long: Near #-week high                      
+   -0.286  f.medium: +# in # months                      
+   -0.213  e50slope                                      50 EMA slope over 20d (ATRs)
+   -0.201  upr20                                         Share of up days, 20d
+   +0.031  f.swing: Supertrend bullish                   
+   +0.009  f.swing: Active bullish setup (SMC / VCP / trend)  
+   +0.009  f.short: Active bullish setup (SMC / VCP / trend)  
+   +0.009  f.medium: Active bullish setup (SMC / VCP / trend)  
+   intercept +0.000 · blend 1 model / 0.00 rule score · lambda 0.003
 
 OOS score bands (long) — F1 test | F2 test: n, avg 120d return after 0.3% cost, excess vs universe, hit T1 first
-     0–19    3093 +0.24% -3.67 12% |    940 +1.11% -6.20 11%
-    20–24     903 +0.95% -2.84 11% |    235 +4.63% -2.84 13%
-    25–29    1023 +2.63% -1.43 14% |    282 +2.03% -5.66 12%
-    30–34    1313 +0.67% -3.43 12% |    315 +1.97% -6.06 12%
-    35–37    1023 -2.11% -5.45 11% |    273 +1.18% -6.87 10%
-    38–41    1585 -0.24% -4.27 12% |    480 +3.54% -3.87 14%
-    42–45    2086 +0.21% -3.64 14% |    657 +3.51% -3.82 13%
-    46–49    4503 +0.78% -3.22 14% |   1080 +5.49% -1.92 15%
-    50–53    4881 +2.37% -1.74 14% |   2116 +4.65% -3.09 15%
-    54–57    3537 +3.71% -0.71 16% |   1074 +9.26% +1.38 19%
-    58–61    2927 +4.25% -0.34 16% |    931 +11.35% +3.66 21%
-    62–65    2986 +5.11% +0.51 16% |    842 +13.49% +5.80 21%
-    66–69    2230 +7.78% +3.28 18% |    627 +13.22% +4.83 24%
-    70–74    3205 +8.15% +3.80 20% |    753 +11.88% +3.47 24%
-    75–79    2740 +9.18% +4.87 19% |    616 +13.94% +6.22 28%
-    80–84    2086 +11.08% +6.61 23% |    479 +12.69% +5.24 27%
-    85–100   1899 +14.22% +9.58 23% |    436 +15.93% +7.11 32%
-Recommended cut-offs (long, model score): BUY ≥ 62 · SELL ≤ 46   [same rule on the current score: BUY ≥ 58, SELL ≤ 46; app uses 58/42]
-What "BUY" means today (current horizon score ≥ 58, before the app's regime/news/backtest nudges): F1 n=14623 +5.91% after cost, +2.53 vs universe, hit 16% | F2 n=3676 +11.10%, +4.07, hit 20%
-Regime (F1 test, model top decile after cost): Nifty above 200 EMA +9.33% (71 days, universe +3.31%) · below +17.42% (21 days, universe +7.18%)
-Engine parity check (E.linScore vs research scoring, 301 rows): all match
+     0–19    3176 +0.09% -3.74 11% |    901 +1.53% -5.44 12%
+    20–24     909 +1.86% -2.46 13% |    209 +4.92% -2.63 14%
+    25–29    1100 +1.12% -2.85 12% |    260 +2.59% -6.00 10%
+    30–34    1289 +0.19% -3.69 12% |    318 +0.87% -7.65 10%
+    35–37     927 +0.83% -2.91 13% |    226 +3.52% -4.62 14%
+    38–41    1535 -0.38% -4.43 12% |    524 +3.19% -4.18 11%
+    42–45    2093 +0.08% -3.86 13% |    681 +4.18% -3.52 12%
+    46–49    3305 +0.50% -3.49 13% |   1097 +5.02% -2.63 16%
+    50–53    6209 +2.19% -2.03 14% |   2110 +5.03% -2.83 15%
+    54–57    3460 +4.10% -0.34 16% |   1060 +7.19% -0.63 17%
+    58–61    2982 +3.96% -0.59 16% |    933 +10.89% +3.32 21%
+    62–65    2956 +6.11% +1.13 16% |    838 +13.18% +5.41 23%
+    66–69    2256 +5.83% +1.42 17% |    655 +14.19% +5.95 22%
+    70–74    3144 +9.60% +5.21 20% |    768 +13.58% +4.91 25%
+    75–79    2717 +9.09% +4.76 20% |    585 +13.98% +6.34 27%
+    80–84    2231 +11.08% +6.61 21% |    525 +11.91% +4.95 24%
+    85–100   1746 +13.87% +9.23 23% |    447 +15.29% +6.69 31%
+Recommended cut-offs (long, model score): BUY ≥ 62 · SELL ≤ 46   [same rule on the current score: BUY ≥ 62, SELL ≤ 46; app uses 58/42]
+What "BUY" means today (current horizon score ≥ 58, before the app's regime/news/backtest nudges): F1 n=14611 +5.87% after cost, +2.42 vs universe, hit 16% | F2 n=3659 +10.76%, +3.82, hit 19%
+Regime (F1 test, model top decile after cost): Nifty above 200 EMA +9.79% (70 days, universe +3.20%) · below +17.58% (22 days, universe +7.55%)
+Engine parity check (E.linScore vs research scoring, 301 rows at bar n + 301 at bar n−1): all match
 
 ==================== FEATURE RANK-IC (full sample; vs per-day rank of forward ATR return) ====================
 feature                                                   swing           short          medium            long   (✓ = same sign in F1-train, F1-test, F2-test; t overlap-adjusted)
-mom1                                                +0.002 0.1      +0.012 0.6✓     +0.010 0.4✓     +0.014 0.4✓
-mom3                                                +0.009 0.7✓     +0.009 0.4✓     +0.014 0.5      +0.015 0.4 
-mom6                                                +0.015 1.1✓     +0.017 0.8✓     +0.027 1.0✓     +0.048 1.1✓
-mom12                                               +0.032 2.5✓     +0.049 2.3✓     +0.059 2.1✓     +0.063 1.7✓
-hi52                                                +0.028 2.2✓     +0.038 1.8✓     +0.044 1.5✓     +0.059 1.8✓
-dd52                                                +0.027 2.2✓     +0.040 1.9✓     +0.046 1.6✓     +0.061 1.8✓
-lo52                                                +0.014 1.0✓     +0.031 1.3✓     +0.044 1.4✓     +0.058 1.4✓
-atrp                                                +0.008 0.6✓     +0.020 0.8✓     +0.034 1.0✓     +0.038 0.8✓
-vcr                                                 +0.012 1.3✓    -0.002 -0.1     -0.005 -0.2     -0.008 -0.2✓
-volTr                                               +0.018 2.1✓     +0.004 0.3      +0.003 0.2     -0.010 -0.3✓
-volx                                                +0.005 0.7      +0.010 0.8✓     +0.002 0.2     -0.001 -0.0 
-d20                                                -0.003 -0.3✓     +0.005 0.3✓     +0.005 0.2✓     +0.010 0.3✓
-d50                                                 +0.004 0.3✓     +0.010 0.5✓     +0.009 0.3✓     +0.018 0.5✓
-d200                                                +0.019 1.4✓     +0.032 1.4✓     +0.039 1.2✓     +0.053 1.3✓
-e50slope                                            +0.012 0.9✓     +0.013 0.6✓     +0.010 0.3✓     +0.020 0.6✓
-clv                                                -0.019 -2.5✓    -0.015 -1.2✓    -0.010 -0.5✓    -0.008 -0.3 
-clv5                                               -0.007 -0.8     -0.003 -0.2     -0.000 -0.0     -0.009 -0.3 
-gap1                                                +0.001 0.1      +0.003 0.3✓     +0.008 0.5✓     +0.011 0.4✓
-gapAvg20                                            +0.004 0.4✓     +0.014 0.9✓     +0.014 0.6✓     +0.023 0.7✓
-gapAbs20                                            +0.005 0.4      +0.019 0.9✓     +0.020 0.7✓     +0.024 0.8✓
-ret1                                               -0.018 -2.2✓    -0.015 -1.1✓    -0.011 -0.5✓    -0.007 -0.2✓
-ret5                                               -0.014 -1.6✓    -0.004 -0.3✓     +0.000 0.0✓     +0.003 0.1✓
-turn                                               -0.012 -1.1     -0.038 -1.9✓    -0.063 -2.0✓    -0.103 -2.2✓
-rsi                                                 +0.000 0.0✓     +0.008 0.4✓     +0.007 0.3✓     +0.012 0.3✓
-adx                                                 +0.023 2.5✓     +0.017 1.0✓     +0.027 1.2✓     +0.023 0.8 
-bbw                                                 +0.013 1.2✓     +0.009 0.5✓     +0.015 0.6✓     +0.016 0.4✓
-max20                                               +0.005 0.5✓     +0.010 0.6✓     +0.016 0.6✓     +0.017 0.4✓
-upr20                                              -0.004 -0.5✓    -0.006 -0.4     -0.011 -0.5     -0.018 -0.6 
-pos20                                              -0.002 -0.2      +0.003 0.2      +0.003 0.1✓     +0.004 0.1✓
-rs1 [mkt]                                           +0.002 0.1      +0.012 0.6✓     +0.010 0.4✓     +0.014 0.4✓
-rs3 [mkt]                                           +0.009 0.7✓     +0.012 0.6✓     +0.013 0.4✓     +0.015 0.4 
-rs6 [mkt]                                           +0.016 1.2✓     +0.026 1.1✓     +0.027 0.9✓     +0.043 1.0✓
-mkt200 [mkt]                                       -0.011 -0.3     -0.011 -0.2     -0.006 -0.1     -0.008 -0.1 
-mktRet20 [mkt]                                      +0.014 0.7      +0.009 0.2      +0.008 0.1      +0.007 0.1 
-xs.mom3R [xs]                                       +0.009 0.7✓     +0.009 0.4✓     +0.014 0.5      +0.015 0.4 
-xs.mom6R [xs]                                       +0.015 1.1✓     +0.017 0.8✓     +0.027 1.0✓     +0.048 1.1✓
-xs.rs3R [xs]                                        +0.009 0.7✓     +0.012 0.6✓     +0.013 0.4✓     +0.015 0.4 
-xs.secMom3 [xs]                                     +0.006 0.5      +0.010 0.4✓     +0.009 0.3     -0.003 -0.1 
-xs.secMom3R [xs]                                    +0.006 0.5      +0.010 0.4✓     +0.009 0.3     -0.003 -0.1 
+mom1                                                +0.000 0.0      +0.011 0.6✓     +0.010 0.4✓     +0.014 0.4✓
+mom3                                                +0.013 1.1✓     +0.010 0.4✓     +0.014 0.5      +0.015 0.4 
+mom6                                                +0.020 1.5✓     +0.017 0.7✓     +0.026 0.9✓     +0.048 1.1✓
+mom12                                               +0.038 3.0✓     +0.049 2.2✓     +0.059 2.2✓     +0.063 1.7✓
+hi52                                                +0.029 2.3✓     +0.040 1.9✓     +0.047 1.6✓     +0.060 1.8✓
+dd52                                                +0.029 2.4✓     +0.042 2.0✓     +0.048 1.7✓     +0.062 1.9✓
+lo52                                                +0.019 1.4✓     +0.031 1.3✓     +0.045 1.5✓     +0.058 1.4✓
+atrp                                                +0.014 1.0✓     +0.019 0.7✓     +0.033 0.9✓     +0.037 0.8✓
+vcr                                                 +0.010 1.1✓    -0.003 -0.2     -0.005 -0.2     -0.009 -0.2✓
+volTr                                               +0.014 1.7✓     +0.003 0.2      +0.003 0.2     -0.009 -0.3✓
+volx                                                +0.004 0.5      +0.012 1.1✓     +0.005 0.3      +0.001 0.0 
+volx5                                               +0.006 0.9      +0.012 1.0✓     +0.003 0.2      +0.002 0.1 
+d20                                                -0.002 -0.2✓     +0.006 0.3✓     +0.008 0.3✓     +0.013 0.4✓
+d50                                                 +0.007 0.6✓     +0.011 0.5✓     +0.012 0.4✓     +0.020 0.6✓
+d200                                                +0.024 1.8✓     +0.032 1.4✓     +0.041 1.3✓     +0.053 1.4✓
+e50slope                                            +0.015 1.2✓     +0.011 0.5✓     +0.011 0.4✓     +0.019 0.5✓
+clv                                                -0.006 -0.7✓    -0.003 -0.2✓     +0.001 0.0✓    -0.006 -0.2 
+clv5                                               -0.005 -0.6      +0.002 0.2      +0.006 0.3✓    -0.004 -0.1 
+gap1                                                +0.004 0.6      +0.002 0.2      +0.004 0.3✓     +0.004 0.2 
+gapAvg20                                            +0.007 0.8✓     +0.013 0.8✓     +0.013 0.5✓     +0.021 0.6✓
+gapAbs20                                            +0.007 0.6✓     +0.016 0.8✓     +0.020 0.7✓     +0.023 0.7✓
+ret1                                               -0.012 -1.4✓    -0.006 -0.4✓    -0.000 -0.0✓    -0.002 -0.1✓
+ret5                                               -0.013 -1.4✓     +0.002 0.1      +0.007 0.4✓     +0.009 0.3✓
+turn                                               -0.013 -1.1     -0.038 -1.9✓    -0.063 -1.9✓    -0.102 -2.2✓
+rsi                                                 +0.002 0.2✓     +0.009 0.5✓     +0.011 0.4✓     +0.015 0.4✓
+adx                                                 +0.022 2.4✓     +0.018 1.1✓     +0.027 1.2✓     +0.022 0.7 
+bbw                                                 +0.013 1.2✓     +0.007 0.4✓     +0.015 0.6✓     +0.015 0.4✓
+max20                                               +0.009 0.8✓     +0.010 0.5✓     +0.017 0.6✓     +0.018 0.5✓
+upr20                                              -0.003 -0.3✓    -0.006 -0.4     -0.008 -0.4     -0.015 -0.5 
+pos20                                              -0.000 -0.0      +0.007 0.4      +0.008 0.3✓     +0.008 0.3✓
+rs1 [mkt]                                           +0.000 0.0      +0.011 0.6✓     +0.010 0.4✓     +0.013 0.4✓
+rs3 [mkt]                                           +0.014 1.2✓     +0.012 0.6✓     +0.014 0.5✓     +0.015 0.4 
+rs6 [mkt]                                           +0.020 1.5✓     +0.025 1.1✓     +0.027 0.9✓     +0.042 1.0✓
+mkt200 [mkt]                                        +0.020 0.7      +0.019 0.4      +0.017 0.3      +0.002 0.0 
+mktRet20 [mkt]                                      +0.011 0.5      +0.013 0.2      +0.005 0.1     -0.002 -0.0 
+xs.mom3R [xs]                                       +0.013 1.1✓     +0.010 0.4✓     +0.014 0.5      +0.015 0.4 
+xs.mom6R [xs]                                       +0.020 1.5✓     +0.017 0.7✓     +0.026 0.9✓     +0.048 1.1✓
+xs.rs3R [xs]                                        +0.014 1.2✓     +0.012 0.6✓     +0.014 0.5✓     +0.015 0.4 
+xs.secMom3 [xs]                                     +0.008 0.7      +0.009 0.4✓     +0.008 0.3     -0.004 -0.1 
+xs.secMom3R [xs]                                    +0.008 0.7      +0.009 0.4✓     +0.008 0.3     -0.004 -0.1 
 xs.breadth50 [xs]                                        n/a             n/a             n/a             n/a   
-f.swing: EMA # above EMA #                          +0.006 0.5✓     +0.010 0.5✓     +0.006 0.2✓     +0.013 0.4✓
-f.swing: Price above # EMA                         -0.003 -0.3✓     +0.005 0.3✓     +0.004 0.2✓     +0.009 0.3✓
-f.swing: MACD momentum rising                      -0.009 -1.2✓    -0.005 -0.4✓    -0.002 -0.1     -0.002 -0.1 
-f.swing: RSI # in bullish zone                      +0.004 0.5     -0.001 -0.1      +0.000 0.0✓    -0.001 -0.0 
-f.swing: Supertrend bullish                        -0.001 -0.1      +0.006 0.3      +0.009 0.4✓     +0.013 0.4✓
-f.swing: Volume # average on an up day             -0.008 -1.3✓    -0.005 -0.5✓    -0.001 -0.0     -0.000 -0.0✓
-f.swing: Closed above #-day high                   -0.007 -1.0✓    -0.004 -0.4✓     +0.001 0.1      +0.001 0.0✓
-f.swing: Above # EMA (trend support)                +0.004 0.3✓     +0.010 0.5✓     +0.009 0.3✓     +0.018 0.5✓
-f.short: # EMA above # EMA                          +0.013 1.0✓     +0.014 0.6✓     +0.012 0.4✓     +0.022 0.6✓
-f.short: Price above # EMA                          +0.004 0.3✓     +0.010 0.5✓     +0.009 0.3✓     +0.018 0.5✓
-f.short: ADX #: strong uptrend                     -0.000 -0.0      +0.009 0.5✓     +0.008 0.3✓     +0.015 0.5✓
-f.short: +# in # month                              +0.001 0.1      +0.005 0.3      +0.002 0.1✓     +0.003 0.1✓
-f.short: MACD above signal                         -0.005 -0.5✓     +0.001 0.1      +0.004 0.2      +0.001 0.0 
-f.short: #-day breakout                            -0.007 -1.0✓    -0.004 -0.4✓     +0.001 0.1      +0.001 0.0✓
-f.short: RSI supports trend                         +0.001 0.1      +0.002 0.1      +0.001 0.0✓     +0.006 0.2✓
-f.medium: # EMA above # EMA                         +0.021 1.5✓     +0.031 1.3✓     +0.042 1.4✓     +0.055 1.4✓
-f.medium: Above #-week average                      +0.016 1.2✓     +0.026 1.1✓     +0.032 1.0✓     +0.045 1.2✓
-f.medium: #-week average rising                     +0.020 1.5✓     +0.027 1.2✓     +0.033 1.1✓     +0.047 1.2✓
-f.medium: # in # months                             +0.017 1.3✓     +0.024 1.1✓     +0.024 0.8✓     +0.039 1.0✓
-f.medium: Upper part of #-week range                +0.026 2.0✓     +0.039 1.8✓     +0.047 1.6✓     +0.066 1.8✓
-f.medium: Trend strength confirmed                 -0.000 -0.0      +0.009 0.5✓     +0.008 0.3✓     +0.015 0.5✓
-f.long: Above # EMA                                 +0.019 1.4✓     +0.032 1.3✓     +0.039 1.2✓     +0.053 1.3✓
-f.long: Golden-cross structure (# > #)              +0.023 1.7✓     +0.035 1.5✓     +0.048 1.6✓     +0.060 1.5✓
-f.long: # EMA rising                                +0.021 1.6✓     +0.031 1.3✓     +0.044 1.4✓     +0.056 1.4✓
-f.long: # over # year                               +0.031 2.5✓     +0.048 2.2✓     +0.057 2.0✓     +0.059 1.5✓
-f.long: Near #-week high                            +0.027 2.3✓     +0.040 2.0✓     +0.048 1.8✓     +0.064 2.1✓
-f.swing: Active bullish setup (SMC / VCP / t        +0.018 1.9✓     +0.023 1.4✓     +0.027 1.2✓     +0.033 1.1✓
-f.short: Active bullish setup (SMC / VCP / t        +0.018 1.9✓     +0.023 1.4✓     +0.027 1.2✓     +0.033 1.1✓
-f.medium: Active bullish setup (SMC / VCP /         +0.018 1.9✓     +0.023 1.4✓     +0.027 1.2✓     +0.033 1.1✓
-f.short: # in # month                               +0.007 0.7      +0.008 0.4✓     +0.010 0.4✓     +0.010 0.3✓
-f.medium: +# in # months                            +0.014 1.3✓     +0.022 1.2✓     +0.023 1.0✓     +0.045 1.5✓
-f.long: +# over # year                              +0.032 3.0✓     +0.047 2.4✓     +0.057 2.3✓     +0.066 2.1✓
+f.swing: EMA # above EMA #                          +0.006 0.5✓     +0.009 0.4✓     +0.008 0.3✓     +0.013 0.4✓
+f.swing: Price above # EMA                         -0.002 -0.2✓     +0.005 0.3✓     +0.007 0.3✓     +0.012 0.4✓
+f.swing: MACD momentum rising                      -0.009 -1.1✓    -0.002 -0.1     -0.000 -0.0     -0.001 -0.1 
+f.swing: RSI # in bullish zone                      +0.006 0.7     -0.003 -0.2      +0.000 0.0✓    -0.000 -0.0 
+f.swing: Supertrend bullish                         +0.002 0.2      +0.008 0.5✓     +0.012 0.5✓     +0.017 0.5✓
+f.swing: Volume # average on an up day             -0.005 -0.8     -0.002 -0.2✓    -0.001 -0.1      +0.004 0.2 
+f.swing: Closed above #-day high                   -0.002 -0.2      +0.001 0.1      +0.005 0.3✓     +0.006 0.2✓
+f.swing: Above # EMA (trend support)                +0.007 0.6✓     +0.010 0.5✓     +0.012 0.4✓     +0.019 0.6✓
+f.short: # EMA above # EMA                          +0.016 1.3✓     +0.013 0.6✓     +0.012 0.4✓     +0.021 0.6✓
+f.short: Price above # EMA                          +0.007 0.6✓     +0.010 0.5✓     +0.012 0.4✓     +0.019 0.6✓
+f.short: ADX #: strong uptrend                      +0.001 0.1      +0.009 0.5✓     +0.011 0.5✓     +0.017 0.6✓
+f.short: +# in # month                              +0.000 0.0      +0.004 0.3      +0.004 0.2✓     +0.007 0.2✓
+f.short: MACD above signal                         -0.007 -0.8✓     +0.003 0.2      +0.005 0.3      +0.003 0.1 
+f.short: #-day breakout                            -0.002 -0.2      +0.001 0.1      +0.005 0.3✓     +0.006 0.2✓
+f.short: RSI supports trend                         +0.002 0.2     -0.001 -0.0✓     +0.003 0.1✓     +0.007 0.2✓
+f.medium: # EMA above # EMA                         +0.025 1.9✓     +0.030 1.3✓     +0.042 1.4✓     +0.054 1.3✓
+f.medium: Above #-week average                      +0.021 1.6✓     +0.027 1.2✓     +0.033 1.1✓     +0.046 1.2✓
+f.medium: #-week average rising                     +0.024 1.8✓     +0.026 1.1✓     +0.033 1.1✓     +0.046 1.2✓
+f.medium: # in # months                             +0.020 1.6✓     +0.024 1.1✓     +0.023 0.8✓     +0.038 1.0✓
+f.medium: Upper part of #-week range                +0.030 2.4✓     +0.041 1.9✓     +0.049 1.7✓     +0.067 1.9✓
+f.medium: Trend strength confirmed                  +0.001 0.1      +0.009 0.5✓     +0.011 0.5✓     +0.017 0.6✓
+f.long: Above # EMA                                 +0.024 1.8✓     +0.032 1.4✓     +0.041 1.3✓     +0.053 1.4✓
+f.long: Golden-cross structure (# > #)              +0.028 2.1✓     +0.035 1.5✓     +0.048 1.6✓     +0.059 1.4✓
+f.long: # EMA rising                                +0.026 2.0✓     +0.031 1.3✓     +0.044 1.5✓     +0.055 1.4✓
+f.long: # over # year                               +0.037 2.9✓     +0.049 2.2✓     +0.057 2.0✓     +0.060 1.5✓
+f.long: Near #-week high                            +0.028 2.3✓     +0.040 2.0✓     +0.049 1.9✓     +0.067 2.2✓
+f.swing: Active bullish setup (SMC / VCP / t        +0.019 2.1✓     +0.024 1.5✓     +0.027 1.2✓     +0.034 1.2✓
+f.short: # in # month                               +0.007 0.7✓     +0.008 0.4✓     +0.012 0.5✓     +0.015 0.4✓
+f.short: Active bullish setup (SMC / VCP / t        +0.019 2.1✓     +0.024 1.5✓     +0.027 1.2✓     +0.034 1.2✓
+f.medium: Active bullish setup (SMC / VCP /         +0.019 2.1✓     +0.024 1.5✓     +0.027 1.2✓     +0.034 1.2✓
+f.medium: +# in # months                            +0.015 1.4✓     +0.021 1.1✓     +0.022 0.9✓     +0.044 1.4✓
+f.long: +# over # year                              +0.033 3.1✓     +0.046 2.4✓     +0.057 2.3✓     +0.066 2.1✓
 f.swing: Volume NaN× average on an up day                n/a             n/a             n/a             n/a   
 
 ==================== TOMORROW / BTST (next session) ====================
 feature            IC gap   IC close
-clv                -0.066     -0.021   close near the high
+clv                -0.067     -0.021   close near the high
 chg                +0.021     -0.017   today's change
 vr                 +0.060     +0.003   volume vs normal
 brk20              +0.032     -0.007   20-day breakout
 nearHi20           -0.062     +0.004   distance to 20-day high
-trend              +0.007     -0.000   above rising 20/50 EMAs
-below50            +0.004     +0.000   below the 50 EMA
+trend              +0.006     -0.000   above rising 20/50 EMAs
+below50            +0.005     +0.000   below the 50 EMA
 rsi                -0.013     -0.010   RSI
 lastHr               n/a        n/a    last-hour move
 beat               +0.021     -0.017   beat Nifty today
 gapFade            +0.020     -0.007   faded gap-up
 gap                +0.118     -0.005   today's opening gap
 uwick              +0.030     +0.006   upper wick
-lwick              -0.091     -0.005   lower wick
+lwick              -0.090     -0.004   lower wick
 body               -0.020     -0.018   candle body
 ret5               -0.019     -0.020   5-day return
 atrp               +0.126     -0.033   volatility
-d20                -0.017     -0.014   stretch above the 20 EMA
+d20                -0.018     -0.014   stretch above the 20 EMA
 mom3               +0.032     +0.003   3-month momentum
 hi52               -0.040     +0.022   distance to 52-week high
 prevClv            -0.055     -0.004   yesterday's close location
 nr7                -0.025     +0.003   narrow-range day
 inside             -0.022     -0.010   inside day
-rangeX             +0.059     -0.005   day range vs ATR
+rangeX             +0.058     -0.005   day range vs ATR
 Rule score (E.btstAt) IC: gap -0.006 · close -0.014
 
 -- target: next-day opening gap (sell at open) --
-F1: 16 features · lambda 0.1 · blend 1
-  model (OOS)            IC +0.161 (t  21.3, 95% days>0)  top10% +0.19% → after cost -0.06%  hit n/a  trade  n/a%  vs universe +0.13  | bottom10% -0.06%  | buy-top-10 -0.01% after cost, beat universe 68% of days
-  current BTST score     IC -0.019 (t  -2.8, 43% days>0)  top10% +0.11% → after cost -0.14%  hit n/a  trade  n/a%  vs universe +0.05  | bottom10% +0.09%  | buy-top-10 -0.08% after cost, beat universe 68% of days
+F1: 16 features · lambda 0.03 · blend 1
+  model (OOS)            IC +0.160 (t  21.2, 95% days>0)  top10% +0.19% → after cost -0.06%  hit n/a  trade  n/a%  vs universe +0.13  | bottom10% -0.06%  | buy-top-10 +0.01% after cost, beat universe 70% of days
+  current BTST score     IC +0.164 (t  22.4, 95% days>0)  top10% +0.18% → after cost -0.07%  hit n/a  trade  n/a%  vs universe +0.13  | bottom10% -0.06%  | buy-top-10 -0.02% after cost, beat universe 70% of days
 F2: 13 features · lambda 0.3 · blend 1
-  model (OOS)            IC +0.147 (t  12.6, 91% days>0)  top10% +0.07% → after cost -0.18%  hit n/a  trade  n/a%  vs universe +0.10  | bottom10% -0.13%  | buy-top-10 -0.14% after cost, beat universe 69% of days
-  current BTST score     IC -0.012 (t  -1.2, 45% days>0)  top10% +0.02% → after cost -0.23%  hit n/a  trade  n/a%  vs universe +0.04  | bottom10% -0.02%  | buy-top-10 -0.16% after cost, beat universe 74% of days
+  model (OOS)            IC +0.148 (t  12.9, 91% days>0)  top10% +0.07% → after cost -0.18%  hit n/a  trade  n/a%  vs universe +0.09  | bottom10% -0.13%  | buy-top-10 -0.15% after cost, beat universe 65% of days
+  current BTST score     IC +0.151 (t  13.3, 93% days>0)  top10% +0.08% → after cost -0.17%  hit n/a  trade  n/a%  vs universe +0.10  | bottom10% -0.13%  | buy-top-10 -0.14% after cost, beat universe 65% of days
 Exit rule on the model's top decile (after 0.25% cost) — F1 | F2:
-   sell at the open                     -0.063% (47% profitable) | -0.178% (43%)
-   hold to the close                    -0.260% (41% profitable) | -0.334% (42%)
-   sell at open if gap-up, else hold    -0.115% (59% profitable) | -0.258% (56%)
-   → best in both folds (worst-case): open (-0.178% per trade after cost) — NO positive after-cost edge; treat Tomorrow picks as watch-list only
-GATE btst/gap: PASS (needs IC and top-decile after cost to beat the current score in both folds, F1 t ≥ 3; F1 t 21.3)
+   sell at the open                     -0.067% (47% profitable) | -0.179% (43%)
+   hold to the close                    -0.257% (41% profitable) | -0.351% (41%)
+   sell at open if gap-up, else hold    -0.115% (58% profitable) | -0.272% (56%)
+   → best in both folds (worst-case): open (-0.179% per trade after cost) — NO positive after-cost edge; treat Tomorrow picks as watch-list only
+GATE btst/gap: FAIL (needs IC and top-decile after cost to beat the current score in both folds, F1 t ≥ 3; F1 t 21.2)
 
 -- target: next-day close-to-close (hold to close) --
-F1: 10 features · lambda 1 · blend 1
-  model (OOS)            IC +0.037 (t   5.0, 63% days>0)  top10% -0.06% → after cost -0.31%  hit n/a  trade  n/a%  vs universe -0.01  | bottom10% -0.04%  | buy-top-10 -0.25% after cost, beat universe 51% of days
-  current BTST score     IC -0.017 (t  -2.3, 43% days>0)  top10% -0.09% → after cost -0.34%  hit n/a  trade  n/a%  vs universe -0.04  | bottom10% -0.06%  | buy-top-10 -0.30% after cost, beat universe 52% of days
+F1: 10 features · lambda 3 · blend 1
+  model (OOS)            IC +0.036 (t   4.9, 60% days>0)  top10% -0.06% → after cost -0.31%  hit n/a  trade  n/a%  vs universe -0.00  | bottom10% -0.05%  | buy-top-10 -0.29% after cost, beat universe 53% of days
+  current BTST score     IC -0.004 (t  -0.6, 48% days>0)  top10% -0.01% → after cost -0.26%  hit n/a  trade  n/a%  vs universe +0.04  | bottom10% -0.14%  | buy-top-10 -0.28% after cost, beat universe 54% of days
 F2: 14 features · lambda 3 · blend 1
-  model (OOS)            IC +0.041 (t   3.7, 65% days>0)  top10% -0.10% → after cost -0.35%  hit n/a  trade  n/a%  vs universe +0.01  | bottom10% -0.12%  | buy-top-10 -0.31% after cost, beat universe 53% of days
-  current BTST score     IC -0.007 (t  -0.6, 46% days>0)  top10% -0.13% → after cost -0.38%  hit n/a  trade  n/a%  vs universe -0.02  | bottom10% -0.19%  | buy-top-10 -0.37% after cost, beat universe 54% of days
+  model (OOS)            IC +0.045 (t   4.1, 66% days>0)  top10% -0.10% → after cost -0.35%  hit n/a  trade  n/a%  vs universe +0.02  | bottom10% -0.11%  | buy-top-10 -0.34% after cost, beat universe 51% of days
+  current BTST score     IC -0.007 (t  -0.7, 48% days>0)  top10% -0.08% → after cost -0.33%  hit n/a  trade  n/a%  vs universe +0.03  | bottom10% -0.19%  | buy-top-10 -0.33% after cost, beat universe 52% of days
 Exit rule on the model's top decile (after 0.25% cost) — F1 | F2:
-   sell at the open                     -0.192% (33% profitable) | -0.269% (33%)
-   hold to the close                    -0.313% (39% profitable) | -0.352% (41%)
-   sell at open if gap-up, else hold    -0.245% (46% profitable) | -0.318% (48%)
-   → best in both folds (worst-case): open (-0.269% per trade after cost) — NO positive after-cost edge; treat Tomorrow picks as watch-list only
-GATE btst/close: PASS (needs IC and top-decile after cost to beat the current score in both folds, F1 t ≥ 3; F1 t 5.0)
-BTST production model (target gap; weight per +1 sd, in model sd): clv -0.180, vr +0.230, brk20 +0.177, nearHi20 -0.095, gap +0.427, uwick +0.135, lwick -0.284, atrp +0.518, hi52 -0.059, prevClv -0.254, nr7 -0.023, inside -0.048, rangeX +0.075 · blend 1 · parity all match
+   sell at the open                     -0.186% (34% profitable) | -0.264% (33%)
+   hold to the close                    -0.306% (40% profitable) | -0.347% (41%)
+   sell at open if gap-up, else hold    -0.243% (47% profitable) | -0.309% (48%)
+   → best in both folds (worst-case): open (-0.264% per trade after cost) — NO positive after-cost edge; treat Tomorrow picks as watch-list only
+GATE btst/close: FAIL (needs IC and top-decile after cost to beat the current score in both folds, F1 t ≥ 3; F1 t 4.9)
+BTST: no learned model adopted (current score kept).
+
+==================== STABILITY ====================
+
+STABILITY swing — |score(bar n) − score(bar n−1)|, same stock, OOS test rows (= the drop-last-bar test): mean med p90 %>10pts · F1 test | F2 test · OOS IC and top-decile after cost F1 / F2
+   variant     k  F1: mean med p90 >10  | F2: mean med p90 >10  | IC F1 / F2       | top10% a.c. F1 / F2 | verdict
+   rule score  -    5.2   3  13  16% |   5.4   4  13  17% | +0.002 / +0.002 | +0.14% / -0.20% | reference
+   current app 1   10.6   8  24  39% |  11.0   8  25  41% | +0.045 / +0.041 | +0.60% / +0.44% | learned champion: fitted on ALL rows last run, so in-sample on these test years — shown, not gated on
+   base        1    5.9   4  14  18% |   5.3   4  13  14% | +0.038 / +0.055 | +0.72% / +0.50% | eligible
+   S3          3    4.0   3  10   8% |   2.9   2   7   3% | +0.038 / +0.054 | +0.73% / +0.46% | eligible
+   S5          5    3.1   2   7   4% |   1.8   1   4   0% | +0.037 / +0.052 | +0.72% / +0.51% | ADOPT
+   FS          1    5.1   3  12  14% |   3.6   2  10  10% | +0.037 / +0.056 | +0.78% / +0.50% | eligible
+   FS+S3       3    3.5   2   8   5% |   2.1   1   5   1% | +0.037 / +0.054 | +0.69% / +0.53% | eligible
+   shrink      1    5.4   4  13  15% |   5.3   4  13  14% | +0.035 / +0.055 | +0.58% / +0.50% | no: F1 top < base−0.1
+   S3+shrink   3    3.7   3   9   6% |   2.9   2   7   3% | +0.036 / +0.054 | +0.61% / +0.46% | no: F1 top < base−0.1
+   tolerance: IC ≥ 0.9× base and top-decile after cost ≥ base − 0.1%-pts in both folds, and beat the rule score in both folds (F1 t ≥ 1.5); pick = lowest mean day-over-day change (F1+F2)
+   engine parity (E.linScore vs research, every variant's F2 model, bar n and bar n−1): 2114 rows, all match
+   → S5 (score = mean of model output over last 5 bars)
+   production model (S5, refit on all rows — in-sample): day-over-day mean 1.2 · median 1 · p90 4 · max 14 · >10pts 0% · parity all match
+
+STABILITY short — |score(bar n) − score(bar n−1)|, same stock, OOS test rows (= the drop-last-bar test): mean med p90 %>10pts · F1 test | F2 test · OOS IC and top-decile after cost F1 / F2
+   variant     k  F1: mean med p90 >10  | F2: mean med p90 >10  | IC F1 / F2       | top10% a.c. F1 / F2 | verdict
+   rule score  -    3.6   2   9   6% |   3.8   2   9   7% | +0.021 / +0.021 | +1.98% / +2.38% | reference
+   current app 1    5.1   3  12  13% |   5.2   4  12  13% | +0.068 / +0.043 | +2.21% / +2.58% | learned champion: fitted on ALL rows last run, so in-sample on these test years — shown, not gated on
+   base        1    3.5   3   8   5% |   2.8   2   7   3% | +0.064 / +0.073 | +2.16% / +2.83% | eligible
+   S3          3    1.8   1   4   0% |   1.5   1   4   0% | +0.067 / +0.065 | +2.12% / +3.10% | no: F2 IC < 0.9×base
+   S5          5    1.3   1   3   0% |   1.2   1   3   0% | +0.068 / +0.075 | +2.27% / +2.76% | ADOPT
+   FS          1    2.6   2   7   4% |   2.4   1   6   2% | +0.064 / +0.073 | +2.18% / +2.76% | eligible
+   FS+S3       3    1.4   1   4   0% |   1.3   1   3   0% | +0.066 / +0.066 | +2.22% / +3.38% | no: F2 IC < 0.9×base
+   shrink      1    3.5   3   8   5% |   2.8   2   7   3% | +0.064 / +0.073 | +2.16% / +2.83% | eligible
+   S3+shrink   3    1.8   1   4   0% |   1.5   1   4   0% | +0.067 / +0.065 | +2.12% / +3.10% | no: F2 IC < 0.9×base
+   tolerance: IC ≥ 0.9× base and top-decile after cost ≥ base − 0.1%-pts in both folds, and beat the rule score in both folds (F1 t ≥ 1.5); pick = lowest mean day-over-day change (F1+F2)
+   engine parity (E.linScore vs research, every variant's F2 model, bar n and bar n−1): 2114 rows, all match
+   → S5 (score = mean of model output over last 5 bars)
+   production model (S5, refit on all rows — in-sample): day-over-day mean 1.4 · median 1 · p90 4 · max 16 · >10pts 0% · parity all match
 
 ==================== DECISION ====================
-swing   ADOPT learned model · OOS IC F1 +0.034 vs +0.002 · F2 +0.051 vs -0.000 · top-decile after cost F1 +0.61% vs +0.21% · F2 +0.65% vs -0.16% · no qualifying cut-offs → 58/42
-short   ADOPT learned model · OOS IC F1 +0.064 vs +0.021 · F2 +0.068 vs +0.021 · top-decile after cost F1 +2.35% vs +2.09% · F2 +2.69% vs +2.47% · cut-offs BUY ≥ 58 SELL ≤ 46
-medium  keep current · OOS IC F1 +0.087 vs +0.081 · F2 +0.102 vs +0.069 · top-decile after cost F1 +4.12% vs +5.16% · F2 +6.11% vs +7.91%
-long    keep current · OOS IC F1 +0.120 vs +0.104 · F2 +0.153 vs +0.086 · top-decile after cost F1 +11.18% vs +9.71% · F2 +14.06% vs +17.33%
-btst    ADOPT (gap target, exit: open, -0.178% per trade after cost OOS worst fold)
-runtime 0.7 min · memory 858 MB rss
-Wrote www/model.json v24 (learned sections: swing, short, btst)
+swing   ADOPT learned model · OOS IC F1 +0.037 vs +0.045 · F2 +0.052 vs +0.041 · top-decile after cost F1 +0.72% vs +0.60% · F2 +0.51% vs +0.44% · no qualifying cut-offs → 58/42 · variant S5 (smooth=5): day-over-day mean |Δ| F1 3.13 / F2 1.78 (p90 7 / 4) vs base 5.89 / 5.27 (p90 14 / 13) · why: most stable of 5 eligible variant(s)
+short   ADOPT learned model · OOS IC F1 +0.068 vs +0.068 · F2 +0.075 vs +0.043 · top-decile after cost F1 +2.27% vs +2.21% · F2 +2.76% vs +2.58% · cut-offs BUY ≥ 54 SELL ≤ 46 · variant S5 (smooth=5): day-over-day mean |Δ| F1 1.26 / F2 1.23 (p90 3 / 3) vs base 3.55 / 2.77 (p90 8 / 7) · why: most stable of 4 eligible variant(s)
+medium  keep current · OOS IC F1 +0.084 vs +0.082 · F2 +0.106 vs +0.069 · top-decile after cost F1 +4.07% vs +5.08% · F2 +6.35% vs +7.82%
+long    keep current · OOS IC F1 +0.120 vs +0.103 · F2 +0.151 vs +0.083 · top-decile after cost F1 +11.63% vs +9.68% · F2 +13.76% vs +17.64%
+btst    keep current
+runtime 2.9 min · memory 1842 MB rss
+Wrote www/model.json v28 (learned sections: swing, short)
