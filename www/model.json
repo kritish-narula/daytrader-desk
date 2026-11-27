@@ -1,10 +1,10 @@
 {
- "v": 26,
- "date": "2026-11-26",
+ "v": 27,
+ "date": "2026-11-27",
  "labels": {
   "swing: EMA # above EMA #": "EMA 9 above EMA 21",
-  "swing: RSI # in bullish zone": "RSI 66 in bullish zone",
-  "swing: Volume # average on an up day": "Volume 0.7× average on an up day",
+  "swing: RSI # in bullish zone": "RSI 61 in bullish zone",
+  "swing: Volume # average on an up day": "Volume 0.9× average on an up day",
   "swing: Closed above #-day high": "Closed above 20-day high",
   "swing: Above # EMA (trend support)": "Above 50 EMA (trend support)"
  },
@@ -24,375 +24,375 @@
    {
     "lo": 0,
     "hi": 30,
-    "n": 2509,
-    "p": 0.277,
-    "ret": 0.79,
-    "up": 0.554
+    "n": 2491,
+    "p": 0.315,
+    "ret": 1.1,
+    "up": 0.561
    },
    {
     "lo": 30,
     "hi": 42,
-    "n": 2358,
-    "p": 0.297,
-    "ret": 0.86,
-    "up": 0.54
+    "n": 2337,
+    "p": 0.292,
+    "ret": 0.72,
+    "up": 0.523
    },
    {
     "lo": 42,
     "hi": 50,
-    "n": 1888,
-    "p": 0.296,
-    "ret": 0.69,
-    "up": 0.53
+    "n": 1829,
+    "p": 0.306,
+    "ret": 0.79,
+    "up": 0.534
    },
    {
     "lo": 50,
     "hi": 58,
-    "n": 2686,
-    "p": 0.293,
-    "ret": 0.84,
-    "up": 0.547
+    "n": 2692,
+    "p": 0.283,
+    "ret": 0.65,
+    "up": 0.525
    },
    {
     "lo": 58,
     "hi": 64,
-    "n": 823,
-    "p": 0.335,
-    "ret": 0.94,
-    "up": 0.563
+    "n": 960,
+    "p": 0.29,
+    "ret": 0.31,
+    "up": 0.502
    },
    {
     "lo": 64,
     "hi": 70,
-    "n": 1810,
-    "p": 0.314,
-    "ret": 0.73,
-    "up": 0.534
+    "n": 1846,
+    "p": 0.315,
+    "ret": 0.89,
+    "up": 0.559
    },
    {
     "lo": 70,
     "hi": 80,
-    "n": 4337,
-    "p": 0.295,
-    "ret": 0.95,
-    "up": 0.58
+    "n": 4302,
+    "p": 0.288,
+    "ret": 0.69,
+    "up": 0.55
    },
    {
     "lo": 80,
     "hi": 101,
-    "n": 1746,
-    "p": 0.292,
-    "ret": 0.75,
-    "up": 0.547
+    "n": 1700,
+    "p": 0.258,
+    "ret": 0.46,
+    "up": 0.53
    }
   ],
   "short": [
    {
     "lo": 0,
     "hi": 30,
-    "n": 1489,
-    "p": 0.316,
-    "ret": 2.11,
-    "up": 0.579
+    "n": 1499,
+    "p": 0.345,
+    "ret": 2.57,
+    "up": 0.596
    },
    {
     "lo": 30,
     "hi": 42,
-    "n": 2090,
-    "p": 0.331,
-    "ret": 2.31,
-    "up": 0.586
+    "n": 2026,
+    "p": 0.352,
+    "ret": 2.39,
+    "up": 0.59
    },
    {
     "lo": 42,
     "hi": 50,
-    "n": 2893,
-    "p": 0.348,
-    "ret": 2.31,
-    "up": 0.579
+    "n": 2890,
+    "p": 0.351,
+    "ret": 2.3,
+    "up": 0.565
    },
    {
     "lo": 50,
     "hi": 58,
-    "n": 4850,
-    "p": 0.341,
-    "ret": 1.88,
-    "up": 0.559
+    "n": 4937,
+    "p": 0.339,
+    "ret": 1.8,
+    "up": 0.552
    },
    {
     "lo": 58,
     "hi": 64,
-    "n": 1763,
-    "p": 0.319,
-    "ret": 2.22,
-    "up": 0.579
+    "n": 1708,
+    "p": 0.308,
+    "ret": 1.79,
+    "up": 0.573
    },
    {
     "lo": 64,
     "hi": 70,
-    "n": 1550,
-    "p": 0.295,
-    "ret": 1.94,
-    "up": 0.572
+    "n": 1559,
+    "p": 0.278,
+    "ret": 1.27,
+    "up": 0.528
    },
    {
     "lo": 70,
     "hi": 80,
-    "n": 2358,
-    "p": 0.348,
-    "ret": 3.02,
-    "up": 0.605
+    "n": 2376,
+    "p": 0.327,
+    "ret": 2.9,
+    "up": 0.593
    },
    {
     "lo": 80,
     "hi": 101,
-    "n": 767,
-    "p": 0.4,
-    "ret": 3.99,
-    "up": 0.63
+    "n": 765,
+    "p": 0.393,
+    "ret": 4.12,
+    "up": 0.624
    }
   ],
   "medium": [
    {
     "lo": 0,
     "hi": 30,
-    "n": 1009,
-    "p": 0.466,
-    "ret": 8.43,
-    "up": 0.687
+    "n": 1017,
+    "p": 0.473,
+    "ret": 8.77,
+    "up": 0.691
    },
    {
     "lo": 30,
     "hi": 42,
-    "n": 1269,
-    "p": 0.414,
-    "ret": 5.34,
+    "n": 1272,
+    "p": 0.407,
+    "ret": 5.42,
     "up": 0.649
    },
    {
     "lo": 42,
     "hi": 50,
-    "n": 2250,
-    "p": 0.412,
-    "ret": 6.02,
-    "up": 0.587
+    "n": 2212,
+    "p": 0.417,
+    "ret": 6.12,
+    "up": 0.585
    },
    {
     "lo": 50,
     "hi": 58,
-    "n": 3713,
-    "p": 0.485,
-    "ret": 9.11,
+    "n": 3753,
+    "p": 0.483,
+    "ret": 9.02,
     "up": 0.63
    },
    {
     "lo": 58,
     "hi": 64,
-    "n": 1634,
-    "p": 0.477,
-    "ret": 8.73,
-    "up": 0.638
+    "n": 1591,
+    "p": 0.466,
+    "ret": 9.45,
+    "up": 0.647
    },
    {
     "lo": 64,
     "hi": 70,
-    "n": 1517,
-    "p": 0.432,
-    "ret": 9.04,
-    "up": 0.635
+    "n": 1535,
+    "p": 0.441,
+    "ret": 8.03,
+    "up": 0.617
    },
    {
     "lo": 70,
     "hi": 80,
-    "n": 2203,
-    "p": 0.424,
-    "ret": 7.91,
-    "up": 0.588
+    "n": 2193,
+    "p": 0.399,
+    "ret": 7.73,
+    "up": 0.587
    },
    {
     "lo": 80,
     "hi": 101,
-    "n": 2325,
-    "p": 0.532,
-    "ret": 16.12,
+    "n": 2347,
+    "p": 0.524,
+    "ret": 16.22,
     "up": 0.669
    }
   ]
  },
  "setups": {
-  "SMC: Retest of bullish fair value gap": [
-   1955,
-   37,
-   2.22,
-   1
-  ],
   "Rally into 20 EMA in downtrend": [
-   1331,
-   20,
-   3.65,
+   1365,
+   18,
+   3.55,
    0
   ],
   "Double top": [
-   425,
-   41,
-   1.05,
-   0
-  ],
-  "SMC: Change of character (bearish)": [
-   690,
-   28,
-   1.85,
+   433,
+   42,
+   1.03,
    0
   ],
   "Bear flag": [
-   588,
-   12,
-   4.46,
+   657,
+   8,
+   4.4,
    0
   ],
   "SMC: Retest of bearish fair value gap": [
-   1609,
-   29,
-   2.3,
+   1589,
+   30,
+   2.29,
    0
   ],
+  "SMC: Change of character (bullish)": [
+   752,
+   39,
+   1.86,
+   1
+  ],
   "Bull flag": [
-   813,
+   822,
    23,
-   4.13,
-   1
-  ],
-  "SMC: Liquidity sweep above highs": [
-   1254,
-   29,
-   2.77,
-   1
-  ],
-  "SMC: Liquidity sweep below lows": [
-   945,
-   36,
-   2.67,
+   4.19,
    1
   ],
   "SMC: Break of structure (bullish)": [
-   728,
-   36,
-   1.82,
+   707,
+   35,
+   1.83,
    0
   ],
-  "Clean volume breakout": [
-   507,
-   40,
+  "SMC: Retest of bullish fair value gap": [
+   1878,
+   39,
+   2.16,
+   1
+  ],
+  "Pocket pivot": [
+   1155,
+   35,
    2,
    1
   ],
   "Pullback to 20 EMA in uptrend": [
-   2573,
-   25,
-   4.23,
+   2545,
+   26,
+   4.01,
    1
   ],
   "Double bottom": [
-   433,
-   55,
-   1.02,
+   434,
+   57,
+   1.04,
    1
   ],
-  "SMC: Change of character (bullish)": [
-   757,
+  "Clean volume breakout": [
+   506,
    36,
-   1.85,
+   2,
    0
   ],
-  "Pocket pivot": [
-   1095,
-   37,
-   2,
+  "SMC: Change of character (bearish)": [
+   706,
+   25,
+   1.86,
+   0
+  ],
+  "SMC: Liquidity sweep below lows": [
+   1048,
+   35,
+   2.67,
    1
   ],
   "SMC: Break of structure (bearish)": [
-   580,
-   29,
-   1.89,
+   685,
+   22,
+   1.87,
    0
   ],
-  "Gap-up and go": [
-   201,
-   37,
-   2,
-   1
+  "SMC: Liquidity sweep above highs": [
+   1146,
+   27,
+   2.78,
+   0
   ],
   "Gap-down and go": [
-   98,
-   35,
+   155,
+   28,
    2,
    0
   ],
   "Descending triangle": [
-   55,
-   29,
-   1.74,
+   52,
+   32,
+   1.93,
    0
   ],
+  "Gap-up and go": [
+   160,
+   43,
+   2,
+   1
+  ],
   "Inverse head & shoulders": [
-   58,
+   60,
    62,
-   2.32,
+   2.28,
    1
   ],
   "Ascending triangle": [
-   59,
-   31,
-   2.22,
-   0
+   58,
+   40,
+   2.28,
+   1
   ],
   "Oversold dip in long-term uptrend": [
-   67,
-   30,
-   3.34,
+   75,
+   32,
+   3.23,
    1
   ],
   "Head & shoulders": [
    70,
-   27,
-   2.07,
+   29,
+   2.22,
    0
   ],
   "Symmetrical triangle": [
-   41,
+   42,
    0,
-   3.48,
+   3.47,
    0
   ],
   "VCP (volatility contraction) forming": [
-   192,
+   202,
    22,
-   4.16,
-   1
+   4.1,
+   0
   ]
  },
  "metrics": {
   "swing": {
-   "train": 0.0083,
-   "trainNew": 0.0108,
-   "test": 0.0118,
-   "testNew": 0.0083,
+   "train": -0.0202,
+   "trainNew": -0.018,
+   "test": -0.0142,
+   "testNew": -0.013,
    "adopted": false,
    "n": 18157
   },
   "short": {
-   "train": -0.0305,
-   "trainNew": -0.0244,
-   "test": 0.0538,
-   "testNew": 0.0521,
+   "train": -0.0521,
+   "trainNew": -0.0462,
+   "test": 0.0321,
+   "testNew": 0.0341,
    "adopted": false,
    "n": 17760
   },
   "medium": {
-   "train": 0.0401,
-   "trainNew": 0.043,
-   "test": 0.0681,
-   "testNew": 0.0603,
+   "train": 0.0284,
+   "trainNew": 0.0318,
+   "test": 0.0646,
+   "testNew": 0.0581,
    "adopted": false,
    "n": 15920
   }
@@ -1168,6 +1168,37 @@
      "trainNew": 0.043,
      "test": 0.0681,
      "testNew": 0.0603,
+     "adopted": false,
+     "n": 15920
+    }
+   }
+  },
+  {
+   "v": 27,
+   "date": "2026-11-27",
+   "samples": 51837,
+   "metrics": {
+    "swing": {
+     "train": -0.0202,
+     "trainNew": -0.018,
+     "test": -0.0142,
+     "testNew": -0.013,
+     "adopted": false,
+     "n": 18157
+    },
+    "short": {
+     "train": -0.0521,
+     "trainNew": -0.0462,
+     "test": 0.0321,
+     "testNew": 0.0341,
+     "adopted": false,
+     "n": 17760
+    },
+    "medium": {
+     "train": 0.0284,
+     "trainNew": 0.0318,
+     "test": 0.0646,
+     "testNew": 0.0581,
      "adopted": false,
      "n": 15920
     }
