@@ -58,4 +58,4 @@ jobs:
       - name: Decision in the job summary
         if: always()
         run: |
-          [ -f data/research_report.txt ] && { echo '```'; sed -n '/^==================== DECISION/,$p' data/research_report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
+          [ -f data/research_report.txt ] && { echo '```'; sed -n '/^==================== STABILITY/,$p' data/research_report.txt | grep -q . && sed -n '/^==================== STABILITY/,$p' data/research_report.txt || sed -n '/^==================== DECISION/,$p' data/research_report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true

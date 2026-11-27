@@ -17,23 +17,32 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: 20}
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
+      - name: In the scan window?
+        id: win
+        run: |
+          now=$(TZ=Asia/Kolkata date +%H%M); dow=$(TZ=Asia/Kolkata date +%u)
+          if [ "$dow" -le 5 ] && [ "$now" -ge 0745 ] && [ "$now" -lt 1700 ]; then echo "scan=1" >> $GITHUB_OUTPUT; else echo "scan=0" >> $GITHUB_OUTPUT; fi
       - name: NSE stock list
+        if: steps.win.outputs.scan == '1'
         run: python3 tools/nse_symbols.py || true
       - name: Scan every NSE stock with the app's engine
+        if: steps.win.outputs.scan == '1'
         run: node tools/morning.js
       - name: Tomorrow (BTST) track record — once a day after the close
+        if: steps.win.outputs.scan == '1'
         continue-on-error: true
         run: |
           now=$(TZ=Asia/Kolkata date +%H%M); have=$(git log -1 --format=%cd --date=format:%F -- data/btst_stats.json 2>/dev/null)
           if [ "$now" -ge 1530 ] || [ ! -f data/btst_stats.json ] || [ "$have" != "$(TZ=Asia/Kolkata date +%F)" -a "$now" -ge 1530 ]; then timeout 600 node tools/btst_eval.js; fi
       - name: Publish results
+        if: steps.win.outputs.scan == '1'
         run: |
           [ -f data/morning.json ] || exit 0
           git config user.name "daytrader-learner[bot]"; git config user.email "actions@users.noreply.github.com"
@@ -41,13 +50,24 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "Auto scan $(date -u +%F' '%H:%M) UTC [skip ci]"
           for i in 1 2 3; do git pull --rebase -X theirs origin main && git push && exit 0; sleep $((i*5)); done; exit 1
-      - name: Keep the 30-minute cycle going and drive the other jobs (GitHub's own schedule is unreliable)
+      - name: Keep the cycle alive round the clock (GitHub's own timer runs hours late in this repo)
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           now=$(TZ=Asia/Kolkata date +%H%M); dow=$(TZ=Asia/Kolkata date +%u)
-          [ "$dow" -le 5 ] || exit 0
-          if [ "$now" -ge 0900 ] && [ "$now" -lt 1540 ]; then gh workflow run flows.yml --ref main || true; fi
-          if [ "$now" -ge 1530 ] && [ "$now" -lt 1800 ]; then gh workflow run flows.yml --ref main || true; gh workflow run paper.yml --ref main || true; exit 0; fi
-          if [ "$now" -ge 0800 ] && [ "$now" -lt 1530 ]; then sleep 1500; gh workflow run morning.yml --ref main -f chained=1; fi
+          if [ "$dow" -le 5 ] && [ "$now" -ge 0900 ] && [ "$now" -lt 1540 ]; then gh workflow run flows.yml --ref main || true; fi
+          if [ "$dow" -le 5 ] && [ "$now" -ge 1530 ] && [ "$now" -lt 1700 ]; then gh workflow run flows.yml --ref main || true; gh workflow run paper.yml --ref main || true; fi
+          if [ "$dow" -le 5 ] && [ "$now" -ge 0745 ] && [ "$now" -lt 1530 ]; then wait=1500   # live session: every ~30 min
+          else
+            # sleep (max 5h40m per run) towards 07:50 IST of the next weekday, then hand over to a fresh run
+            target=$(TZ=Asia/Kolkata python3 -c "
+          import datetime as d
+          n=d.datetime.now(); t=n.replace(hour=7,minute=50,second=0,microsecond=0)
+          if t<=n: t+=d.timedelta(days=1)
+          while t.weekday()>4: t+=d.timedelta(days=1)
+          print(int((t-n).total_seconds()))")
+            wait=$(( target < 20400 ? target : 20400 ))
+          fi
+          echo "next run in $wait s"; sleep $wait
+          gh workflow run morning.yml --ref main -f chained=1

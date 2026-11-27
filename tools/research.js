@@ -14,12 +14,23 @@
 //  6. Gate: adopt a horizon's model only if its OOS rank-IC AND its top-decile after-cost expectancy beat the current app score in
 //     BOTH time folds (and the IC is positive). Thresholds (BUY / SELL cut-offs) come from OOS score bands of both folds.
 //  7. Writes www/model.json sections `lin`, `thresholds`, `btst` (merge: every other key is kept) + data/research_report.txt.
+//  8. Stability (VARIANT_HZ, default swing+short): every sampled row also records the feature vectors of the NLAG previous bars
+//     (E.featuresAt — what the phone computes), so each candidate is scored at bar n AND bar n−1 for the same stock (= the
+//     "drop the last bar" test). Variants: base (single bar, the original model), S3/S5 (score smoothing: mean of the model's raw
+//     output over the last 3/5 bars — ridge fitted on the lag-averaged z-features; engine: lin[hz].smooth = k), FS (single-bar
+//     features ret1/clv/gap1/volx dropped; their multi-day versions stay), FS+S3, shrink / S3+shrink (blend toward the rule score:
+//     the most-stable blend whose inner-split IC ≥ STAB_IC_TOL × the best blend's). Adopted = the most stable variant that, in BOTH
+//     time folds, beats the rule score (IC + MIN_IC_GAIN and top-decile after cost; F1 t ≥ MIN_T) AND keeps ≥ STAB_IC_TOL of the base
+//     variant's OOS IC and a top-decile after cost within STAB_TOP_TOL %-points of it. Printed in the STABILITY section + DECISION.
 //
 // env: RESEARCH_SYMS (comma list, overrides the universe), UNIVERSE_MAX (cap stocks), STEP (3), BTST_STEP (2), CONC (10), BUDGET_MIN (18: stop fetching new stocks after this),
 //      COST (0.30 % round trip, multi-day delivery), BTST_COST (0.25), RESEARCH_SCOPE ('stock' | 'stock,mkt' | 'stock,mkt,xs'),
 //      MIN_IC_GAIN (0.003), MIN_T (1.5: overlap-adjusted t of the model's OOS IC in fold 1; BTST needs 2×MIN_T),
 //      RESEARCH_BASELINE ('app' = current model.json score, or 'rule'), RESEARCH_FORCE=1 (testing: write even if the gate fails),
-//      RESEARCH_DRY=1 (don't write files), MODEL_PATH / REPORT_PATH (testing), YF_CACHE (/tmp/yfcache).
+//      RESEARCH_DRY=1 (don't write files), MODEL_PATH / REPORT_PATH (testing), YF_CACHE (/tmp/yfcache),
+//      VARIANTS ('base,S3,S5,FS,FS+S3,shrink,S3+shrink'), VARIANT_HZ ('swing,short'), STAB_IC_TOL (0.9), STAB_TOP_TOL (0.10 %-points),
+//      RESEARCH_FORCE_VARIANT (testing, with RESEARCH_FORCE: write this variant when none qualifies).
+// Dev run without Yahoo: YF_CACHE=/tmp/yfstub RESEARCH_SYMS=A,B,… RESEARCH_DRY=1 node -r ./tools/fno_stub.js tools/research.js
 const fs = require('fs'), path = require('path');
 const E = require('../www/engine.js');
 const U = require('./universe.js');
@@ -34,8 +45,23 @@ const MIN_IC_GAIN = ENV.MIN_IC_GAIN != null ? +ENV.MIN_IC_GAIN : 0.003, MIN_T = 
 const LAMS = [0.003, 0.01, 0.03, 0.1, 0.3, 1, 3, 10], BLENDS = [0, 0.25, 0.5, 0.75, 1];
 const MODEL_PATH = ENV.MODEL_PATH || path.join(__dirname, '../www/model.json'), REPORT = ENV.REPORT_PATH || path.join(__dirname, '../data/research_report.txt');
 const CUTS = [20, 25, 30, 35, 38, 42, 46, 50, 54, 58, 62, 66, 70, 75, 80, 85]; // candidate score cut-offs for thresholds
+// stability variants (see header §8)
+const IC_TOL = ENV.STAB_IC_TOL != null ? +ENV.STAB_IC_TOL : 0.9, TOP_TOL = ENV.STAB_TOP_TOL != null ? +ENV.STAB_TOP_TOL : 0.10;
+const SINGLE = ['ret1', 'clv', 'gap1', 'volx']; // single-bar features; their multi-day versions (ret5, clv5, gapAvg20, volx5) stay
+const VDEF = {
+  base: { k: 1, d: 'single bar (original model)' },
+  S3: { k: 3, d: 'score = mean of model output over last 3 bars' },
+  S5: { k: 5, d: 'score = mean of model output over last 5 bars' },
+  FS: { k: 1, excl: SINGLE, d: 'single-bar features dropped (' + SINGLE.join('/') + ')' },
+  'FS+S3': { k: 3, excl: SINGLE, d: 'FS + 3-bar score smoothing' },
+  shrink: { k: 1, shrink: true, d: `blend toward rule: most stable blend with inner IC ≥ ${IC_TOL}×best` },
+  'S3+shrink': { k: 3, shrink: true, d: 'S3 + shrink toward rule' },
+};
+const VARIANTS = ['base', ...(ENV.VARIANTS || Object.keys(VDEF).join(',')).split(',').map(x => x.trim()).filter(x => VDEF[x] && x !== 'base')].map(n => Object.assign({ name: n }, VDEF[n]));
+const VHZ = new Set((ENV.VARIANT_HZ != null ? ENV.VARIANT_HZ : 'swing,short').split(',').map(x => x.trim()).filter(Boolean));
+const KV = Math.max(1, ...VARIANTS.map(v => v.k));
 const ok = x => typeof x === 'number' && isFinite(x);
-const LOG = []; const log = (...a) => { const s = a.join(' '); LOG.push(s); console.log(s); };
+const LOG = [], STAB = []; const log = (...a) => { const s = a.join(' '); LOG.push(s); console.log(s); };
 const f3 = x => ok(x) ? (x >= 0 ? '+' : '') + x.toFixed(3) : '  n/a ';
 const f2 = x => ok(x) ? (x >= 0 ? '+' : '') + x.toFixed(2) : ' n/a';
 const pc = x => ok(x) ? (100 * x).toFixed(0) + '%' : 'n/a';
@@ -114,6 +140,8 @@ async function collect() {
   const U0 = universe(), syms = U0.syms;
   const idx = await getDaily('^NSEI');
   const champ = E.MODEL, champLin = BASE === 'app' ? (champ.lin || {}) : {}, champB = BASE === 'app' ? champ.btst : null;
+  // previous bars recorded per row: enough for the largest smoothing window at bar n−1 (stability) and the champion's own smoothing
+  const NLAG = Math.max(1, KV, ...HZS.map(hz => E.linK(champLin[hz])));
   // trading-day grid: Nifty's days (fallback: union of the first stocks' days)
   let grid = idx ? idx.t.map(dayKey) : null;
   const nifChg = new Map(); if (idx) for (let j = 1; j < idx.c.length; j++) nifChg.set(dayKey(idx.t[j]), (idx.c[j] / idx.c[j - 1] - 1) * 100);
@@ -128,14 +156,17 @@ async function collect() {
     const D = await getDaily(sym); if (!D || D.c.length < 400) { skipped++; return; }
     const si = stocks.length; stocks.push({ sym, sec: (U0.cat[sym] || [])[1] || '', cap: (U0.cat[sym] || [])[0] || '' });
     const I = E.indicators(D), m = idx ? E.alignMarket(D, idx) : null, n = D.c.length, C = D.c;
+    const cache = new Map(), frame = j => { let f = cache.get(j); if (!f) { f = E.featuresAt(I, j, { m }); cache.set(j, f); } return f; }; // E.featuresAt = the phone's path
     for (let i = 252; i < n - 1; i++) {
       const g = gidx.get(dayKey(D.t[i])); if (g == null) continue;
       const c = C[i];
       if (g % STEP === 0) {
-        const fv = {}, rule = new Float32Array(4), base = new Float32Array(4), y = new Float32Array(16).fill(NaN);
-        HZS.forEach((hz, h) => { const f = E._factors(I, i, hz); for (const x of f) if (x[4]) fv[x[4]] = x[1]; rule[h] = E._toScore(E._combine(f)); });
-        const F = E.features(I, i, { fv, m });
-        HZS.forEach((hz, h) => { const L = champLin[hz]; base[h] = L ? E.linScore(L, F, rule[h]) : rule[h]; });
+        for (const j of [...cache.keys()]) if (j < i - NLAG) cache.delete(j);
+        const fr = []; for (let t = 0; t <= NLAG; t++) fr.push(frame(i - t));
+        const Fs = fr.map(q => q.F), F = Fs[0], y = new Float32Array(16).fill(NaN);
+        const rule = Float32Array.from(HZS, hz => fr[0].rule[hz]), rule1 = Float32Array.from(HZS, hz => fr[1].rule[hz]);
+        const base = Float32Array.from(HZS, (hz, h) => champLin[hz] ? E.linScore(champLin[hz], Fs, rule[h]) : rule[h]);
+        const base1 = Float32Array.from(HZS, (hz, h) => champLin[hz] ? E.linScore(champLin[hz], Fs.slice(1), rule1[h]) : rule1[h]);
         const A = E._atrAt(I, i, c);
         HZS.forEach((hz, h) => {
           const k = HZ[hz]; if (i + k >= n) return;
@@ -150,7 +181,8 @@ async function collect() {
         });
         const x = new Float32Array(128).fill(NaN);
         for (const [k, v] of Object.entries(F)) { const j = colOf(H, k); if (j >= 128) throw new Error('too many features'); x[j] = v; }
-        H.rows.push({ d: g, s: si, x, rule, base, y });
+        const xl = Fs.slice(1).map(Ft => { const a = new Float32Array(128).fill(NaN); for (const [k, v] of Object.entries(Ft)) { const j = colOf(H, k); if (j >= 128) throw new Error('too many features'); a[j] = v; } return a; });
+        H.rows.push({ d: g, s: si, x, xl, rule, rule1, base, base1, y });
       }
       if (g % BSTEP === 0) {
         const ctx = { frac: 1, nifChg: nifChg.get(dayKey(D.t[i])) };
@@ -163,7 +195,7 @@ async function collect() {
       }
     }
   });
-  return { H, B, stocks, grid, idxOk: !!idx, skipped, budgetHit, src: U0.src, want: syms.length };
+  return { H, B, stocks, grid, idxOk: !!idx, skipped, budgetHit, src: U0.src, want: syms.length, NLAG };
 }
 
 // add cross-sectional features (per day): momentum ranks, RS rank, sector momentum + its rank, breadth
@@ -186,8 +218,9 @@ function addXS(H, stocks) {
 function dataset(S, NF) {
   S.rows.sort((a, b) => a.d - b.d || a.s - b.s);
   const names = S.names.slice(0, NF), isF = names.map(k => k.startsWith('f.'));
-  const N = S.rows.length, X = new Float32Array(N * NF);
-  S.rows.forEach((r, i) => { for (let j = 0; j < NF; j++) { let v = r.x[j]; if (!ok(v) && isF[j]) v = 0; X[i * NF + j] = v; } r.x = null; });
+  const N = S.rows.length, X = new Float32Array(N * NF), NL = N && S.rows[0].xl ? S.rows[0].xl.length : 0, XL = Array.from({ length: NL }, () => new Float32Array(N * NF));
+  const put = (A, x, i) => { for (let j = 0; j < NF; j++) { let v = x[j]; if (!ok(v) && isF[j]) v = 0; A[i * NF + j] = v; } };
+  S.rows.forEach((r, i) => { put(X, r.x, i); r.x = null; for (let t = 0; t < NL; t++) put(XL[t], r.xl[t], i); r.xl = null; });
   const day = Int32Array.from(S.rows, r => r.d), stock = Int32Array.from(S.rows, r => r.s);
   // per-day centred ranks of every feature (NaN → 0 = middle): fast univariate rank-IC
   const XR = new Float32Array(N * NF);
@@ -196,7 +229,15 @@ function dataset(S, NF) {
     const ix = [], v = []; for (let i = a; i < b; i++) { const x = X[i * NF + j]; if (ok(x)) { ix.push(i); v.push(x); } }
     if (v.length < 3) continue; const R = rankArr(v); for (let k = 0; k < ix.length; k++) XR[ix[k] * NF + j] = R[k] / (v.length - 1) - 0.5;
   }
-  return { N, NF, names, isF, X, XR, day, stock, groups, rows: S.rows };
+  return { N, NF, names, isF, X, XL, NL, XR, day, stock, groups, rows: S.rows };
+}
+// feature matrix of lag t (0 = the row's own bar, t = t bars earlier)
+const xAt = (DS, t) => { if (!t) return DS.X; if (t > DS.NL) throw new Error(`lag ${t} not recorded (NLAG ${DS.NL})`); return DS.XL[t - 1]; };
+// day-over-day stability of a score for the same stock: |score(bar n) − score(bar n−1)| over rows
+function stab(rows, s0, s1) {
+  const d = []; for (const i of rows) if (ok(s0[i]) && ok(s1[i])) d.push(Math.abs(s0[i] - s1[i]));
+  d.sort((a, b) => a - b); const n = d.length;
+  return { n, mean: n ? d.reduce((a, b) => a + b, 0) / n : NaN, med: quantile(d, 0.5), p90: quantile(d, 0.9), max: n ? d[n - 1] : NaN, gt10: n ? d.filter(x => x > 10).length / n : NaN };
 }
 function dayRank(DS, y) { // per-day centred rank of a target (NaN stays NaN)
   const out = new Float32Array(DS.N).fill(NaN);
@@ -259,8 +300,18 @@ function normParams(DS, sub, cols) {
     return { j, k: DS.names[j], lo: ok(lo) ? lo : 0, hi: ok(hi) ? hi : 0, mu: ok(m) ? m : 0, sd: s > 1e-9 ? s : 1, cov: v.length * stepS / sub.length };
   });
 }
-function zRows(DS, rows, P) { const p = P.length, Z = new Float64Array(rows.length * p); rows.forEach((i, r) => { for (let q = 0; q < p; q++) { const c = P[q]; Z[r * p + q] = E.zFeat(c.k, DS.X[i * DS.NF + c.j], c.lo, c.hi, c.mu, c.sd); } }); return Z; }
-function predict(DS, rows, P, w, b) { const out = new Float64Array(DS.N).fill(NaN); for (const i of rows) { let s = b; for (let q = 0; q < P.length; q++) { const c = P[q]; s += w[q] * E.zFeat(c.k, DS.X[i * DS.NF + c.j], c.lo, c.hi, c.mu, c.sd); } out[i] = s; } return out; }
+// z-features; k > 1 = mean of the z-features over the row's last k bars (the smoothed model is linear in them: mean of the raw
+// output over k bars = intercept + w · mean z, so the ridge is fitted on exactly what E.linScore averages)
+function zRows(DS, rows, P, k = 1) {
+  const p = P.length, Z = new Float64Array(rows.length * p), Xs = Array.from({ length: k }, (_, t) => xAt(DS, t));
+  rows.forEach((i, r) => { for (let q = 0; q < p; q++) { const c = P[q]; let s = 0; for (let t = 0; t < k; t++) s += E.zFeat(c.k, Xs[t][i * DS.NF + c.j], c.lo, c.hi, c.mu, c.sd); Z[r * p + q] = k === 1 ? s : s / k; } });
+  return Z;
+}
+function predict(DS, rows, P, w, b, k = 1, lag0 = 0) {
+  const out = new Float64Array(DS.N).fill(NaN), Xs = Array.from({ length: k }, (_, t) => xAt(DS, lag0 + t));
+  for (const i of rows) { let acc = 0; for (let t = 0; t < k; t++) { let s = b; for (let q = 0; q < P.length; q++) { const c = P[q]; s += w[q] * E.zFeat(c.k, Xs[t][i * DS.NF + c.j], c.lo, c.hi, c.mu, c.sd); } acc += s; } out[i] = acc / k; }
+  return out;
+}
 const meanSd = (arr, rows) => { let m = 0, n = 0; for (const i of rows) if (ok(arr[i])) { m += arr[i]; n++; } m /= Math.max(1, n); let s = 0; for (const i of rows) if (ok(arr[i])) s += (arr[i] - m) ** 2; return [m, Math.sqrt(s / Math.max(1, n - 1)) || 1]; };
 // split a sorted subset by time at quantile q of its days, with an embargo of `emb` grid days before the split
 function timeSplit(DS, sub, q, emb) { const days = [...new Set(sub.map(i => DS.day[i]))]; const cut = days[Math.floor(days.length * q)]; return [sub.filter(i => DS.day[i] < cut - emb), sub.filter(i => DS.day[i] >= cut)]; }
@@ -268,7 +319,8 @@ function timeSplit(DS, sub, q, emb) { const days = [...new Set(sub.map(i => DS.d
 // fit on `train`: returns engine-format L (+ diag). opt.cols forces the candidate feature list.
 function fitModel(DS, train, tg, h, opt = {}) {
   const sub = train.filter(i => ok(tg.yr[i]));
-  let cand = opt.cols || DS.names.map((k, j) => j).filter(j => SCOPE.has(E.featScope(DS.names[j])) && !tg.exclude.has(DS.names[j]));
+  const k = opt.k || 1, excl = new Set(opt.excl || []);
+  let cand = opt.cols || DS.names.map((k, j) => j).filter(j => SCOPE.has(E.featScope(DS.names[j])) && !tg.exclude.has(DS.names[j]) && !excl.has(DS.names[j]));
   let P = normParams(DS, sub, cand).filter(c => c.cov >= 0.6 && c.hi > c.lo);
   // feature selection: same IC sign in both halves of the training window
   const [h1, h2] = timeSplit(DS, sub, 0.5, h), sel = [];
@@ -282,17 +334,25 @@ function fitModel(DS, train, tg, h, opt = {}) {
   const [it, iv] = timeSplit(DS, sub, 0.7, h);
   let best = { lam: 1, ic: -Infinity, blend: 1 };
   if (it.length > 200 && iv.length > 100) {
-    const G = gram(zRows(DS, it, P), Float64Array.from(it, i => tg.yr[i]), it.length, p);
-    for (const lam of LAMS) { const m = ridgeG(G, lam), pr = predict(DS, iv, P, m.w, m.b), s = scoreIC(DS, iv, pr, tg.y, h); if (ok(s.ic) && s.ic > best.ic) best = { lam, ic: s.ic, m }; }
+    const G = gram(zRows(DS, it, P, k), Float64Array.from(it, i => tg.yr[i]), it.length, p);
+    for (const lam of LAMS) { const m = ridgeG(G, lam), pr = predict(DS, iv, P, m.w, m.b, k), s = scoreIC(DS, iv, pr, tg.y, h); if (ok(s.ic) && s.ic > best.ic) best = { lam, ic: s.ic, m }; }
     if (best.m) {
-      const prT = predict(DS, it, P, best.m.w, best.m.b), [mm, ms] = meanSd(prT, it), [rm, rs] = meanSd(tg.rule, it), prV = predict(DS, iv, P, best.m.w, best.m.b);
-      let bb = { b: 1, ic: -Infinity };
-      for (const bl of BLENDS) { const sc = new Float64Array(DS.N).fill(NaN); for (const i of iv) sc[i] = bl * (prV[i] - mm) / ms + (1 - bl) * (tg.rule[i] - rm) / rs; const s = scoreIC(DS, iv, sc, tg.y, h); if (ok(s.ic) && s.ic > bb.ic + 1e-4) bb = { b: bl, ic: s.ic }; }
+      const prT = predict(DS, it, P, best.m.w, best.m.b, k), [mm, ms] = meanSd(prT, it), [rm, rs] = meanSd(tg.rule, it), prV = predict(DS, iv, P, best.m.w, best.m.b, k);
+      const prV1 = opt.shrink ? predict(DS, iv, P, best.m.w, best.m.b, k, 1) : null;
+      let bb = { b: 1, ic: -Infinity }; const cands = [];
+      for (const bl of BLENDS) {
+        const sc = new Float64Array(DS.N).fill(NaN); for (const i of iv) sc[i] = bl * (prV[i] - mm) / ms + (1 - bl) * (tg.rule[i] - rm) / rs; const s = scoreIC(DS, iv, sc, tg.y, h); if (ok(s.ic) && s.ic > bb.ic + 1e-4) bb = { b: bl, ic: s.ic };
+        if (opt.shrink && ok(s.ic)) { // instability of the blended raw value at bar n vs n−1, in units of its cross-sectional sd
+          let d = 0, nd = 0; for (const i of iv) { const v1 = bl * (prV1[i] - mm) / ms + (1 - bl) * (tg.rule1[i] - rm) / rs; if (ok(v1) && ok(sc[i])) { d += Math.abs(sc[i] - v1); nd++; } }
+          cands.push({ b: bl, ic: s.ic, ins: nd ? d / nd / meanSd(sc, iv)[1] : Infinity });
+        }
+      }
+      if (opt.shrink && bb.ic > 0) { const c = cands.filter(x => x.ic >= IC_TOL * bb.ic).sort((a, b) => a.ins - b.ins || b.ic - a.ic)[0]; if (c) bb = { b: c.b, ic: c.ic }; }
       best.blend = bb.b; best.blendIC = bb.ic;
     }
   }
-  const m = ridge(zRows(DS, sub, P), Float64Array.from(sub, i => tg.yr[i]), sub.length, p, best.lam);
-  const pr = predict(DS, sub, P, m.w, m.b), [mmu, msd] = meanSd(pr, sub), [rmu, rsd] = meanSd(tg.rule, sub);
+  const m = ridge(zRows(DS, sub, P, k), Float64Array.from(sub, i => tg.yr[i]), sub.length, p, best.lam);
+  const pr = predict(DS, sub, P, m.w, m.b, k), [mmu, msd] = meanSd(pr, sub), [rmu, rsd] = meanSd(tg.rule, sub);
   // calibration: quantiles of the blended raw value → the same quantiles of the current app score (lists keep their size)
   const raw = [], base = [];
   for (const i of sub) { raw.push(best.blend * (pr[i] - mmu) / msd + (1 - best.blend) * (tg.rule[i] - rmu) / rsd); base.push(tg.base[i]); }
@@ -303,21 +363,28 @@ function fitModel(DS, train, tg, h, opt = {}) {
   const r6 = x => +x.toFixed(6);
   const L = { features: P.map(c => c.k), weights: m.w.map(r6), intercept: r6(m.b), mu: P.map(c => r6(c.mu)), sd: P.map(c => r6(c.sd)), lo: P.map(c => r6(c.lo)), hi: P.map(c => r6(c.hi)),
     mmu: r6(mmu), msd: r6(msd), rmu: r6(rmu), rsd: r6(rsd), blend: best.blend, cal: { x: cx, y: cy }, lambda: best.lam };
+  if (k > 1) L.smooth = k; // absent = single bar (backward compatible)
   return { L, P, diag: { lam: best.lam, innerIC: best.ic, blend: best.blend, blendIC: best.blendIC, nTrain: sub.length, nFeat: p } };
 }
-// score rows with an engine-format model — exactly E.linScore's math
-function scoreRows(DS, rows, L, rule) {
-  const cols = L.features.map(k => DS.names.indexOf(k)), out = new Float64Array(DS.N).fill(NaN);
+// score rows with an engine-format model — exactly E.linScore's math (same expression order). lag0 = 1 scores every row as of its
+// previous bar (rule must then be the previous bar's rule score). Smoothed models (L.smooth = k) average the raw output over lags
+// lag0 … lag0+k−1, like the engine over frames [F(i), F(i−1), …].
+function scoreRows(DS, rows, L, rule, lag0 = 0) {
+  const cols = L.features.map(k => DS.names.indexOf(k)), out = new Float64Array(DS.N).fill(NaN), k = E.linK(L), Xs = Array.from({ length: k }, (_, t) => xAt(DS, lag0 + t));
   for (const i of rows) {
-    let s = L.intercept || 0; for (let q = 0; q < cols.length; q++) s += L.weights[q] * E.zFeat(L.features[q], cols[q] >= 0 ? DS.X[i * DS.NF + cols[q]] : NaN, L.lo[q], L.hi[q], L.mu[q], L.sd[q]);
-    const raw = L.blend * (s - L.mmu) / L.msd + (1 - L.blend) * (rule[i] - L.rmu) / L.rsd;
+    let acc = 0;
+    for (let t = 0; t < k; t++) { const X = Xs[t]; let s = L.intercept || 0; for (let q = 0; q < cols.length; q++) s += L.weights[q] * E.zFeat(L.features[q], cols[q] >= 0 ? X[i * DS.NF + cols[q]] : NaN, L.lo[q], L.hi[q], L.mu[q], L.sd[q]); acc += s; }
+    const m = (acc / k - L.mmu) / L.msd, r = (rule[i] - L.rmu) / L.rsd, raw = L.blend * m + (1 - L.blend) * r;
     out[i] = Math.round(Math.max(0, Math.min(100, E.calMap(L.cal, raw))));
   }
   return out;
 }
-function parity(DS, L, rule, rows, fn) { // engine E.linScore on reconstructed feature objects == research scoring
-  const sc = scoreRows(DS, rows, L, rule); let bad = 0;
-  for (const i of rows) { const F = {}; DS.names.forEach((k, j) => { const v = DS.X[i * DS.NF + j]; F[k] = v; }); if ((fn || E.linScore)(L, F, rule[i]) !== sc[i]) bad++; }
+function parity(DS, L, rule, rows, lag0 = 0) { // engine E.linScore on reconstructed feature objects (frames for smoothed models) == research scoring
+  const sc = scoreRows(DS, rows, L, rule, lag0), k = E.linK(L); let bad = 0;
+  for (const i of rows) {
+    const Fs = []; for (let t = 0; t < k; t++) { const X = xAt(DS, lag0 + t), F = {}; DS.names.forEach((nm, j) => { F[nm] = X[i * DS.NF + j]; }); Fs.push(F); }
+    if (E.linScore(L, k === 1 ? Fs[0] : Fs, rule[i]) !== sc[i]) bad++;
+  }
   return bad;
 }
 
@@ -364,12 +431,14 @@ async function main() {
   log(`Folds (embargo = horizon): F1 train < ${fmtDay(s1)} → test ≥ ${fmtDay(s1)} · F2 train < ${fmtDay(s2)} → test ≥ ${fmtDay(s2)} · stock split: F1 years, train on one half of the stocks, test on the other half`);
 
   const adopted = {}, newLin = {}, newTh = {}, summary = {};
+  log(`Stability variants for ${[...VHZ].join(', ') || '(none)'}: ${VARIANTS.map(v => v.name).join(', ')} · previous bars recorded per row: ${C.NLAG}`);
   const featRows = []; // per feature IC summary
   for (const hz of HZS) {
     const h = HZ[hz], hi = HZS.indexOf(hz);
     const T = { ret: Float32Array.from(DS.rows, r => r.y[hi * 4]), atr: Float32Array.from(DS.rows, r => r.y[hi * 4 + 1]), hit: Float32Array.from(DS.rows, r => r.y[hi * 4 + 2]), trade: Float32Array.from(DS.rows, r => r.y[hi * 4 + 3]) };
     T.hit = T.hit.map((x, i) => ok(T.ret[i]) ? x : NaN);
-    const tg = { y: T.atr, yr: dayRank(DS, T.atr), retY: T.ret, T, rule: Float32Array.from(DS.rows, r => r.rule[hi]), base: Float32Array.from(DS.rows, r => r.base[hi]), exclude: new Set() };
+    const tg = { y: T.atr, yr: dayRank(DS, T.atr), retY: T.ret, T, rule: Float32Array.from(DS.rows, r => r.rule[hi]), base: Float32Array.from(DS.rows, r => r.base[hi]), exclude: new Set(),
+      rule1: Float32Array.from(DS.rows, r => r.rule1[hi]), base1: Float32Array.from(DS.rows, r => r.base1[hi]) };
     const all = rangeIdx(DS, i => ok(T.atr[i]));
     const F1tr = all.filter(i => DS.day[i] < s1 - h), F1te = all.filter(i => DS.day[i] >= s1), F2tr = all.filter(i => DS.day[i] < s2 - h), F2te = all.filter(i => DS.day[i] >= s2);
     const F3tr = F1tr.filter(i => half[DS.stock[i]] === 0), F3te = F1te.filter(i => half[DS.stock[i]] === 1);
@@ -380,31 +449,84 @@ async function main() {
       const fr = featRows[j] = featRows[j] || { k: DS.names[j], scope: E.featScope(DS.names[j]), hz: {} };
       fr.hz[hz] = { ic: a.ic, t: a.tAdj, stable: [b.ic, c.ic, d.ic].every(ok) && Math.sign(b.ic) === Math.sign(c.ic) && Math.sign(c.ic) === Math.sign(d.ic) };
     }
-    // folds
-    const folds = [['F1', F1tr, F1te], ['F2', F2tr, F2te], ['stock-split', F3tr, F3te]], R = {};
-    for (const [nm, tr, te] of folds) {
-      if (tr.length < 500 || te.length < 200) { log(`${nm}: not enough rows (train ${tr.length}, test ${te.length})`); continue; }
-      const fit = fitModel(DS, tr, tg, h); if (!fit) { log(`${nm}: no usable features`); continue; }
-      const sc = scoreRows(DS, te, fit.L, tg.rule), base = tg.base, rule = tg.rule;
-      const em = evalAll(DS, te, sc, tg, h, COST, liq), eb = evalAll(DS, te, base, tg, h, COST, liq);
-      const er = BASE === 'app' && Object.keys(E.MODEL.lin || {}).includes(hz) ? evalAll(DS, te, rule, tg, h, COST, liq) : null;
-      R[nm] = { fit, sc, te, em, eb, B: bands(DS, te, sc, T, COST), Bb: bands(DS, te, base, T, COST) };
-      log(`\n${nm}: train ${tr.length} rows → test ${te.length} rows · ${fit.diag.nFeat} features · lambda ${fit.diag.lam} · blend model/rule ${fit.diag.blend}/${(1 - fit.diag.blend).toFixed(2)} (inner IC ${f3(fit.diag.innerIC)})`);
-      log('  ' + line('model (OOS)', em)); log('  ' + line('current app score', eb)); if (er) log('  ' + line('rule score only', er));
+    // folds — every variant (only `base` outside VARIANT_HZ); the baselines' fold evaluations are shared
+    const folds = [['F1', F1tr, F1te], ['F2', F2tr, F2te], ['stock-split', F3tr, F3te]], VS = VHZ.has(hz) ? VARIANTS : VARIANTS.slice(0, 1), RV = {}, FE = {};
+    const champLearned = BASE === 'app' && Object.keys(E.MODEL.lin || {}).includes(hz);
+    for (const v of VS) {
+      const R = RV[v.name] = {};
+      if (v.name !== 'base') log(`\n-- variant ${v.name}: ${v.d} --`);
+      for (const [nm, tr, te] of folds) {
+        if (tr.length < 500 || te.length < 200) { if (v.name === 'base') log(`${nm}: not enough rows (train ${tr.length}, test ${te.length})`); continue; }
+        const fit = fitModel(DS, tr, tg, h, { k: v.k, excl: v.excl, shrink: v.shrink }); if (!fit) { log(`${nm} [${v.name}]: no usable features`); continue; }
+        const fe = FE[nm] = FE[nm] || { eb: evalAll(DS, te, tg.base, tg, h, COST, liq), er: champLearned || VHZ.has(hz) ? evalAll(DS, te, tg.rule, tg, h, COST, liq) : null,
+          Bb: bands(DS, te, tg.base, T, COST), stR: stab(te, tg.rule, tg.rule1), stB: stab(te, tg.base, tg.base1) };
+        const sc = scoreRows(DS, te, fit.L, tg.rule), sc1 = scoreRows(DS, te, fit.L, tg.rule1, 1);
+        const em = evalAll(DS, te, sc, tg, h, COST, liq);
+        R[nm] = { fit, sc, te, em, eb: fe.eb, er: fe.er, st: stab(te, sc, sc1), B: bands(DS, te, sc, T, COST), Bb: fe.Bb, stR: fe.stR, stB: fe.stB };
+        if (v.name === 'base') {
+          log(`\n${nm}: train ${tr.length} rows → test ${te.length} rows · ${fit.diag.nFeat} features · lambda ${fit.diag.lam} · blend model/rule ${fit.diag.blend}/${(1 - fit.diag.blend).toFixed(2)} (inner IC ${f3(fit.diag.innerIC)})`);
+          log('  ' + line('model (OOS)', R[nm].em)); log('  ' + line('current app score', fe.eb)); if (fe.er) log('  ' + line('rule score only', fe.er));
+        } else log('  ' + line(`${nm} ${fit.diag.nFeat}f b${fit.diag.blend}`, em));
+      }
     }
+    let R = RV.base;
     if (!R.F1 || !R.F2) { log(`${hz}: folds incomplete — not adopted.`); summary[hz] = { adopted: false, reason: 'folds incomplete' }; continue; }
-    const gate = ['F1', 'F2'].map(f => ({ f, ic: R[f].em.ic.ic > R[f].eb.ic.ic + MIN_IC_GAIN && R[f].em.ic.ic > 0, top: R[f].em.p.top.ac > R[f].eb.p.top.ac }));
-    const sig = R.F1.em.ic.tAdj >= MIN_T, pass = gate.every(g => g.ic && g.top) && sig;
-    log(`\nGATE ${hz}: ${gate.map(g => `${g.f} IC ${g.ic ? 'beats' : 'does NOT beat'} baseline, top-decile after cost ${g.top ? 'beats' : 'does NOT beat'}`).join(' · ')} · F1 OOS t ${ok(R.F1.em.ic.tAdj) ? R.F1.em.ic.tAdj.toFixed(1) : 'n/a'} ${sig ? '≥' : '<'} ${MIN_T} → ${pass ? 'PASS' : 'FAIL'}${!pass && FORCE ? ' (RESEARCH_FORCE: writing anyway — testing only)' : ''}`);
+    let pass, vPick = VARIANTS[0];
+    if (!VHZ.has(hz)) {
+      const gate = ['F1', 'F2'].map(f => ({ f, ic: R[f].em.ic.ic > R[f].eb.ic.ic + MIN_IC_GAIN && R[f].em.ic.ic > 0, top: R[f].em.p.top.ac > R[f].eb.p.top.ac }));
+      const sig = R.F1.em.ic.tAdj >= MIN_T; pass = gate.every(g => g.ic && g.top) && sig;
+      log(`\nGATE ${hz}: ${gate.map(g => `${g.f} IC ${g.ic ? 'beats' : 'does NOT beat'} baseline, top-decile after cost ${g.top ? 'beats' : 'does NOT beat'}`).join(' · ')} · F1 OOS t ${ok(R.F1.em.ic.tAdj) ? R.F1.em.ic.tAdj.toFixed(1) : 'n/a'} ${sig ? '≥' : '<'} ${MIN_T} → ${pass ? 'PASS' : 'FAIL'}${!pass && FORCE ? ' (RESEARCH_FORCE: writing anyway — testing only)' : ''}`);
+    } else {
+      // stability selection: eligible = beats the RULE score in both folds (IC + MIN_IC_GAIN, top decile after cost; F1 t ≥ MIN_T) and is
+      // not materially worse than the base variant (IC ≥ IC_TOL × base, top decile ≥ base − TOP_TOL) → the most stable eligible one
+      const ref = RV.base, el = {}; let parBad = 0, parN = 0;
+      for (const v of VS) {
+        const Rv = RV[v.name], why = [];
+        if (!Rv.F1 || !Rv.F2) why.push('folds incomplete');
+        else {
+          for (const f of ['F1', 'F2']) {
+            const m = Rv[f].em, r = Rv[f].er, b = ref[f].em;
+            if (!(m.ic.ic > r.ic.ic + MIN_IC_GAIN && m.ic.ic > 0)) why.push(`${f} IC ≤ rule`);
+            if (!(m.p.top.ac > r.p.top.ac)) why.push(`${f} top ≤ rule`);
+            if (!(m.ic.ic >= b.ic.ic - Math.abs(b.ic.ic) * (1 - IC_TOL))) why.push(`${f} IC < ${IC_TOL}×base`);
+            if (!(m.p.top.ac >= b.p.top.ac - TOP_TOL)) why.push(`${f} top < base−${TOP_TOL}`);
+          }
+          if (!(Rv.F1.em.ic.tAdj >= MIN_T)) why.push(`F1 t < ${MIN_T}`);
+          // engine parity on the smoothed path too: this variant's F2 model, scored at bar n and at bar n−1
+          const smp = Rv.F2.te.filter((_, q) => q % Math.max(1, Math.floor(Rv.F2.te.length / 150)) === 0), bad = parity(DS, Rv.F2.fit.L, tg.rule, smp) + parity(DS, Rv.F2.fit.L, tg.rule1, smp, 1);
+          parBad += bad; parN += 2 * smp.length; if (bad) why.push(`PARITY ${bad} MISMATCHES`);
+        }
+        el[v.name] = { ok: !why.length, why, ins: Rv.F1 && Rv.F2 ? (Rv.F1.st.mean + Rv.F2.st.mean) / 2 : Infinity, minIC: Rv.F1 && Rv.F2 ? Math.min(Rv.F1.em.ic.ic, Rv.F2.em.ic.ic) : -Infinity };
+      }
+      const okV = VS.filter(v => el[v.name].ok).sort((a, b) => (Math.abs(el[a.name].ins - el[b.name].ins) < 0.05 ? el[b.name].minIC - el[a.name].minIC : el[a.name].ins - el[b.name].ins));
+      pass = okV.length > 0; if (pass) { vPick = okV[0]; R = RV[vPick.name]; }
+      else if (FORCE && ENV.RESEARCH_FORCE_VARIANT && RV[ENV.RESEARCH_FORCE_VARIANT] && RV[ENV.RESEARCH_FORCE_VARIANT].F2) { vPick = VS.find(v => v.name === ENV.RESEARCH_FORCE_VARIANT); R = RV[vPick.name]; } // testing only
+      // STABILITY table (report section + per-horizon copy)
+      const sl = x => x ? `${lpad(x.mean.toFixed(1), 5)} ${lpad(x.med.toFixed(0), 3)} ${lpad(x.p90.toFixed(0), 3)} ${lpad(pc(x.gt10), 4)}` : lpad('n/a', 20);
+      const S = [`STABILITY ${hz} — |score(bar n) − score(bar n−1)|, same stock, OOS test rows (= the drop-last-bar test): mean med p90 %>10pts · F1 test | F2 test · OOS IC and top-decile after cost F1 / F2`,
+        `   ${pad('variant', 11)} ${pad('k', 2)} ${pad('F1: mean med p90 >10', 21)} | ${pad('F2: mean med p90 >10', 21)} | ${pad('IC F1 / F2', 16)} | ${pad('top10% a.c. F1 / F2', 19)} | verdict`,
+        `   ${pad('rule score', 11)} ${pad('-', 2)} ${sl(ref.F1.stR)} | ${sl(ref.F2.stR)} | ${f3(ref.F1.er.ic.ic)} / ${f3(ref.F2.er.ic.ic)} | ${f2(ref.F1.er.p.top.ac)}% / ${f2(ref.F2.er.p.top.ac)}% | reference`,
+        `   ${pad('current app', 11)} ${pad(String(E.linK((E.MODEL.lin || {})[hz])), 2)} ${sl(ref.F1.stB)} | ${sl(ref.F2.stB)} | ${f3(ref.F1.eb.ic.ic)} / ${f3(ref.F2.eb.ic.ic)} | ${f2(ref.F1.eb.p.top.ac)}% / ${f2(ref.F2.eb.p.top.ac)}% | ${champLearned ? 'learned champion: fitted on ALL rows last run, so in-sample on these test years — shown, not gated on' : 'baseline = rule'}`];
+      for (const v of VS) {
+        const Rv = RV[v.name], e = el[v.name]; if (!Rv.F1 || !Rv.F2) { S.push(`   ${pad(v.name, 11)} folds incomplete`); continue; }
+        S.push(`   ${pad(v.name, 11)} ${pad(String(v.k), 2)} ${sl(Rv.F1.st)} | ${sl(Rv.F2.st)} | ${f3(Rv.F1.em.ic.ic)} / ${f3(Rv.F2.em.ic.ic)} | ${f2(Rv.F1.em.p.top.ac)}% / ${f2(Rv.F2.em.p.top.ac)}% | ${v === vPick && pass ? 'ADOPT' : e.ok ? 'eligible' : 'no: ' + e.why.join(', ')}`);
+      }
+      S.push(`   tolerance: IC ≥ ${IC_TOL}× base and top-decile after cost ≥ base − ${TOP_TOL}%-pts in both folds, and beat the rule score in both folds (F1 t ≥ ${MIN_T}); pick = lowest mean day-over-day change (F1+F2)`);
+      S.push(`   engine parity (E.linScore vs research, every variant's F2 model, bar n and bar n−1): ${parN} rows, ${parBad ? parBad + ' MISMATCHES' : 'all match'}`);
+      S.push(`   → ${pass ? `${vPick.name} (${vPick.d})` : 'no variant qualifies — keep current'}`);
+      S.forEach(x => log(x)); STAB.push('', ...S);
+      summary[hz + '_el'] = el;
+      log(`\nGATE ${hz}: ${pass ? `PASS with variant ${vPick.name}` : 'FAIL (no variant beats the rule score in both folds within tolerance)'}${!pass && FORCE ? ' (RESEARCH_FORCE: writing anyway — testing only)' : ''}`);
+    }
     // production model: refit on all rows with features selected in both folds (fallback: F2's)
     const s1f = new Set(R.F1.fit.L.features), both = R.F2.fit.L.features.filter(k => s1f.has(k));
     const cols = (both.length >= 3 ? both : R.F2.fit.L.features).map(k => DS.names.indexOf(k));
-    const prod = fitModel(DS, all, tg, h, { cols });
+    const prod = fitModel(DS, all, tg, h, { cols, k: vPick.k });
     prod.L.blend = R.F2.fit.L.blend; // blend from the inner validation of the most recent fold; refit cal with it
-    { const pr = predict(DS, all, prod.P, prod.L.weights, prod.L.intercept), raw = [], base = []; for (const i of all) { raw.push(prod.L.blend * (pr[i] - prod.L.mmu) / prod.L.msd + (1 - prod.L.blend) * (tg.rule[i] - prod.L.rmu) / prod.L.rsd); base.push(tg.base[i]); }
+    { const pr = predict(DS, all, prod.P, prod.L.weights, prod.L.intercept, vPick.k), raw = [], base = []; for (const i of all) { raw.push(prod.L.blend * (pr[i] - prod.L.mmu) / prod.L.msd + (1 - prod.L.blend) * (tg.rule[i] - prod.L.rmu) / prod.L.rsd); base.push(tg.base[i]); }
       raw.sort((a, b) => a - b); base.sort((a, b) => a - b); const Q = Array.from({ length: 41 }, (_, k) => k / 40); prod.L.cal = { x: Q.map(q => +quantile(raw, q).toFixed(5)), y: Q.map(q => +quantile(base, q).toFixed(2)) };
       for (let k = 1; k < 41; k++) { if (prod.L.cal.x[k] < prod.L.cal.x[k - 1]) prod.L.cal.x[k] = prod.L.cal.x[k - 1]; if (prod.L.cal.y[k] < prod.L.cal.y[k - 1]) prod.L.cal.y[k] = prod.L.cal.y[k - 1]; } }
-    log(`\nProduction weights (${hz}${pass ? '' : ', NOT adopted'}; refit on all rows; effect of +1 sd of the feature on the model, in model sd; + = bullish):`);
+    log(`\nProduction weights (${hz}${VHZ.has(hz) ? ` · variant ${vPick.name}${vPick.k > 1 ? `, score = mean over ${vPick.k} bars` : ''}` : ''}${pass ? '' : ', NOT adopted'}; refit on all rows; effect of +1 sd of the feature on the model, in model sd; + = bullish):`);
     prod.L.features.map((k, q) => [k, prod.L.weights[q] / prod.L.msd]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).forEach(([k, w]) => log(`   ${f3(w)}  ${pad(k, 44)} ${E.featScope(k) === 'stock' ? '' : '[' + E.featScope(k) + ']'} ${(E.FEATS.find(q => q.k === k) || {}).lbl || ''}`));
     log(`   intercept ${f3(prod.L.intercept)} · blend ${prod.L.blend} model / ${(1 - prod.L.blend).toFixed(2)} rule score · lambda ${prod.L.lambda}`);
     // bands → thresholds (on each fold's own OOS model scores; the score scale is the same calibrated 0–100 scale)
@@ -424,10 +546,16 @@ async function main() {
       const a = portStats(DS, up, R.F1.sc, T, COST, liq), b = portStats(DS, dn, R.F1.sc, T, COST, liq);
       log(`Regime (F1 test, model top decile after cost): Nifty above 200 EMA ${f2(a.top.ac)}% (${a.top.days} days, universe ${f2(a.all.ac)}%) · below ${f2(b.top.ac)}% (${b.top.days} days, universe ${f2(b.all.ac)}%)`); }
     // engine parity: the app's E.linScore gives the same number research measured
-    const sample = all.filter((_, k) => k % Math.max(1, Math.floor(all.length / 300)) === 0), bad = parity(DS, prod.L, tg.rule, sample);
-    log(`Engine parity check (E.linScore vs research scoring, ${sample.length} rows): ${bad ? bad + ' MISMATCHES' : 'all match'}`);
+    const sample = all.filter((_, k) => k % Math.max(1, Math.floor(all.length / 300)) === 0), bad = parity(DS, prod.L, tg.rule, sample) + parity(DS, prod.L, tg.rule1, sample, 1);
+    log(`Engine parity check (E.linScore vs research scoring, ${sample.length} rows at bar n + ${sample.length} at bar n−1${E.linK(prod.L) > 1 ? `, ${E.linK(prod.L)}-bar smoothing` : ''}): ${bad ? bad + ' MISMATCHES' : 'all match'}`);
+    const stP = stab(all, scoreRows(DS, all, prod.L, tg.rule), scoreRows(DS, all, prod.L, tg.rule1, 1));
+    if (VHZ.has(hz)) STAB.push(`   production model (${vPick.name}, refit on all rows — in-sample): day-over-day mean ${stP.mean.toFixed(1)} · median ${stP.med.toFixed(0)} · p90 ${stP.p90.toFixed(0)} · max ${stP.max.toFixed(0)} · >10pts ${pc(stP.gt10)} · parity ${bad ? bad + ' MISMATCHES' : 'all match'}`);
     const oos = k => ({ ic: +R[k].em.ic.ic.toFixed(4), icBase: +R[k].eb.ic.ic.toFixed(4), top: +R[k].em.p.top.ac.toFixed(3), topBase: +R[k].eb.p.top.ac.toFixed(3), hit: +(R[k].em.p.top.hit || 0).toFixed(3), t10: +(R[k].em.p.t10.ac || 0).toFixed(3) });
+    const el = summary[hz + '_el']; delete summary[hz + '_el'];
+    const st2 = x => ({ mean: +x.mean.toFixed(2), p90: +x.p90.toFixed(1) });
     summary[hz] = { adopted: pass, oos: { f1: oos('F1'), f2: oos('F2'), stock: R['stock-split'] ? oos('stock-split') : null }, thresholds: th };
+    if (VHZ.has(hz)) Object.assign(summary[hz], { variant: vPick.name, smooth: vPick.k, stab: { f1: st2(R.F1.st), f2: st2(R.F2.st), baseF1: st2(RV.base.F1.st), baseF2: st2(RV.base.F2.st), ruleF1: st2(R.F1.stR), prod: st2(stP) },
+      why: pass ? `most stable of ${Object.values(el).filter(e => e.ok).length} eligible variant(s)` : 'none eligible: ' + Object.entries(el).map(([k, e]) => `${k} (${e.why.join(', ')})`).join('; ') });
     if ((pass || FORCE) && !bad) {
       const L = Object.assign(prod.L, { scope: [...new Set(prod.L.features.map(E.featScope))], target: `${h}d forward return in ATRs (per-day rank)`, days: h, date: new Date().toISOString().slice(0, 10),
         calib: calibBins(DS, F1te, R.F1.sc, T), oos: summary[hz].oos });
@@ -501,8 +629,9 @@ function runBtst(C) {
 
 function finish(model, H, btst, C) {
   const { newLin = {}, newTh = {}, summary = {} } = H || {};
+  if (STAB.length) { log(`\n==================== STABILITY ====================`); STAB.forEach(x => log(x)); }
   log(`\n==================== DECISION ====================`);
-  for (const hz of HZS) { const s = summary[hz]; log(`${pad(hz, 7)} ${s ? (s.adopted ? 'ADOPT learned model' : newLin[hz] ? 'FORCED write (gate FAILED; RESEARCH_FORCE testing only)' : 'keep current') + (s.oos ? ` · OOS IC F1 ${f3(s.oos.f1.ic)} vs ${f3(s.oos.f1.icBase)} · F2 ${f3(s.oos.f2.ic)} vs ${f3(s.oos.f2.icBase)} · top-decile after cost F1 ${f2(s.oos.f1.top)}% vs ${f2(s.oos.f1.topBase)}% · F2 ${f2(s.oos.f2.top)}% vs ${f2(s.oos.f2.topBase)}%` : '') + (newTh[hz] ? ` · cut-offs BUY ≥ ${newTh[hz].buy} SELL ≤ ${newTh[hz].sell}` : newLin[hz] ? ' · no qualifying cut-offs → 58/42' : '') : 'no result'}`); }
+  for (const hz of HZS) { const s = summary[hz]; log(`${pad(hz, 7)} ${s ? (s.adopted ? 'ADOPT learned model' : newLin[hz] ? 'FORCED write (gate FAILED; RESEARCH_FORCE testing only)' : 'keep current') + (s.oos ? ` · OOS IC F1 ${f3(s.oos.f1.ic)} vs ${f3(s.oos.f1.icBase)} · F2 ${f3(s.oos.f2.ic)} vs ${f3(s.oos.f2.icBase)} · top-decile after cost F1 ${f2(s.oos.f1.top)}% vs ${f2(s.oos.f1.topBase)}% · F2 ${f2(s.oos.f2.top)}% vs ${f2(s.oos.f2.topBase)}%` : '') + (newTh[hz] ? ` · cut-offs BUY ≥ ${newTh[hz].buy} SELL ≤ ${newTh[hz].sell}` : newLin[hz] ? ' · no qualifying cut-offs → 58/42' : '') + (s.variant ? ` · variant ${s.variant}${s.smooth > 1 ? ` (smooth=${s.smooth})` : ''}: day-over-day mean |Δ| F1 ${s.stab.f1.mean} / F2 ${s.stab.f2.mean} (p90 ${s.stab.f1.p90} / ${s.stab.f2.p90}) vs base ${s.stab.baseF1.mean} / ${s.stab.baseF2.mean} (p90 ${s.stab.baseF1.p90} / ${s.stab.baseF2.p90}) · why: ${s.why}` : '') : 'no result'}`); }
   log(`btst    ${btst && btst.L ? `ADOPT (${btst.L.target} target, exit: ${btst.L.exit.rule}, ${f3(btst.L.exit.afterCost)}% per trade after cost OOS worst fold)` : 'keep current'}`);
   log(`runtime ${((Date.now() - T0) / 60e3).toFixed(1)} min · memory ${(process.memoryUsage().rss / 1e6).toFixed(0)} MB rss`);
   if (DRY) { log('RESEARCH_DRY: nothing written.'); return writeReport(); }
@@ -526,4 +655,4 @@ function finish(model, H, btst, C) {
 function writeReport() { if (DRY) return; fs.mkdirSync(path.dirname(REPORT), { recursive: true }); fs.writeFileSync(REPORT, LOG.join('\n') + '\n'); }
 
 if (require.main === module) main().catch(e => { console.error(e); process.exitCode = 1; });
-module.exports = { cholSolve, ridge, gram, ridgeG, spearman, rankArr, pearson, icStats, pickThresholds, quantile };
+module.exports = { cholSolve, ridge, gram, ridgeG, spearman, rankArr, pearson, icStats, pickThresholds, quantile, stab };
