@@ -22,6 +22,11 @@
 //     the most-stable blend whose inner-split IC ≥ STAB_IC_TOL × the best blend's). Adopted = the most stable variant that, in BOTH
 //     time folds, beats the rule score (IC + MIN_IC_GAIN and top-decile after cost; F1 t ≥ MIN_T) AND keeps ≥ STAB_IC_TOL of the base
 //     variant's OOS IC and a top-decile after cost within STAB_TOP_TOL %-points of it. Printed in the STABILITY section + DECISION.
+//  9. CONVICTION (🎯): per daily horizon, a small pre-declared grid of selection rules (app score ≥ 58 / top 10·5·2 % cut, + ≤ 2 of
+//     neighbour agreement, trend stack, Nifty > 200 EMA, liquidity, not overextended) is searched on each fold's TRAIN rows (max lower
+//     95% bound of the T1-before-stop hit rate; n ≥ CONV_MIN_N de-duplicated signals; avg after-cost trade > 0) and measured on its TEST
+//     rows. Writes model.json research.conviction[hz] = {rule, test, folds} only if the rule beat plain BUY ≥ 58 on hit AND after-cost
+//     average in BOTH test folds, else {off, why}. The phone evaluates the same spec with E.conviction (parity checked here).
 //
 // env: RESEARCH_SYMS (comma list, overrides the universe), UNIVERSE_MAX (cap stocks), STEP (3), BTST_STEP (2), CONC (10), BUDGET_MIN (18: stop fetching new stocks after this),
 //      COST (0.30 % round trip, multi-day delivery), BTST_COST (0.25), RESEARCH_SCOPE ('stock' | 'stock,mkt' | 'stock,mkt,xs'),
@@ -29,7 +34,7 @@
 //      RESEARCH_BASELINE ('app' = current model.json score, or 'rule'), RESEARCH_FORCE=1 (testing: write even if the gate fails),
 //      RESEARCH_DRY=1 (don't write files), MODEL_PATH / REPORT_PATH (testing), YF_CACHE (/tmp/yfcache),
 //      VARIANTS ('base,S3,S5,FS,FS+S3,shrink,S3+shrink'), VARIANT_HZ ('swing,short'), STAB_IC_TOL (0.9), STAB_TOP_TOL (0.10 %-points),
-//      RESEARCH_FORCE_VARIANT (testing, with RESEARCH_FORCE: write this variant when none qualifies).
+//      RESEARCH_FORCE_VARIANT (testing, with RESEARCH_FORCE: write this variant when none qualifies), CONV_MIN_N (150: min train signals per conviction rule).
 // Dev run without Yahoo: YF_CACHE=/tmp/yfstub RESEARCH_SYMS=A,B,… RESEARCH_DRY=1 node -r ./tools/fno_stub.js tools/research.js
 const fs = require('fs'), path = require('path');
 const E = require('../www/engine.js');
@@ -182,7 +187,7 @@ async function collect() {
         const x = new Float32Array(128).fill(NaN);
         for (const [k, v] of Object.entries(F)) { const j = colOf(H, k); if (j >= 128) throw new Error('too many features'); x[j] = v; }
         const xl = Fs.slice(1).map(Ft => { const a = new Float32Array(128).fill(NaN); for (const [k, v] of Object.entries(Ft)) { const j = colOf(H, k); if (j >= 128) throw new Error('too many features'); a[j] = v; } return a; });
-        H.rows.push({ d: g, s: si, x, xl, rule, rule1, base, base1, y });
+        H.rows.push({ d: g, s: si, x, xl, rule, rule1, base, base1, y, cv: convRec(D, I, i) });
       }
       if (g % BSTEP === 0) {
         const ctx = { frac: 1, nifChg: nifChg.get(dayKey(D.t[i])) };
@@ -197,6 +202,9 @@ async function collect() {
   });
   return { H, B, stocks, grid, idxOk: !!idx, skipped, budgetHit, src: U0.src, want: syms.length, NLAG };
 }
+
+// raw values the CONVICTION rules read — exactly the scan-row fields E.quick / analyze emit (price, e20, e50, e200, atr, rsi, turnover)
+function convRec(D, I, i) { let s = 0, m = 0; for (let j = Math.max(0, i - 19); j <= i; j++) { s += D.c[j] * (D.v[j] || 0); m++; } return Float64Array.of(D.c[i], I.e20[i], I.e50[i], I.e200[i], I.atr[i], I.rsi[i], s / m); }
 
 // add cross-sectional features (per day): momentum ranks, RS rank, sector momentum + its rank, breadth
 function addXS(H, stocks) {
@@ -430,7 +438,7 @@ async function main() {
   const fmtDay = g => { const d = C.grid[g]; return d != null ? new Date(d * 86400e3).toISOString().slice(0, 10) : '?'; };
   log(`Folds (embargo = horizon): F1 train < ${fmtDay(s1)} → test ≥ ${fmtDay(s1)} · F2 train < ${fmtDay(s2)} → test ≥ ${fmtDay(s2)} · stock split: F1 years, train on one half of the stocks, test on the other half`);
 
-  const adopted = {}, newLin = {}, newTh = {}, summary = {};
+  const adopted = {}, newLin = {}, newTh = {}, summary = {}, CV = {}; // CV: per-horizon inputs of the CONVICTION section
   log(`Stability variants for ${[...VHZ].join(', ') || '(none)'}: ${VARIANTS.map(v => v.name).join(', ')} · previous bars recorded per row: ${C.NLAG}`);
   const featRows = []; // per feature IC summary
   for (const hz of HZS) {
@@ -442,6 +450,7 @@ async function main() {
     const all = rangeIdx(DS, i => ok(T.atr[i]));
     const F1tr = all.filter(i => DS.day[i] < s1 - h), F1te = all.filter(i => DS.day[i] >= s1), F2tr = all.filter(i => DS.day[i] < s2 - h), F2te = all.filter(i => DS.day[i] >= s2);
     const F3tr = F1tr.filter(i => half[DS.stock[i]] === 0), F3te = F1te.filter(i => half[DS.stock[i]] === 1);
+    CV[hz] = { h, T, rule: tg.rule, base: tg.base, all, folds: { F1: [F1tr, F1te], F2: [F2tr, F2te] }, adopted: false };
     log(`\n==================== ${hz.toUpperCase()} · ${h} trading days · ${all.length} rows ====================`);
     // feature IC table rows (full sample + fold stability)
     for (let j = 0; j < DS.NF; j++) {
@@ -559,7 +568,7 @@ async function main() {
     if ((pass || FORCE) && !bad) {
       const L = Object.assign(prod.L, { scope: [...new Set(prod.L.features.map(E.featScope))], target: `${h}d forward return in ATRs (per-day rank)`, days: h, date: new Date().toISOString().slice(0, 10),
         calib: calibBins(DS, F1te, R.F1.sc, T), oos: summary[hz].oos });
-      newLin[hz] = L; adopted[hz] = true;
+      newLin[hz] = L; adopted[hz] = true; Object.assign(CV[hz], { adopted: true, L: { F1: R.F1.fit.L, F2: R.F2.fit.L }, prodL: L });
       if (th.buy != null && th.sell != null && th.buy > th.sell + 4) newTh[hz] = { buy: th.buy, sell: th.sell, sbuy: Math.min(95, Math.max(th.buy + 8, CUTS.find(c => c >= th.buy + 8) || th.buy + 10)), ssell: Math.max(5, th.sell - 10) };
     }
   }
@@ -568,9 +577,173 @@ async function main() {
   log(`${pad('feature', 46)} ${HZS.map(h => lpad(h, 16)).join('')}   (✓ = same sign in F1-train, F1-test, F2-test; t overlap-adjusted)`);
   for (const fr of featRows.filter(Boolean)) log(`${pad(fr.k.slice(0, 44) + (fr.scope === 'stock' ? '' : ' [' + fr.scope + ']'), 46)} ${HZS.map(h => { const x = fr.hz[h]; return x ? lpad(`${f3(x.ic)} ${ok(x.t) ? x.t.toFixed(1) : ''}${x.stable ? '✓' : ' '}`, 16) : lpad('', 16); }).join('')}`);
 
+  // ---------------- CONVICTION ----------------
+  const conv = conviction(DS, CV, C);
   // ---------------- BTST ----------------
   const btst = runBtst(C, liq);
-  finish(model, { newLin, newTh, adopted, summary }, btst, C);
+  finish(model, { newLin, newTh, adopted, summary, conv }, btst, C);
+}
+
+// ---------------- CONVICTION (🎯 high-conviction filter; see header §9) ----------------
+// Per daily horizon: a small PRE-DECLARED grid of selection rules (the horizon's app score ≥ BUY 58 / top 10 / 5 / 2 % cut, plus at most two
+// of: neighbour-horizon agreement, trend stack, Nifty > 200 EMA, liquidity, not overextended) is searched on the TRAIN part of each fold
+// only (objective: lower 95% bound of the T1-before-stop hit rate, subject to n ≥ CONV_MIN_N de-duplicated signals and a positive
+// after-cost trade return), then the picked rule is measured on that fold's TEST part. One signal per stock per holding period.
+const NB = { swing: ['short'], short: ['swing', 'medium'], medium: ['short', 'long'], long: ['medium'] };
+const AGREE_MIN = 58, BUY_MIN = 58, CONV_PCTS = [10, 5, 2], CONV_MIN_N = ENV.CONV_MIN_N != null ? +ENV.CONV_MIN_N : 150, CONV_MIN_TEST = 30, Z95 = 1.96;
+const CONV_FAMS = [ // one option per family, at most two families (+ the score condition = at most 3 conditions)
+  [{ agree: true }],
+  [{ trend: 'stack' }, { trend: 'stack20' }],
+  [{ regime: true }],
+  [{ minTurnover: 1e8 }, { minTurnover: 5e8 }],
+  [{ maxAtrE20: 3, maxRsi: 75 }],
+];
+// research's own evaluation of a rule on one row. v = {s: {hz: app score}, c (close = row price), e20, e50, e200, atr, rsi, turn (₹ 20d avg), mkt (Nifty > 200 EMA: 1/0/NaN)}
+function convRowOk(sp, hz, v) {
+  if (!(v.s[hz] >= sp.score)) return false;
+  if (sp.agree && !sp.agree.every(nb => v.s[nb] >= sp.agreeMin)) return false;
+  if (sp.trend && !(v.c > v.e50 && v.e50 > v.e200 && (sp.trend !== 'stack20' || v.e20 > v.e50))) return false;
+  if (sp.regime && v.mkt !== 1) return false;
+  if (sp.minTurnover != null && !(v.turn >= sp.minTurnover)) return false;
+  if (sp.maxAtrE20 != null && !(Math.abs(v.c - v.e20) <= sp.maxAtrE20 * v.atr)) return false;
+  if (sp.maxRsi != null && !(v.rsi < sp.maxRsi)) return false;
+  return true;
+}
+// the grid for one horizon; cuts = [{cut, pct}] (pct null = plain BUY ≥ 58)
+function convGrid(hz, cuts, hasMkt = true) {
+  const fams = CONV_FAMS.filter(f => hasMkt || !f[0].regime), combos = [];
+  const rec = (k, ch) => { combos.push(ch); if (ch.length === 2) return; for (let f = k; f < fams.length; f++) for (const o of fams[f]) rec(f + 1, [...ch, o]); };
+  rec(0, []);
+  const out = [];
+  for (const c of cuts) for (const ch of combos) { const sp = Object.assign({ score: c.cut, pct: c.pct }, ...ch); if (sp.agree) { sp.agree = NB[hz].slice(); sp.agreeMin = AGREE_MIN; } out.push(sp); }
+  return out;
+}
+const convKey = sp => [sp.pct || 'buy', sp.agree ? 'agree' : '', sp.trend || '', sp.regime ? 'reg' : '', sp.minTurnover || '', sp.maxAtrE20 != null ? 'ext' : ''].join('|');
+function convDesc(sp, hz) {
+  const a = [`${hz} score ≥ ${sp.score}${sp.pct ? ` (top ${sp.pct}%)` : ' (BUY)'}`];
+  if (sp.agree) a.push(`${sp.agree.join(' & ')} ≥ ${sp.agreeMin}`);
+  if (sp.trend) a.push(sp.trend === 'stack20' ? 'close>E50>E200 & E20>E50' : 'close>E50>E200');
+  if (sp.regime) a.push('Nifty>200EMA');
+  if (sp.minTurnover != null) a.push(`turnover ≥ ₹${sp.minTurnover / 1e7} Cr`);
+  if (sp.maxAtrE20 != null) a.push(`≤${sp.maxAtrE20} ATR from E20 & RSI<${sp.maxRsi}`);
+  return a.join(' + ');
+}
+// one signal per stock per holding period: rows in day order; a row is kept only if the stock's last KEPT signal is ≥ h grid days earlier
+function convDedup(day, stock, idx, h) { const last = new Map(), out = []; for (const i of idx) { const l = last.get(stock[i]); if (l == null || day[i] >= l + h) { out.push(i); last.set(stock[i], day[i]); } } return out; }
+// lower 95% bound of a hit rate: min(Wilson, cluster-robust normal bound with clusters = h-day blocks — signals whose windows share
+// the same market path are not independent). Returns {lo, G (clusters)}
+function hitLower(y, blk) {
+  const n = y.length; if (!n) return { lo: NaN, G: 0 };
+  const p = y.reduce((a, b) => a + b, 0) / n, z2 = Z95 * Z95;
+  const wil = (p + z2 / (2 * n) - Z95 * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n))) / (1 + z2 / n);
+  const S = new Map(); for (let k = 0; k < n; k++) S.set(blk[k], (S.get(blk[k]) || 0) + y[k] - p);
+  const G = S.size; let V = 0; for (const x of S.values()) V += x * x;
+  const seIid = Math.sqrt(p * (1 - p) / n), seCl = G >= 2 ? Math.sqrt(V * G / (G - 1)) / n : seIid;
+  return { lo: Math.max(0, Math.min(wil, p - Z95 * Math.max(seIid, seCl))), G };
+}
+function convStats(DS, sig, T, h, months) {
+  const n = sig.length; if (!n) return { n: 0 };
+  const hit = sig.map(i => T.hit[i]), tr = sig.map(i => T.trade[i] - COST).sort((a, b) => a - b), L = hitLower(hit, sig.map(i => Math.floor(DS.day[i] / h)));
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  return { n, hit: mean(hit), hitLo: L.lo, G: L.G, up: sig.filter(i => T.ret[i] > 0).length / n, avg: mean(tr), med: quantile(tr, 0.5), p5: quantile(tr, 0.05),
+    endAvg: mean(sig.map(i => T.ret[i])) - COST, perMonth: ok(months) && months > 0 ? n / months : NaN };
+}
+function conviction(DS, CV, C) {
+  const t0 = Date.now(), N = DS.N, out = {}, lines = {}, L0 = [];
+  const mj = DS.names.indexOf('mkt200'), hasMkt = mj >= 0 && DS.rows.some((_, i) => DS.X[i * DS.NF + mj] === 1);
+  L0.push(`\n==================== CONVICTION (🎯 high conviction) ====================`);
+  L0.push(`Rule grid per horizon (pre-declared): app score ≥ BUY ${BUY_MIN} / top ${CONV_PCTS.join(' / ')} % cut (score value from the TRAIN rows) + at most 2 of: neighbour horizon(s) ≥ ${AGREE_MIN} · close>E50>E200 (or also E20>E50) · ${hasMkt ? 'Nifty > 200 EMA' : '(Nifty regime unavailable — dropped)'} · 20d turnover ≥ ₹10 / ₹50 Cr · ≤3 ATR from E20 & RSI<75`);
+  L0.push(`Picked on TRAIN only: max lower-95% bound of hit = T1 before stop (app levels, E._levels), subject to n ≥ ${CONV_MIN_N} signals and avg after-cost trade > 0; then measured on TEST (same folds + embargo as above).`);
+  L0.push(`De-duplicated: one signal per stock per holding period. lo = 95% lower bound (min of Wilson and cluster-robust by holding-period blocks; G = # blocks). trade = stop/T1/time exit, after ${COST}% cost. up = % up at horizon end. /mo = signals per month in the test years (rows are sampled every ${STEP} days, so the real count is somewhat higher).`);
+  L0.push(`Score = the score the app will show: the fold's own model where this run adopts a learned model (in-sample on train, out of sample on test), else the current app score. ON only if the picked rule beats plain BUY ≥ ${BUY_MIN} on hit rate AND avg after-cost trade in BOTH test folds (and n_test ≥ ${CONV_MIN_TEST}).`);
+  // per-row raw values; scores per (hz, fold) on EVERY row (neighbour agreement needs the other horizons' scores)
+  const VB = DS.rows.map((r, i) => ({ c: r.cv[0], e20: r.cv[1], e50: r.cv[2], e200: r.cv[3], atr: r.cv[4], rsi: r.cv[5], turn: r.cv[6], mkt: mj >= 0 ? DS.X[i * DS.NF + mj] : NaN, s: null }));
+  const allN = Array.from({ length: N }, (_, i) => i), SC = {};
+  for (const hz of HZS) { const cv = CV[hz]; if (!cv) continue; SC[hz] = {}; for (const f of ['F1', 'F2']) SC[hz][f] = cv.adopted ? scoreRows(DS, allN, cv.L[f], cv.rule) : cv.base; SC[hz].P = cv.adopted ? scoreRows(DS, allN, cv.prodL, cv.rule) : cv.base; }
+  const months = sub => { if (!sub.length) return NaN; let a = Infinity, b = -Infinity; for (const i of sub) { a = Math.min(a, DS.day[i]); b = Math.max(b, DS.day[i]); } return (C.grid[b] - C.grid[a] + 1) / 30.44; };
+  const pick = (hz, sub, S, T, h) => {
+    const v = []; for (const i of sub) if (ok(S[i])) v.push(S[i]); v.sort((a, b) => a - b);
+    const cuts = [{ cut: BUY_MIN, pct: null }, ...CONV_PCTS.map(p => ({ cut: Math.ceil(quantile(v, 1 - p / 100)), pct: p }))]; // scores are integers: ≥ ceil(q) ⇔ ≥ q
+    let best = null, nOk = 0; const grid = convGrid(hz, cuts, hasMkt);
+    for (const sp of grid) {
+      const sig = convDedup(DS.day, DS.stock, sub.filter(i => convRowOk(sp, hz, VB[i])), h), st = convStats(DS, sig, T, h, NaN);
+      if (!(st.n >= CONV_MIN_N && st.avg > 0)) continue; nOk++;
+      if (!best || st.hitLo > best.st.hitLo + 1e-12 || (Math.abs(st.hitLo - best.st.hitLo) <= 1e-12 && st.n > best.st.n)) best = { sp, st };
+    }
+    return { best, nGrid: grid.length, nOk };
+  };
+  const setS = f => { for (let i = 0; i < N; i++) { const s = {}; for (const hz of HZS) s[hz] = SC[hz] ? SC[hz][f][i] : NaN; VB[i].s = s; } };
+  const res = {}; for (const hz of HZS) res[hz] = { folds: {} };
+  for (const f of ['F1', 'F2']) {
+    setS(f);
+    for (const hz of HZS) {
+      const cv = CV[hz]; if (!cv) continue; const [tr, te] = cv.folds[f], h = cv.h, T = cv.T;
+      if (tr.length < 500 || te.length < 200) { res[hz].folds[f] = { err: `not enough rows (train ${tr.length}, test ${te.length})` }; continue; }
+      const P = pick(hz, tr, SC[hz][f], T, h), mo = months(te);
+      const base = convStats(DS, convDedup(DS.day, DS.stock, te.filter(i => VB[i].s[hz] >= BUY_MIN), h), T, h, mo), allS = convStats(DS, convDedup(DS.day, DS.stock, te, h), T, h, mo);
+      if (!P.best) { res[hz].folds[f] = { err: `no rule met n ≥ ${CONV_MIN_N} and avg after-cost > 0 on train (${P.nGrid} rules)`, base, all: allS }; continue; }
+      const test = convStats(DS, convDedup(DS.day, DS.stock, te.filter(i => convRowOk(P.best.sp, hz, VB[i])), h), T, h, mo);
+      res[hz].folds[f] = { sp: P.best.sp, train: P.best.st, test, base, all: allS, nOk: P.nOk, nGrid: P.nGrid };
+    }
+  }
+  setS('P');
+  const r3 = x => ok(x) ? +x.toFixed(3) : null, r2 = x => ok(x) ? +x.toFixed(2) : null;
+  const pub = st => st && st.n ? { n: st.n, hit: r3(st.hit), hitLo: r3(st.hitLo), up: r3(st.up), avg: r2(st.avg), med: r2(st.med), p5: r2(st.p5), endAvg: r2(st.endAvg), perMonth: r2(st.perMonth), G: st.G } : { n: 0 };
+  const ruleOut = sp => { const o = { score: sp.score, pct: sp.pct }; for (const k of ['agree', 'agreeMin', 'trend', 'regime', 'minTurnover', 'maxAtrE20', 'maxRsi']) if (sp[k] != null && sp[k] !== false) o[k] = sp[k]; return o; };
+  const sl = st => st && st.n ? `${lpad(st.n, 5)} ${lpad(ok(st.perMonth) ? st.perMonth.toFixed(1) : '-', 5)} ${lpad(pc(st.hit), 4)} ${lpad(pc(st.hitLo), 4)} ${lpad(st.G, 3)} ${lpad(pc(st.up), 4)} ${lpad(f2(st.avg) + '%', 7)} ${lpad(f2(st.med) + '%', 7)} ${lpad(f2(st.p5) + '%', 8)}` : lpad('none', 5) + ' '.repeat(52);
+  for (const hz of HZS) {
+    const cv = CV[hz], R = res[hz], h = HZ[hz];
+    L0.push(`\n-- ${hz.toUpperCase()} · ${h} trading days · score source: ${cv ? (cv.adopted ? 'learned model adopted this run (fold models / production model)' : 'current app score (model.json as loaded)') : 'n/a'} --`);
+    L0.push(`   ${pad('fold', 5)} ${pad('set', 13)} ${lpad('n', 5)} ${lpad('/mo', 5)} ${lpad('hit', 4)} ${lpad('lo', 4)} ${lpad('G', 3)} ${lpad('up', 4)} ${lpad('avg', 7)} ${lpad('med', 7)} ${lpad('worst5%', 8)}   rule (picked on train)`);
+    if (!cv) { lines[hz] = `${pad(hz, 7)} 🎯 OFF · folds incomplete`; out[hz] = { off: true, why: 'folds incomplete' }; L0.push('   folds incomplete'); continue; }
+    const why = [], foldsOut = {}; let on = true;
+    for (const f of ['F1', 'F2']) {
+      const x = R.folds[f];
+      if (!x || x.err) { on = false; why.push(`${f}: ${x ? x.err : 'missing'}`); L0.push(`   ${pad(f, 5)} ${x ? x.err : 'missing'}`); if (x && x.base) { L0.push(`   ${pad(f, 5)} ${pad('BUY≥' + BUY_MIN, 13)} ${sl(x.base)}`); L0.push(`   ${pad(f, 5)} ${pad('all stocks', 13)} ${sl(x.all)}`); } continue; }
+      L0.push(`   ${pad(f, 5)} ${pad('train (pick)', 13)} ${sl(x.train)}   ${convDesc(x.sp, hz)}  [${x.nOk}/${x.nGrid} rules feasible]`);
+      L0.push(`   ${pad(f, 5)} ${pad('TEST rule', 13)} ${sl(x.test)}`);
+      L0.push(`   ${pad(f, 5)} ${pad('TEST BUY≥' + BUY_MIN, 13)} ${sl(x.base)}`);
+      L0.push(`   ${pad(f, 5)} ${pad('TEST all', 13)} ${sl(x.all)}`);
+      const bH = x.test.n && x.base.n && x.test.hit > x.base.hit, bA = x.test.n && x.base.n && x.test.avg > x.base.avg, bN = x.test.n >= CONV_MIN_TEST;
+      if (!(bH && bA && bN)) on = false;
+      why.push(`${f}: hit ${pc(x.test.hit)} vs BUY ${pc(x.base.hit)} ${bH ? '✓' : '✗'}, avg ${f2(x.test.avg)}% vs ${f2(x.base.avg)}% ${bA ? '✓' : '✗'}, n ${x.test.n || 0}${bN ? '' : ` < ${CONV_MIN_TEST} ✗`}`);
+      foldsOut[f] = { rule: ruleOut(x.sp), train: pub(x.train), test: pub(x.test), base: pub(x.base), all: pub(x.all) };
+    }
+    // production rule: the same selection procedure on ALL rows with the production score
+    const P = pick(hz, cv.all, SC[hz].P, cv.T, h);
+    if (P.best) L0.push(`   ${pad('prod', 5)} ${pad('in-sample', 13)} ${sl(P.best.st)}   ${convDesc(P.best.sp, hz)}`);
+    else { on = false; why.push(`production pick: no rule met n ≥ ${CONV_MIN_N} and avg > 0 on all rows`); }
+    const stable = P.best && ['F1', 'F2'].every(f => R.folds[f] && R.folds[f].sp && convKey(R.folds[f].sp) === convKey(P.best.sp));
+    const forced = !on && FORCE && P.best && ['F1', 'F2'].every(f => R.folds[f] && R.folds[f].test && R.folds[f].test.n); // testing only
+    if (on || forced) {
+      const worst = ['F1', 'F2'].map(f => [f, R.folds[f]]).sort((a, b) => a[1].test.hit - b[1].test.hit)[0], wt = worst[1];
+      const test = Object.assign(pub(wt.test), { baseHit: r3(wt.base.hit), baseAvg: r2(wt.base.avg), baseN: wt.base.n, allHit: r3(wt.all.hit), allAvg: r2(wt.all.avg), fold: worst[0] });
+      out[hz] = { rule: ruleOut(P.best.sp), desc: convDesc(P.best.sp, hz), test, folds: foldsOut, stable, days: h, date: new Date().toISOString().slice(0, 10),
+        note: 'test = the walk-forward fold with the lower out-of-sample hit rate; backtest on daily bars, not live results' };
+      if (forced) out[hz].forced = true;
+      lines[hz] = `${pad(hz, 7)} 🎯 ${forced ? 'FORCED (gate FAILED; RESEARCH_FORCE testing only) · ' + why.join(' · ') + ' ·' : 'ON  ·'} ${convDesc(P.best.sp, hz)} · OOS (worst fold ${worst[0]}) hit ${pc(wt.test.hit)} (lo ${pc(wt.test.hitLo)}) vs BUY≥${BUY_MIN} ${pc(wt.base.hit)} · avg ${f2(wt.test.avg)}% vs ${f2(wt.base.avg)}% · n ${wt.test.n} (${ok(wt.test.perMonth) ? wt.test.perMonth.toFixed(1) : '?'}/mo) · rule ${stable ? 'same in F1, F2 and production' : 'differs between folds/production (procedure validated, exact rule not)'}`;
+    } else {
+      out[hz] = { off: true, why: why.join(' · '), folds: foldsOut };
+      lines[hz] = `${pad(hz, 7)} 🎯 OFF · ${why.join(' · ')}`;
+    }
+    L0.push(`   DECISION ${lines[hz].replace(/^\S+\s+/, '')}`);
+    // engine parity: E.convEval (what the phone runs on a scan row, NaN → null like JSON rows) == research's rule evaluation
+    if (out[hz].rule) {
+      const sp = out[hz].rule, pos = cv.all.filter(i => convRowOk(sp, hz, VB[i])), smp = [...pos.filter((_, k) => k % Math.max(1, Math.floor(pos.length / 200)) === 0), ...cv.all.filter((_, k) => k % Math.max(1, Math.floor(cv.all.length / 400)) === 0)];
+      let bad = 0; const nn = x => ok(x) ? x : null;
+      for (const i of smp) {
+        const v = VB[i], row = { price: nn(v.c), e20: nn(v.e20), e50: nn(v.e50), e200: nn(v.e200), atr: nn(v.atr), rsi: nn(v.rsi), turnover: nn(v.turn), horizons: Object.fromEntries(HZS.map(k => [k, { score: nn(v.s[k]) }])) };
+        if (!!E.convEval(out[hz], row, hz, { niftyAbove200: v.mkt === 1 ? true : v.mkt === 0 ? false : undefined }) !== convRowOk(sp, hz, v)) bad++;
+      }
+      L0.push(`   engine parity (E.convEval on scan-row shape vs research): ${smp.length} rows (${Math.min(pos.length, smp.length)} signals), ${bad ? bad + ' MISMATCHES — conviction OFF' : 'all match'}`);
+      if (bad) { out[hz] = { off: true, why: `engine parity: ${bad} mismatches` }; lines[hz] = `${pad(hz, 7)} 🎯 OFF · engine parity ${bad} mismatches`; }
+    }
+  }
+  out.intraday = { off: true, measured: false, why: 'no historical intraday bars — nothing measured; the app may show an unmeasured agreement flag (swing 🎯 + intraday rating ≥ 75)' };
+  L0.push(`\nintraday: not measured (no historical intraday data). E.conviction(row, 'intraday') returns an agreement flag marked measured:false only.`);
+  L0.push(`conviction runtime ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  L0.forEach(x => log(x));
+  return { out, lines };
 }
 
 function runBtst(C) {
@@ -628,10 +801,11 @@ function runBtst(C) {
 }
 
 function finish(model, H, btst, C) {
-  const { newLin = {}, newTh = {}, summary = {} } = H || {};
+  const { newLin = {}, newTh = {}, summary = {}, conv = null } = H || {};
   if (STAB.length) { log(`\n==================== STABILITY ====================`); STAB.forEach(x => log(x)); }
   log(`\n==================== DECISION ====================`);
   for (const hz of HZS) { const s = summary[hz]; log(`${pad(hz, 7)} ${s ? (s.adopted ? 'ADOPT learned model' : newLin[hz] ? 'FORCED write (gate FAILED; RESEARCH_FORCE testing only)' : 'keep current') + (s.oos ? ` · OOS IC F1 ${f3(s.oos.f1.ic)} vs ${f3(s.oos.f1.icBase)} · F2 ${f3(s.oos.f2.ic)} vs ${f3(s.oos.f2.icBase)} · top-decile after cost F1 ${f2(s.oos.f1.top)}% vs ${f2(s.oos.f1.topBase)}% · F2 ${f2(s.oos.f2.top)}% vs ${f2(s.oos.f2.topBase)}%` : '') + (newTh[hz] ? ` · cut-offs BUY ≥ ${newTh[hz].buy} SELL ≤ ${newTh[hz].sell}` : newLin[hz] ? ' · no qualifying cut-offs → 58/42' : '') + (s.variant ? ` · variant ${s.variant}${s.smooth > 1 ? ` (smooth=${s.smooth})` : ''}: day-over-day mean |Δ| F1 ${s.stab.f1.mean} / F2 ${s.stab.f2.mean} (p90 ${s.stab.f1.p90} / ${s.stab.f2.p90}) vs base ${s.stab.baseF1.mean} / ${s.stab.baseF2.mean} (p90 ${s.stab.baseF1.p90} / ${s.stab.baseF2.p90}) · why: ${s.why}` : '') : 'no result'}`); }
+  if (conv) for (const hz of HZS) if (conv.lines[hz]) log(conv.lines[hz]);
   log(`btst    ${btst && btst.L ? `ADOPT (${btst.L.target} target, exit: ${btst.L.exit.rule}, ${f3(btst.L.exit.afterCost)}% per trade after cost OOS worst fold)` : 'keep current'}`);
   log(`runtime ${((Date.now() - T0) / 60e3).toFixed(1)} min · memory ${(process.memoryUsage().rss / 1e6).toFixed(0)} MB rss`);
   if (DRY) { log('RESEARCH_DRY: nothing written.'); return writeReport(); }
@@ -643,7 +817,8 @@ function finish(model, H, btst, C) {
   const out = Object.assign({}, cur);
   if (Object.keys(lin).length) out.lin = lin; if (Object.keys(th).length) out.thresholds = th;
   if (btst && btst.L) { out.btst = btst.L; changed = true; }
-  out.research = { date: new Date().toISOString().slice(0, 10), stocks: C ? C.stocks.length : 0, rows: C ? C.H.rows.length : 0, summary, btst: btst ? btst.summary : null, forced: FORCE || undefined };
+  out.research = { date: new Date().toISOString().slice(0, 10), stocks: C ? C.stocks.length : 0, rows: C ? C.H.rows.length : 0, summary, btst: btst ? btst.summary : null, forced: FORCE || undefined,
+    conviction: conv ? conv.out : undefined };
   if (changed) { out.v = (cur.v || 0) + 1; out.date = new Date().toISOString().slice(0, 10); }
   if (!E.setModel(out)) throw new Error('model.json failed validation — not written');
   for (const hz of Object.keys(out.lin || {})) if (!E.MODEL.lin[hz]) throw new Error('lin.' + hz + ' failed engine validation');
@@ -655,4 +830,4 @@ function finish(model, H, btst, C) {
 function writeReport() { if (DRY) return; fs.mkdirSync(path.dirname(REPORT), { recursive: true }); fs.writeFileSync(REPORT, LOG.join('\n') + '\n'); }
 
 if (require.main === module) main().catch(e => { console.error(e); process.exitCode = 1; });
-module.exports = { cholSolve, ridge, gram, ridgeG, spearman, rankArr, pearson, icStats, pickThresholds, quantile, stab };
+module.exports = { cholSolve, ridge, gram, ridgeG, spearman, rankArr, pearson, icStats, pickThresholds, quantile, stab, convRec, convRowOk, convGrid, convDedup, hitLower, NB };

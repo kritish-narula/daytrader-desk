@@ -993,6 +993,58 @@
     const a = action(r, hz, ctx.canShort);
     return { rating: r, action: a.a, dir: a.d, noShort: a.noShort, signal: h.score, edge: edge == null ? null : Math.round(edge), regAdj, newsAdj, bt };
   };
+  // ---------- 🎯 High conviction (model.json research.conviction, written by tools/research.js — CONVICTION section) ----------
+  // Per daily horizon a selection rule that was picked on the TRAIN years and beat the plain BUY ≥ 58 list on hit rate AND after-cost
+  // return in BOTH walk-forward test folds; horizons that failed carry {off: true, why}. The rule reads the RAW horizon score
+  // (row.horizons[hz].score — exactly what research measured), not E.hzRating's nudged rating (its news / regime / per-stock backtest
+  // parts can't be replayed on history), so a CI scan row (E.quick) and the stock page (rowFromA) give the same answer.
+  // Row fields read: horizons{hz:{score}}, price, e20, e50, e200, atr, rsi, turnover. ctx.niftyAbove200 (bool) is needed only by
+  // rules with `regime` — compute it with E.above200(niftyDailyBars, live); missing → falls back to E.CTX.idx, else no signal.
+  E.above200 = function (D, live) {
+    const c = D && D.c; if (!c) return undefined; const a = live && c.length > 201 ? c.slice(0, -1) : c; if (a.length < 201) return undefined;
+    const e = ema(a, 200), n = a.length - 1; return ok(a[n]) && ok(e[n]) ? a[n] > e[n] : undefined;
+  };
+  E.convOk = c => !!(c && !c.off && c.rule && ok(c.rule.score) && c.test && ok(c.test.hit));
+  // c = one horizon's conviction entry; returns null or the measured odds + short reasons
+  E.convEval = function (c, row, hz, ctx = {}) {
+    if (!E.convOk(c) || !row || !H[hz]) return null;
+    const R = c.rule, H2 = row.horizons || {}, sc = k => { const h = H2[k] || row[k]; return h && !h.na && ok(h.score) ? h.score : NaN; };
+    const s = sc(hz); if (!(s >= R.score)) return null;
+    const why = [`${H[hz].label} score ${s} ≥ ${R.score}${R.pct ? ` (top ${R.pct}%)` : ''}`];
+    if (Array.isArray(R.agree) && R.agree.length) {
+      const m = ok(R.agreeMin) ? R.agreeMin : 58, v = R.agree.map(k => [k, sc(k)]);
+      if (!v.every(([, x]) => x >= m)) return null;
+      why.push(v.map(([k, x]) => `${(H[k] || { label: k }).label} ${x}`).join(', ') + ` agree (≥ ${m})`);
+    }
+    const px = row.price, e20 = row.e20, e50 = row.e50, e200 = row.e200, atr = row.atr, rsi = row.rsi;
+    if (R.trend) {
+      if (!(ok(px) && ok(e50) && ok(e200) && px > e50 && e50 > e200)) return null;
+      if (R.trend === 'stack20' && !(ok(e20) && e20 > e50)) return null;
+      why.push(R.trend === 'stack20' ? 'Uptrend: price > 50 EMA > 200 EMA, 20 EMA > 50 EMA' : 'Uptrend: price > 50 EMA > 200 EMA');
+    }
+    if (R.regime) {
+      let up = ctx.niftyAbove200; if (typeof up !== 'boolean' && E.CTX.idx) up = E.above200(E.CTX.idx);
+      if (up !== true) return null; why.push('Nifty above its 200 EMA');
+    }
+    if (ok(R.minTurnover)) { if (!(ok(row.turnover) && row.turnover >= R.minTurnover)) return null; why.push(`Liquid: ₹${Math.round(row.turnover / 1e7)} Cr/day traded`); }
+    if (ok(R.maxAtrE20)) { if (!(ok(px) && ok(e20) && ok(atr) && Math.abs(px - e20) <= R.maxAtrE20 * atr)) return null; }
+    if (ok(R.maxRsi)) { if (!(ok(rsi) && rsi < R.maxRsi)) return null; }
+    if (ok(R.maxAtrE20) || ok(R.maxRsi)) why.push(`Not stretched${ok(R.maxAtrE20) ? `: ${(Math.abs(px - e20) / atr).toFixed(1)} ATR from 20 EMA` : ''}${ok(R.maxRsi) ? `, RSI ${Math.round(rsi)}` : ''}`);
+    const T = c.test;
+    return { hz, measured: true, hit: T.hit, hitLo: T.hitLo, up: T.up, avg: T.avg, med: T.med, p5: T.p5, n: T.n, perMonth: T.perMonth, baseHit: T.baseHit, baseAvg: T.baseAvg, fold: T.fold, days: c.days, why };
+  };
+  // E.conviction(row, hz, ctx, rating) — hz: swing | short | medium | long | intraday. rating (optional) is only used for 'intraday':
+  // the list's intraday E.hzRating rating (computed from row.intraday + ctx when omitted). Intraday has no historical intraday data, so
+  // it is never measured: it returns an agreement flag {measured: false} when the swing rule fires AND the intraday rating ≥ 75.
+  E.conviction = function (row, hz, ctx = {}, rating) {
+    const C = ((E.MODEL && E.MODEL.research) || {}).conviction || {};
+    if (hz !== 'intraday') return E.convEval(C[hz], row, hz, ctx);
+    const sw = E.convEval(C.swing, row, 'swing', ctx); if (!sw) return null;
+    let r = ok(rating) ? rating : NaN; if (!ok(r) && row && row.intraday) { const q = E.hzRating(row.intraday, 'intraday', ctx); r = q ? q.rating : NaN; }
+    if (!(r >= 75)) return null;
+    return { hz: 'intraday', measured: false, hit: null, hitLo: null, up: null, avg: null, n: 0, basis: sw,
+      why: [`Intraday rating ${Math.round(r)} ≥ 75`, `Swing 🎯 high conviction (measured: ${Math.round(sw.hit * 100)}% hit T1 first)`, 'Not measured for intraday — no historical intraday data'] };
+  };
   // Scan: same history + same backtests as the stock page, no intraday bars
   // ---------- Tomorrow (BTST): how well a stock is set up for a gain NEXT session, judged on today's candle near/after the close ----------
   // D: daily bars with today's (possibly still forming) candle last; intra: today's 5-min bars (optional); ctx: {nifChg, regime, frac}

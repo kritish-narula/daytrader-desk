@@ -101,6 +101,63 @@ t('E.analyze with a smoothed model = E.linScore over E.featuresAt frames (the pa
 t('stab(): day-over-day |Δ| statistics', () => {
   const s = R.stab([0, 1, 2, 3], [10, 20, 30, 40], [10, 25, 18, NaN]); assert.strictEqual(s.n, 3); near(s.mean, 17 / 3, 1e-12, 'mean'); assert.strictEqual(s.max, 12); near(s.gt10, 1 / 3, 1e-12, '>10');
 });
+// ---------------- 🎯 conviction: research's rule evaluation == E.conviction on the scan-row shape ----------------
+const ok = x => typeof x === 'number' && isFinite(x);
+const convEntry = (rule, extra) => Object.assign({ rule, test: { n: 200, hit: 0.41, hitLo: 0.35, up: 0.6, avg: 1.1, med: 0.9, p5: -4, perMonth: 6, baseHit: 0.3, baseAvg: 0.5, fold: 'F2' }, days: 10 }, extra || {});
+t('conviction parity: research convRec values = E.quick row fields, and convRowOk == E.conviction for every grid rule (incl. JSON round trip)', () => {
+  E.setModel({ v: 1, w: {}, calib: {} });
+  const D = bars(520, 21), I = E.indicators(D); let checks = 0, pos = 0, neg = 0;
+  for (let j = 430; j < 520; j += 6) {
+    const Dj = Object.fromEntries(Object.entries(D).map(([k, v]) => [k, v.slice(0, j + 1)])), q = E.quick(Dj, { tick: 0.05 }), cv = R.convRec(D, I, j);
+    const fields = ['price', 'e20', 'e50', 'e200', 'atr', 'rsi', 'turnover'];
+    fields.forEach((k, m) => assert.strictEqual(q[k], cv[m], `${k} at bar ${j}: row ${q[k]} vs research ${cv[m]}`));
+    const rows = [q, JSON.parse(JSON.stringify(q))];
+    for (const mkt of [1, 0, NaN]) {
+      const v = { s: Object.fromEntries(['swing', 'short', 'medium', 'long'].map(k => [k, q.horizons[k].score])), c: cv[0], e20: cv[1], e50: cv[2], e200: cv[3], atr: cv[4], rsi: cv[5], turn: cv[6], mkt };
+      const ctx = { niftyAbove200: mkt === 1 ? true : mkt === 0 ? false : undefined };
+      for (const hz of ['swing', 'short', 'medium', 'long']) for (const sp of R.convGrid(hz, [{ cut: 0, pct: null }, { cut: 45, pct: 10 }, { cut: 58, pct: 5 }, { cut: 70, pct: 2 }])) {
+        const want = R.convRowOk(sp, hz, v);
+        for (const row of rows) { const got = E.convEval(convEntry(sp), row, hz, ctx); assert.strictEqual(!!got, want, `${hz} ${JSON.stringify(sp)} bar ${j}`); checks++; }
+        want ? pos++ : neg++;
+      }
+    }
+  }
+  assert(pos > 50 && neg > 50, `both outcomes exercised (${pos} / ${neg})`); assert(checks > 5000);
+});
+t('convGrid: score condition + at most 2 other families, one option per family; 108 rules with the regime, fewer without', () => {
+  const g = R.convGrid('short', [{ cut: 58, pct: null }, { cut: 70, pct: 10 }, { cut: 75, pct: 5 }, { cut: 80, pct: 2 }]);
+  assert.strictEqual(g.length, 108); assert(g.every(sp => ok(sp.score)));
+  const fam = sp => [sp.agree, sp.trend, sp.regime, sp.minTurnover, sp.maxAtrE20].filter(x => x != null && x !== false).length;
+  assert(g.every(sp => fam(sp) <= 2)); assert(g.filter(sp => sp.agree).every(sp => sp.agree.join() === 'swing,medium' && sp.agreeMin === 58));
+  assert(R.convGrid('short', [{ cut: 58, pct: null }], false).every(sp => !sp.regime));
+});
+t('convDedup: a stock re-signalling within the holding period counts once', () => {
+  const day = [0, 0, 3, 6, 9, 10, 12, 21], stock = [1, 2, 1, 1, 2, 1, 2, 1];
+  assert.deepStrictEqual(R.convDedup(day, stock, [0, 1, 2, 3, 4, 5, 6, 7], 10), [0, 1, 5, 6, 7]); // stock 1 kept on days 0, 10, 21 (3, 6 within 10 of day 0); stock 2 on 0, 12 (9 within 10)
+});
+t('hitLower: ≤ Wilson; clustered outcomes widen the bound; empty → NaN', () => {
+  const y = Array.from({ length: 200 }, (_, k) => k % 2), iid = R.hitLower(y, y.map((_, k) => k)), cl = R.hitLower(y.map((_, k) => k < 100 ? 1 : 0), y.map((_, k) => Math.floor(k / 50)));
+  assert(iid.lo < 0.5 && iid.lo > 0.4, 'iid lo ' + iid.lo); assert(cl.lo < iid.lo, `clustered ${cl.lo} < iid ${iid.lo}`); assert.strictEqual(cl.G, 4); assert(isNaN(R.hitLower([], []).lo));
+});
+t('E.conviction: model.json lookup, off → null, regime needs ctx.niftyAbove200, intraday = unmeasured agreement flag', () => {
+  const D = bars(520, 21), q = E.quick(D, { tick: 0.05 }), s = q.horizons.swing.score;
+  const on = convEntry({ score: s, pct: 5 }), reg = convEntry({ score: s, pct: 5, regime: true });
+  E.setModel({ v: 3, w: {}, calib: {}, research: { conviction: { swing: on, short: { off: true, why: 'x' }, medium: reg } } });
+  const r = E.conviction(q, 'swing', {}); assert(r && r.measured === true && r.hit === 0.41 && r.n === 200 && r.why.length >= 1 && r.hz === 'swing');
+  assert.strictEqual(E.conviction(q, 'short', {}), null); assert.strictEqual(E.conviction(q, 'long', {}), null);
+  E.setModel({ v: 3, w: {}, calib: {}, research: { conviction: { swing: convEntry({ score: s + 1, pct: 5 }) } } }); assert.strictEqual(E.conviction(q, 'swing', {}), null, 'score below cut');
+  E.setModel({ v: 3, w: {}, calib: {}, research: { conviction: { swing: convEntry({ score: s, pct: 5, regime: true }) } } });
+  assert.strictEqual(E.conviction(q, 'swing', {}), null, 'regime unknown → no signal'); assert.strictEqual(E.conviction(q, 'swing', { niftyAbove200: false }), null); assert(E.conviction(q, 'swing', { niftyAbove200: true }));
+  E.setModel({ v: 3, w: {}, calib: {}, research: { conviction: { swing: on } } });
+  const i1 = E.conviction(q, 'intraday', {}, 80); assert(i1 && i1.measured === false && i1.hit === null && i1.basis.hz === 'swing');
+  assert.strictEqual(E.conviction(q, 'intraday', {}, 70), null);
+  E.setModel({ v: 1, w: {}, calib: {} }); assert.strictEqual(E.conviction(q, 'swing', {}), null, 'no section → null');
+});
+t('E.above200: last close vs its 200 EMA; live drops the forming bar; short history → undefined', () => {
+  const up = { c: Array.from({ length: 300 }, (_, k) => 100 + k) }, dn = { c: Array.from({ length: 300 }, (_, k) => 400 - k) };
+  assert.strictEqual(E.above200(up), true); assert.strictEqual(E.above200(dn), false); assert.strictEqual(E.above200({ c: [1, 2, 3] }), undefined);
+  assert.strictEqual(E.above200({ c: [...up.c, 1] }, true), true, 'forming bar ignored');
+});
 // end-to-end on the synthetic stub (tools/fno_stub.js; own cache dir so the real Yahoo cache is never touched)
 t('research.js end-to-end on stub data: STABILITY section, parity at bar n and n−1, smoothed model written + accepted by the engine', () => {
   const os = require('os'), fs = require('fs'), path = require('path'), cp = require('child_process');
@@ -108,13 +165,17 @@ t('research.js end-to-end on stub data: STABILITY section, parity at bar n and n
   fs.writeFileSync(mp, JSON.stringify({ v: 1, w: {}, calib: {} }));
   const syms = Array.from({ length: 24 }, (_, k) => 'STK' + k).join(',');
   const r = cp.spawnSync(process.execPath, ['-r', path.join(__dirname, 'fno_stub.js'), path.join(__dirname, 'research.js')], { encoding: 'utf8', timeout: 300e3,
-    env: Object.assign({}, process.env, { YF_CACHE: path.join(dir, 'cache'), RESEARCH_SYMS: syms, STEP: '4', BTST_STEP: '6', MODEL_PATH: mp, REPORT_PATH: rp, RESEARCH_FORCE: '1', RESEARCH_FORCE_VARIANT: 'S3', VARIANTS: 'S3,FS', RESEARCH_DRY: '' }) });
+    env: Object.assign({}, process.env, { YF_CACHE: path.join(dir, 'cache'), RESEARCH_SYMS: syms, STEP: '4', BTST_STEP: '6', MODEL_PATH: mp, REPORT_PATH: rp, RESEARCH_FORCE: '1', RESEARCH_FORCE_VARIANT: 'S3', VARIANTS: 'S3,FS', RESEARCH_DRY: '', CONV_MIN_N: '20' }) });
   assert.strictEqual(r.status, 0, r.stderr); const rep = fs.readFileSync(rp, 'utf8');
   assert(/^==================== STABILITY/m.test(rep) && /STABILITY swing/.test(rep) && /STABILITY short/.test(rep), 'stability section');
   assert(!/MISMATCHES/.test(rep), 'parity mismatches'); assert(/every variant's F2 model, bar n and bar n−1\): \d+ rows, all match/.test(rep));
   assert(/^swing .* variant /m.test(rep), 'DECISION names the variant');
   const m = JSON.parse(fs.readFileSync(mp, 'utf8')); assert.strictEqual(m.lin.swing.smooth, 3, 'forced S3 written with smooth = 3');
   assert(E.setModel(m) && E.linK(E.MODEL.lin.swing) === 3);
+  assert(/^==================== CONVICTION/m.test(rep) && /engine parity \(E\.convEval on scan-row shape vs research\): \d+ rows \(\d+ signals\), all match/.test(rep), 'conviction section + parity');
+  assert(/^swing +🎯 /m.test(rep), 'conviction DECISION line'); const cs = m.research.conviction;
+  assert(cs && cs.intraday.off && cs.intraday.measured === false, 'intraday never measured');
+  for (const hz of ['swing', 'short', 'medium', 'long']) assert(cs[hz] && (cs[hz].off ? typeof cs[hz].why === 'string' : cs[hz].rule && ok(cs[hz].rule.score) && ok(cs[hz].test.hit) && ok(cs[hz].test.baseHit) && cs[hz].folds.F1 && cs[hz].folds.F2), 'conviction ' + hz);
   const D = bars(400, 5), a = E.analyze(D); assert(Number.isInteger(a.horizons.swing.score) && Number.isInteger(a.horizons.short.score));
   E.setModel({ v: 1, w: {}, calib: {} }); fs.rmSync(dir, { recursive: true, force: true });
 });
